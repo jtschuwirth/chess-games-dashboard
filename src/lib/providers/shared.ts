@@ -1,0 +1,74 @@
+import { Chess } from 'chess.js'
+import { TIME_CLASSES, type TimeClass } from '@/types/chess'
+
+export const USER_AGENT =
+  'chess-games-dashboard/0.1 (+https://github.com/jtschuwirth/chess-games-dashboard)'
+
+export const MAX_GAMES = 500
+
+/** An error whose message is safe to show the user, with the status to return. */
+export class ProviderError extends Error {
+  status: number
+  constructor(message: string, status = 502) {
+    super(message)
+    this.status = status
+  }
+}
+
+export function parseMax(raw: string | null): number {
+  const value = Number(raw ?? 50)
+  if (!Number.isFinite(value) || value < 1) {
+    throw new ProviderError('`max` must be a positive number.', 400)
+  }
+  return Math.min(Math.floor(value), MAX_GAMES)
+}
+
+export function parseUsername(raw: string | null): string {
+  const username = (raw ?? '').trim()
+  if (!/^[\w-]{1,40}$/.test(username)) {
+    throw new ProviderError('Provide a valid username.', 400)
+  }
+  return username
+}
+
+export function parseList(raw: string | null): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map(part => part.trim())
+    .filter(Boolean)
+}
+
+/** SAN move list from a PGN. Returns [] rather than throwing so one odd game can't fail a sync. */
+export function movesFromPgn(pgn: string): string[] {
+  const chess = new Chess()
+  try {
+    chess.loadPgn(pgn.trim())
+  } catch {
+    return []
+  }
+  return chess.history()
+}
+
+export interface SyncParams {
+  username: string
+  max: number
+  timeClasses: TimeClass[]
+}
+
+/** Shared query-string contract for both provider routes. */
+export function parseSyncParams(url: string): SyncParams {
+  const params = new URL(url).searchParams
+  const timeClasses = parseList(params.get('timeClasses')).filter((value): value is TimeClass =>
+    (TIME_CLASSES as string[]).includes(value),
+  )
+
+  if (timeClasses.length === 0) {
+    throw new ProviderError('Select at least one time class.', 400)
+  }
+
+  return {
+    username: parseUsername(params.get('username')),
+    max: parseMax(params.get('max')),
+    timeClasses,
+  }
+}
