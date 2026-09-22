@@ -49,7 +49,9 @@ src/
 │   ├── dashboard-filters.ts    # dashboard filters <-> query string
 │   ├── game-filters.ts         # date / rating / format scope rule, shared with the export
 │   ├── ratings.ts              # reconstructs pre-game ratings, Elo expectation
-│   ├── clocks.ts               # per-move time, timeout KPI, thinking by phase
+│   ├── clocks.ts               # per-move time, timeout KPI, phases, mistakes by phase
+│   ├── engine.ts               # Stockfish 18 lite in a worker, queued, FEN-cached
+│   ├── analysis.ts             # move classification and the annotated PGN
 │   ├── termination.ts          # one ending vocabulary across the two providers
 │   ├── auth.ts                 # signInWithGoogle / signOut
 │   ├── firestore.ts            # profile, games, patterns CRUD
@@ -73,6 +75,21 @@ src/
   `lib/clocks.ts`: opening setup (1-4), variation development (5-10), structure definition (11-15),
   tactical / strategic duel (16-30), pre-endgame (31+). They are contiguous with no overlap — the
   original sketch had 16-30 and 30+ both containing move 30.
+- **Move classification follows the chess-courses standard**, which is context-sensitive on
+  purpose. With `cpLoss = cpBefore - cpAfter` from your own perspective:
+  `??` when the loss clears the blunder threshold *and* `cpAfter < 200` *and* `cpBefore > -200`;
+  `?` likewise at the mistake threshold; a big loss failing either guard is only `?!`. So a slip
+  while already lost is not a blunder — there was nothing left to lose — and one while still
+  clearly winning is only careless. Going from winning back to level *does* get the full mark,
+  because `cpAfter` has fallen inside the decided band. Defaults are 300 / 100 centipawns.
+- **The engine runs in the browser**, Stockfish 18 lite single-threaded in a worker, copied to
+  `/public` on postinstall and gitignored. Single-threaded is deliberate: the multi-threaded build
+  needs cross-origin isolation headers. Requests are queued rather than rejected when busy, and
+  cached by FEN — games in one opening share most of their early positions.
+- **Analysis is written per game as it finishes**, both as a `StoredAnalysis` for filtering and as
+  an `annotatedPgn` carrying the symbols on your own moves. Stopping a run therefore loses at most
+  one game. Only your moves are annotated; a plain `!` is never written, since it would mark
+  nearly every move.
 - **The providers do not share a termination vocabulary.** chess.com says `timeout` for running
   out of clock; lichess says `outoftime` and reuses `timeout` for a player who walked away.
   Matching the raw string silently undercounted the flag KPI. `normalizeEnding` in

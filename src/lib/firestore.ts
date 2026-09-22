@@ -18,6 +18,7 @@ import { db } from './firebase'
 import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
   GameRecord,
+  StoredAnalysis,
   NewPattern,
   PatternRecord,
   Source,
@@ -146,6 +147,23 @@ export async function saveGames(userId: string, games: SyncedGame[]): Promise<Sa
   }
 
   return { added, updated: records.length - added.length }
+}
+
+/**
+ * Analysis is written per game as it completes, so a long run can be stopped and
+ * picked up later without losing the work already done.
+ */
+export async function saveAnalysis(
+  userId: string,
+  gameId: string,
+  analysis: StoredAnalysis,
+  annotatedPgn: string,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, 'games', gameId),
+    { analysis, annotatedPgn },
+    { merge: true },
+  )
 }
 
 /* --------------------------------------------------------------- patterns */

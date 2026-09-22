@@ -86,6 +86,7 @@ curl -H "x-api-key: $EXPORT_API_KEY" http://localhost:3000/api/export
 | `tc=180%2B2,900%2B10` | all | Restrict to time controls (canonical ids) |
 | `source=chesscom` | both | Restrict to one site |
 | `phase=11-15` | any | Only games that ended in that phase |
+| `mistakes=blunder` | any | `blunder`, `mistake`, `clean` or `analysed` |
 | `color=white` | both | Restrict to one side |
 | `since=3m` | all time | Window: `1m`, `3m`, `6m`, `12m`, `24m`, `36m` |
 | `minElo=1050&maxElo=1300` | none | Your own rating at the time of the game |
@@ -100,6 +101,18 @@ root-first `path` and win/draw/loss split, sub-variations included), `unclassifi
 `unsavedOpenings` list — openings you play that no saved line covers, grouped by colour, each with a
 pasteable `sampleLine` — and the games themselves, each tagged with the saved line it followed.
 Ignored games are excluded from every number.
+
+## Engine analysis
+
+The dashboard can run Stockfish over whatever the filters currently select — every Caro-Kann, say.
+It runs in a worker in your browser tab, so leave the tab open; each game is saved as it finishes,
+so stopping loses at most one. Analysed games gain an `annotatedPgn` you can paste into any board,
+and the annotations then drive the blunder columns and the Engine filter.
+
+Moves are classified the way the chess-courses annotator does it, which deliberately reads the
+position and not just the centipawn loss: a slip while already lost is not marked as a blunder, one
+made while still clearly winning is only `?!`, and letting a winning position slip back to level
+gets the full `??`.
 
 ## Data model
 

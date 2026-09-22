@@ -40,6 +40,12 @@ export interface GameCriteria {
   source: Source | 'both'
   /** Only games whose last move fell in this phase, by its label. Null for any. */
   endedIn: string | null
+  /**
+   * Narrow to what the engine found. 'blunder' / 'mistake' keep games containing at
+   * least one; 'clean' keeps analysed games with neither; 'analysed' keeps anything
+   * already analysed. Null leaves the set alone.
+   */
+  mistakes: 'blunder' | 'mistake' | 'clean' | 'analysed' | null
   /** The side you played, or 'both'. */
   color: Color | 'both'
   since: SinceKey
@@ -52,6 +58,7 @@ export const ALL_GAMES: GameCriteria = {
   timeControls: [],
   source: 'both',
   endedIn: null,
+  mistakes: null,
   color: 'both',
   since: 'all',
   minRating: null,
@@ -78,6 +85,14 @@ export function matchesCriteria(
 
   if (criteria.source !== 'both' && game.source !== criteria.source) return false
   if (criteria.endedIn !== null && endingPhaseOf(game) !== criteria.endedIn) return false
+
+  if (criteria.mistakes !== null) {
+    const analysis = game.analysis
+    if (!analysis) return false
+    if (criteria.mistakes === 'blunder' && analysis.blunders === 0) return false
+    if (criteria.mistakes === 'mistake' && analysis.mistakes === 0) return false
+    if (criteria.mistakes === 'clean' && analysis.blunders + analysis.mistakes > 0) return false
+  }
   if (criteria.color !== 'both' && game.color !== criteria.color) return false
 
   const start = sinceTimestamp(criteria.since, now)

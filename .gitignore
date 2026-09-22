@@ -39,6 +39,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# copied out of node_modules by scripts/copy-stockfish.js on postinstall
+/public/stockfish-18-lite-single.js
+/public/stockfish-18-lite-single.wasm
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

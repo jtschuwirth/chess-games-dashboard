@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation'
 import Chip from '@/components/Chip'
 import GameRow from '@/components/GameRow'
 import PageShell, { Spinner } from '@/components/PageShell'
+import AnalysisPanel from '@/components/AnalysisPanel'
 import ClockPanel from '@/components/ClockPanel'
 import StatBlockCard from '@/components/StatBlockCard'
 import ThinkPanel from '@/components/ThinkPanel'
@@ -33,7 +34,7 @@ import { SINCE_OPTIONS, matchesCriteria } from '@/lib/game-filters'
 import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL } from '@/types/chess'
-import type { Color, GameRecord, PatternRecord, Source } from '@/types/chess'
+import type { Color, GameRecord, PatternRecord, Source, StoredAnalysis } from '@/types/chess'
 
 const PAGE_SIZE = 50
 
@@ -53,6 +54,15 @@ function FilterLabel({ children }: { children: React.ReactNode }) {
   return (
     <span className="text-xs uppercase tracking-wide text-zinc-500 sm:pt-2">{children}</span>
   )
+}
+
+/** Blunders per analysed game, or null when none of them have been analysed. */
+function blunderRate(games: GameRecord[]): number | null {
+  const analysed = games.filter(game => game.analysis)
+  if (analysed.length === 0) return null
+
+  const blunders = analysed.reduce((sum, game) => sum + (game.analysis?.blunders ?? 0), 0)
+  return Math.round((blunders / analysed.length) * 100) / 100
 }
 
 function toggle<T>(values: T[], value: T): T[] {
@@ -76,6 +86,7 @@ function DashboardBody({ userId }: { userId: string }) {
     color,
     source,
     endedIn,
+    mistakes,
   } = filters
 
   /** Mirror the filters into the address bar so a reload — or a shared link — restores the view. */
@@ -106,6 +117,15 @@ function DashboardBody({ userId }: { userId: string }) {
     } finally {
       setRefreshing(false)
     }
+  }
+
+  /** Keeps the freshly analysed game in view without a re-read. */
+  function applyAnalysis(gameId: string, analysis: StoredAnalysis, annotatedPgn: string) {
+    setGames(prev =>
+      (prev ?? []).map(game =>
+        game.id === gameId ? { ...game, analysis, annotatedPgn } : game,
+      ),
+    )
   }
 
   /** Every position each game passed through, so switching variations is instant. */
@@ -187,6 +207,7 @@ function DashboardBody({ userId }: { userId: string }) {
         note: formatMoves(node.pattern.moves),
         stats: computeStats(matching),
         think: matchingClock.medianPerMove,
+        blundersPerGame: blunderRate(matching),
         onSelect: () => patch({ opening: node.pattern.id }),
       }
     })
@@ -204,6 +225,7 @@ function DashboardBody({ userId }: { userId: string }) {
           : undefined,
         stats: computeStats(rest),
         think: restClock.medianPerMove,
+        blundersPerGame: blunderRate(rest),
         onSelect: current ? undefined : () => patch({ opening: UNCLASSIFIED_OPENING }),
       })
     }
@@ -367,6 +389,21 @@ function DashboardBody({ userId }: { userId: string }) {
             ))}
           </select>
 
+          <FilterLabel>Engine</FilterLabel>
+          <select
+            value={mistakes ?? ''}
+            onChange={event =>
+              patch({ mistakes: (event.target.value || null) as Filters['mistakes'] })
+            }
+            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600 sm:max-w-xs"
+          >
+            <option value="">Any game</option>
+            <option value="analysed">Analysed</option>
+            <option value="blunder">Contains a blunder</option>
+            <option value="mistake">Contains a mistake</option>
+            <option value="clean">No blunder or mistake</option>
+          </select>
+
           <FilterLabel>Colour</FilterLabel>
           <div className="flex gap-1.5 flex-wrap">
             {COLOR_OPTIONS.map(option => (
@@ -444,6 +481,8 @@ function DashboardBody({ userId }: { userId: string }) {
       </section>
 
       <ClockPanel stats={clock} totalGames={scoped.length} />
+
+      <AnalysisPanel userId={userId} games={scoped} onAnalyzed={applyAnalysis} />
 
       <ThinkPanel
         phases={phases}

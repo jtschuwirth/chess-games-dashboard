@@ -61,7 +61,7 @@ export default function ThinkPanel({
       </div>
 
       <div className="border border-zinc-800 rounded-xl overflow-x-auto">
-        <table className="w-full text-sm min-w-[48rem] tabular-nums">
+        <table className="w-full text-sm min-w-[56rem] tabular-nums">
           <thead className="bg-zinc-900 text-zinc-500">
             <tr className="text-xs uppercase tracking-wide">
               <th className="px-5 pt-3 pb-1 text-left font-medium" rowSpan={2}>
@@ -75,6 +75,9 @@ export default function ThinkPanel({
               </th>
               <th className={`px-3 pt-3 pb-1 text-center font-medium ${GROUP}`} colSpan={3}>
                 Clock
+              </th>
+              <th className={`px-3 pt-3 pb-1 text-center font-medium ${GROUP}`} colSpan={2}>
+                Engine
               </th>
             </tr>
             <tr className="text-xs text-zinc-600">
@@ -93,8 +96,14 @@ export default function ThinkPanel({
                 left on entry
               </th>
               <th className="px-3 pb-2 text-right font-normal">s / move</th>
-              <th className="px-5 pb-2 text-right font-normal" title="Games whose slowest move landed here">
+              <th className="px-3 pb-2 text-right font-normal" title="Games whose slowest move landed here">
                 slowest
+              </th>
+              <th className={`px-3 pb-2 text-right font-normal ${GROUP}`} title="Your blunders played in this phase">
+                ??
+              </th>
+              <th className="px-5 pb-2 text-right font-normal" title="Blunders per analysed game that reached this phase">
+                per game
               </th>
             </tr>
           </thead>
@@ -165,8 +174,22 @@ export default function ThinkPanel({
                 <td className="px-3 py-3 text-right text-zinc-300">
                   {phase.medianPerMove === null ? '–' : `${phase.medianPerMove}s`}
                 </td>
-                <td className="px-5 py-3 text-right text-zinc-300">
+                <td className="px-3 py-3 text-right text-zinc-300">
                   {timed ? `${phase.slowestShare}%` : '–'}
+                </td>
+                <td className={`px-3 py-3 text-right ${GROUP} text-red-400`}>
+                  {phase.analysedReaching === 0 ? (
+                    <span className="text-zinc-600">–</span>
+                  ) : (
+                    phase.blunders
+                  )}
+                </td>
+                <td className="px-5 py-3 text-right text-zinc-300">
+                  {phase.blundersPerGame === null ? (
+                    <span className="text-zinc-600">–</span>
+                  ) : (
+                    phase.blundersPerGame.toFixed(2)
+                  )}
                 </td>
               </tr>
             ))}

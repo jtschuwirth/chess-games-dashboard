@@ -46,6 +46,28 @@ export interface SyncedGame {
 export interface GameRecord extends SyncedGame {
   /** `chesscom_${uuid}` | `lichess_${id}` — deterministic so re-syncs dedupe. */
   id: string
+  /** Engine analysis of your own moves, once it has been run. */
+  analysis?: StoredAnalysis
+  /** The game with the analysis written onto it, ready to paste into a board. */
+  annotatedPgn?: string
+}
+
+/** What `analyzeGame` produced, flattened for Firestore. */
+export interface StoredAnalysis {
+  depth: number
+  analyzedAt: number
+  blunders: number
+  mistakes: number
+  inaccuracies: number
+  moves: {
+    ply: number
+    san: string
+    moveNumber: number
+    cpBefore: number
+    cpAfter: number
+    cpLoss: number
+    tag: string
+  }[]
 }
 
 export interface PatternRecord {

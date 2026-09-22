@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // vendored: copied out of node_modules by scripts/copy-stockfish.js
+    "public/**",
   ]),
 ]);
 

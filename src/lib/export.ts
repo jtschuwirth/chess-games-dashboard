@@ -19,6 +19,7 @@ import { TIME_CLASSES } from '@/types/chess'
 import type {
   Color,
   GameRecord,
+  StoredAnalysis,
   PatternColor,
   PatternRecord,
   TimeClass,
@@ -93,6 +94,13 @@ export interface CompactGame {
   slowestMove: number | null
   /** Share of your time spent on the first ten moves. */
   openingShare: number | null
+  /** Engine findings, once the game has been analysed. */
+  analysisDepth: number | null
+  blunders: number | null
+  mistakes: number | null
+  inaccuracies: number | null
+  /** Your own moves with their evaluations. Only with `moves=1`. */
+  analysisMoves?: StoredAnalysis['moves']
   moves?: string[]
   /** Seconds left after each ply, index-aligned with `moves`. Only with `moves=1`. */
   clocks?: number[] | null
@@ -300,6 +308,13 @@ export function buildExport(
         medianPerMove: clock?.medianPerMove ?? null,
         slowestMove: clock?.slowestMove ?? null,
         openingShare: clock?.openingShare ?? null,
+        analysisDepth: game.analysis?.depth ?? null,
+        blunders: game.analysis?.blunders ?? null,
+        mistakes: game.analysis?.mistakes ?? null,
+        inaccuracies: game.analysis?.inaccuracies ?? null,
+        ...(options.includeMoves && game.analysis
+          ? { analysisMoves: game.analysis.moves }
+          : {}),
         ...(options.includeMoves ? { moves: game.moves, clocks: game.clocks } : {}),
       }
     })

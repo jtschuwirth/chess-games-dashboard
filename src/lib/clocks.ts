@@ -190,6 +190,13 @@ export interface PhaseBucket {
   reachShare: number
   /** Games whose last move fell in this phase. */
   endedHere: number
+  /** Analysed games that reached this phase — the denominator for the mistake rates. */
+  analysedReaching: number
+  /** Your blunders and mistakes played in this phase. */
+  blunders: number
+  mistakes: number
+  /** Blunders per analysed game that reached here. */
+  blundersPerGame: number | null
   /**
    * Median clock left on entering the phase, as a share of the control's starting time.
    * Normalized because 3+2 and 15+10 arrive at move 16 with very different absolutes;
@@ -226,6 +233,7 @@ export function computePhases(games: GameRecord[]): PhaseBucket[] {
 
   // reach and result counts use every game; only the timing medians need clock data
   const lengths = games.map(game => ({ game, moves: userMoveCount(game) }))
+  const analysed = games.filter(game => game.analysis)
 
   return GAME_PHASES.map(phase => {
     const seconds: number[] = []
@@ -238,6 +246,20 @@ export function computePhases(games: GameRecord[]): PhaseBucket[] {
     const slowestCount = slowestAt.filter(move => move >= phase.from && move <= phase.to).length
     const spentHere = seconds.reduce((sum, value) => sum + value, 0)
     const gamesReaching = lengths.filter(entry => entry.moves >= phase.from).length
+
+    const analysedReaching = analysed.filter(
+      game => userMoveCount(game) >= phase.from,
+    ).length
+
+    let blunders = 0
+    let mistakes = 0
+    for (const game of analysed) {
+      for (const move of game.analysis?.moves ?? []) {
+        if (move.moveNumber < phase.from || move.moveNumber > phase.to) continue
+        if (move.tag === '??') blunders++
+        else if (move.tag === '?') mistakes++
+      }
+    }
 
     const enteringPct: number[] = []
     for (const usage of usages) {
@@ -260,6 +282,11 @@ export function computePhases(games: GameRecord[]): PhaseBucket[] {
       gamesReaching,
       reachShare: games.length === 0 ? 0 : Math.round((gamesReaching / games.length) * 1000) / 10,
       endedHere: endedHere.length,
+      analysedReaching,
+      blunders,
+      mistakes,
+      blundersPerGame:
+        analysedReaching === 0 ? null : Math.round((blunders / analysedReaching) * 100) / 100,
       medianEnteringPct: enteringPct.length > 0 ? median(enteringPct) : null,
       stats: computeStats(endedHere.map(entry => entry.game)),
       slowestCount,

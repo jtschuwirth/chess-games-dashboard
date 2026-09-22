@@ -19,12 +19,21 @@ export const DEFAULT_FILTERS: Filters = {
   color: 'both',
   source: 'both',
   endedIn: null,
+  mistakes: null,
 }
 
 function readRating(raw: string | null): number | null {
   if (!raw) return null
   const value = Number(raw)
   return Number.isFinite(value) && value > 0 ? Math.round(value) : null
+}
+
+const MISTAKE_VALUES = ['blunder', 'mistake', 'clean', 'analysed'] as const
+
+function readMistakes(raw: string | null): GameCriteria['mistakes'] {
+  return MISTAKE_VALUES.includes(raw as (typeof MISTAKE_VALUES)[number])
+    ? (raw as GameCriteria['mistakes'])
+    : null
 }
 
 /** Anything unrecognised in the query string falls back to the default. */
@@ -47,6 +56,7 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
     color: color === 'white' || color === 'black' ? color : 'both',
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
     endedIn: params.get('phase') || null,
+    mistakes: readMistakes(params.get('mistakes')),
   }
 }
 
@@ -61,6 +71,7 @@ export function writeFilters(filters: Filters): string {
   if (filters.color !== 'both') params.set('color', filters.color)
   if (filters.source !== 'both') params.set('source', filters.source)
   if (filters.endedIn) params.set('phase', filters.endedIn)
+  if (filters.mistakes) params.set('mistakes', filters.mistakes)
 
   const query = params.toString()
   return query ? '?' + query : ''

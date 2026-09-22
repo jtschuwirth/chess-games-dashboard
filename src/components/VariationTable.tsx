@@ -13,6 +13,8 @@ export interface VariationRow {
   stats: StatBlock
   /** Median seconds per move in these games, null without clock data. */
   think?: number | null
+  /** Blunders per analysed game, null when none are analysed. */
+  blundersPerGame?: number | null
   /** Omitted for the catch-all row, which has no variation to drill into. */
   onSelect?: () => void
 }
@@ -59,7 +61,7 @@ export default function VariationTable({
       </div>
 
       <div className="border border-zinc-800 rounded-xl overflow-x-auto">
-        <table className="w-full text-sm min-w-[38rem] tabular-nums">
+        <table className="w-full text-sm min-w-[44rem] tabular-nums">
           <thead>
             <tr className="text-xs uppercase tracking-wide text-zinc-500 bg-zinc-900">
               <th className="text-left font-medium px-5 py-2.5">Variation</th>
@@ -69,13 +71,16 @@ export default function VariationTable({
               <th className="text-right font-medium px-3 py-2.5">L</th>
               <th className="text-right font-medium px-3 py-2.5">Score</th>
               <th className="text-right font-medium px-3 py-2.5">s/move</th>
+              <th className="text-right font-medium px-3 py-2.5" title="Blunders per analysed game">
+                ??/game
+              </th>
               <th className="px-5 py-2.5 w-28" />
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800">
             {up && (
               <tr className="bg-zinc-900 hover:bg-zinc-800 transition-colors">
-                <td colSpan={8} className="px-5 py-2.5">
+                <td colSpan={9} className="px-5 py-2.5">
                   <button
                     onClick={up.onSelect}
                     className="flex items-center gap-2 text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
@@ -114,6 +119,11 @@ export default function VariationTable({
                 <td className="px-3 py-3 text-right text-zinc-300">{row.stats.score}%</td>
                 <td className="px-3 py-3 text-right text-zinc-400">
                   {row.think === null || row.think === undefined ? '—' : `${row.think}s`}
+                </td>
+                <td className="px-3 py-3 text-right text-red-400">
+                  {row.blundersPerGame === null || row.blundersPerGame === undefined
+                    ? '—'
+                    : row.blundersPerGame.toFixed(2)}
                 </td>
                 <td className="px-5 py-3">
                   <ResultBar stats={row.stats} />
