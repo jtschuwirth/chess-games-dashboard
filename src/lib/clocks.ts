@@ -42,6 +42,43 @@ export function timeSpentPerPly(clocks: number[], control: TimeControl): number[
 }
 
 /**
+ * A canonical id for a time control, so chess.com's "600" and lichess's "600+0" are
+ * recognised as the same clock. Null for daily and unlimited games.
+ */
+export function timeControlKey(raw: string): string | null {
+  const control = parseTimeControl(raw)
+  return control ? `${control.base}+${control.increment}` : null
+}
+
+/** "180+2" -> "3+2", the way players say it. Falls back to the raw string. */
+export function formatTimeControl(raw: string): string {
+  const control = parseTimeControl(raw)
+  if (!control) return raw
+
+  const minutes = control.base / 60
+  const shown = Number.isInteger(minutes) ? String(minutes) : minutes.toFixed(1)
+  return `${shown}+${control.increment}`
+}
+
+/** Controls present in a set of games, fastest first, with how many games each has. */
+export function timeControlsIn(games: GameRecord[]): { key: string; label: string; games: number }[] {
+  const counts = new Map<string, number>()
+
+  for (const game of games) {
+    const key = timeControlKey(game.timeControl)
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1)
+  }
+
+  return [...counts.entries()]
+    .map(([key, count]) => ({ key, label: formatTimeControl(key), games: count }))
+    .sort((a, b) => {
+      const [baseA, incA] = a.key.split('+').map(Number)
+      const [baseB, incB] = b.key.split('+').map(Number)
+      return baseA - baseB || incA - incB
+    })
+}
+
+/**
  * Lichess prepends the starting clock, so its array runs one longer than the move
  * list. The last reading always belongs to the last ply, so trim from the front.
  * Null when there are fewer readings than plies, where alignment is unknowable.

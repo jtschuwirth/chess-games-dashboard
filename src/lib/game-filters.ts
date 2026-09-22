@@ -1,4 +1,5 @@
-import type { Color, GameRecord, Source, TimeClass } from '@/types/chess'
+import { endingPhaseOf, timeControlKey } from '@/lib/clocks'
+import type { Color, GameRecord, Source } from '@/types/chess'
 
 export type SinceKey = 'all' | '1m' | '3m' | '6m' | '12m' | '24m' | '36m'
 
@@ -29,9 +30,16 @@ export function sinceTimestamp(since: SinceKey, now: Date = new Date()): number 
 }
 
 export interface GameCriteria {
-  timeClasses: TimeClass[]
+  /**
+   * Canonical time controls (`180+2`), empty for any. Clock behaviour differs sharply
+   * inside one time class — 10+0 and 15+10 are both "rapid" — so the filter works at
+   * the control level, not the class level.
+   */
+  timeControls: string[]
   /** Which site the game came from, or 'both'. */
   source: Source | 'both'
+  /** Only games whose last move fell in this phase, by its label. Null for any. */
+  endedIn: string | null
   /** The side you played, or 'both'. */
   color: Color | 'both'
   since: SinceKey
@@ -41,8 +49,9 @@ export interface GameCriteria {
 }
 
 export const ALL_GAMES: GameCriteria = {
-  timeClasses: [],
+  timeControls: [],
   source: 'both',
+  endedIn: null,
   color: 'both',
   since: 'all',
   minRating: null,
@@ -59,11 +68,16 @@ export function matchesCriteria(
   criteria: GameCriteria,
   now: Date = new Date(),
 ): boolean {
-  if (criteria.timeClasses.length > 0 && !criteria.timeClasses.includes(game.timeClass)) {
-    return false
+  if (criteria.timeControls.length > 0) {
+    const key = timeControlKey(game.timeControl)
+    if (key === null || !criteria.timeControls.includes(key)) return false
   }
 
+  // engine games are never part of the analysis: they say nothing about play against people
+  if (game.opponentIsBot) return false
+
   if (criteria.source !== 'both' && game.source !== criteria.source) return false
+  if (criteria.endedIn !== null && endingPhaseOf(game) !== criteria.endedIn) return false
   if (criteria.color !== 'both' && game.color !== criteria.color) return false
 
   const start = sinceTimestamp(criteria.since, now)

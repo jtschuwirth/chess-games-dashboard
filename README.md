@@ -22,7 +22,7 @@ lines you play, and see how each one actually scores.
   losses that are timeouts, plus median time left, seconds per move and how much of the clock goes
   on the first ten moves. Below that, a table breaks the current
   slice down one level: top-level openings when nothing is selected, sub-variations once you pick
-  one. Click a row to drill in. Filter by site, colour, time format, date window (1 month to
+  one. Click a row to drill in. Filter by site, colour, time control, date window (1 month to
   3 years) and the rating you held at the time, so a long history can be narrowed to a comparable stretch.
 
 ## Setup
@@ -83,8 +83,9 @@ curl -H "x-api-key: $EXPORT_API_KEY" http://localhost:3000/api/export
 | `games=0` | games included | Drop the per-game list, keep the summaries |
 | `moves=1` | off | Include full SAN move lists (much larger) |
 | `limit=N` | 200 | Cap the per-game list (max 2000) |
-| `formats=blitz,rapid` | all | Restrict to time classes |
+| `tc=180%2B2,900%2B10` | all | Restrict to time controls (canonical ids) |
 | `source=chesscom` | both | Restrict to one site |
+| `phase=11-15` | any | Only games that ended in that phase |
 | `color=white` | both | Restrict to one side |
 | `since=3m` | all time | Window: `1m`, `3m`, `6m`, `12m`, `24m`, `36m` |
 | `minElo=1050&maxElo=1300` | none | Your own rating at the time of the game |

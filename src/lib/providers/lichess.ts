@@ -79,6 +79,8 @@ function normalize(game: LichessGame, username: string): SyncedGame | null {
     result: !game.winner ? 'draw' : game.winner === color ? 'win' : 'loss',
     termination: game.status,
     opponent: playerName(opponent),
+    // lichess flags engine opponents with an aiLevel and gives them no account
+    opponentIsBot: opponent.aiLevel !== undefined,
     opponentRating: opponent.rating ?? null,
     userRating: me.rating ?? null,
     eco: game.opening?.eco ?? null,

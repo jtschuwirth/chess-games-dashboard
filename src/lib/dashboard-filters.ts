@@ -1,6 +1,4 @@
 import { isSinceKey, type GameCriteria, type SinceKey } from '@/lib/game-filters'
-import { TIME_CLASSES } from '@/types/chess'
-import type { TimeClass } from '@/types/chess'
 
 /** Dropdown value meaning "every game", not a saved opening id. */
 export const ALL_OPENINGS = 'all'
@@ -10,13 +8,11 @@ export const UNCLASSIFIED_OPENING = 'unclassified'
 
 export interface Filters extends GameCriteria {
   opening: string
-  /** Games-list-only: show just the games that ended in this phase. Its label, or null. */
-  endedIn: string | null
 }
 
 export const DEFAULT_FILTERS: Filters = {
   opening: ALL_OPENINGS,
-  timeClasses: [],
+  timeControls: [],
   since: 'all',
   minRating: null,
   maxRating: null,
@@ -36,13 +32,15 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
   const color = params.get('color')
   const source = params.get('source')
   const since = params.get('since')
-  const formats = (params.get('formats') ?? '')
+  // canonical control ids, e.g. "180+2"
+  const controls = (params.get('tc') ?? '')
     .split(',')
-    .filter((value): value is TimeClass => (TIME_CLASSES as string[]).includes(value))
+    .map(value => value.trim())
+    .filter(value => /^\d+\+\d+$/.test(value))
 
   return {
     opening: params.get('opening') || ALL_OPENINGS,
-    timeClasses: formats,
+    timeControls: controls,
     since: since && isSinceKey(since) ? (since as SinceKey) : 'all',
     minRating: readRating(params.get('minElo')),
     maxRating: readRating(params.get('maxElo')),
@@ -56,7 +54,7 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
 export function writeFilters(filters: Filters): string {
   const params = new URLSearchParams()
   if (filters.opening !== ALL_OPENINGS) params.set('opening', filters.opening)
-  if (filters.timeClasses.length > 0) params.set('formats', filters.timeClasses.join(','))
+  if (filters.timeControls.length > 0) params.set('tc', filters.timeControls.join(','))
   if (filters.since !== 'all') params.set('since', filters.since)
   if (filters.minRating !== null) params.set('minElo', String(filters.minRating))
   if (filters.maxRating !== null) params.set('maxElo', String(filters.maxRating))

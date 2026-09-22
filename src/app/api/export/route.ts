@@ -3,8 +3,7 @@ import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { buildExport } from '@/lib/export'
 import { isSinceKey, matchesCriteria, type GameCriteria, type SinceKey } from '@/lib/game-filters'
-import { TIME_CLASSES } from '@/types/chess'
-import type { GameRecord, PatternRecord, TimeClass, UserProfile } from '@/types/chess'
+import type { GameRecord, PatternRecord, UserProfile } from '@/types/chess'
 import type { Firestore } from 'firebase-admin/firestore'
 
 const DEFAULT_GAME_LIMIT = 200
@@ -66,10 +65,12 @@ export async function GET(request: Request) {
   const source = params.get('source')
   const criteria: GameCriteria = {
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
+    endedIn: params.get('phase') || null,
     color: color === 'white' || color === 'black' ? color : 'both',
-    timeClasses: (params.get('formats') ?? '')
+    timeControls: (params.get('tc') ?? '')
       .split(',')
-      .filter((value): value is TimeClass => (TIME_CLASSES as string[]).includes(value)),
+      .map(value => value.trim())
+      .filter(value => /^\d+\+\d+$/.test(value)),
     since: since && isSinceKey(since) ? (since as SinceKey) : 'all',
     minRating: rating('minElo'),
     maxRating: rating('maxElo'),

@@ -13,10 +13,10 @@ win/draw/loss splits for all games or for the games that followed one of those l
    continues an existing one nests under it as a sub-variation. Saved lines can be edited.
 4. `/dashboard` — the Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
-   own rating band. Read overall / as White / as Black stats, the clock KPI, and the game phase
-   analysis, plus a table breaking the slice down by sub-variation. Clicking a phase's *ended*
-   count lists exactly those games (`?phase=11-15`), which is a games-list filter and leaves the
-   analysis above it scoped as it was.
+   own rating band — the Control chips list the clocks you have actually played. Read overall / as White / as Black stats, the clock KPI, and the game phase
+   analysis, plus a table breaking the slice down by sub-variation. The "Ended in" dropdown scopes
+   to games that finished in one phase (`?phase=11-15`); clicking a phase's *ended* count sets the
+   same filter, the way clicking a variation row sets the opening.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
@@ -83,8 +83,19 @@ src/
   because it prepends the starting clock. `alignClocks` trims from the front, since the last
   reading always belongs to the last ply. `timeSpentPerPly` then diffs each ply against two plies
   back and adds the increment, because a reading already includes it.
+- **Engine games are excluded unconditionally**, in `matchesCriteria`, since they say nothing
+  about play against people. Lichess marks them with `aiLevel`, which is what `opponentIsBot`
+  reads; chess.com's public archive carries no bot marker and its bots are ordinary accounts, so
+  they are indistinguishable there. Matching on the opponent's *name* would be wrong — a real
+  chess.com human in this data is called `anonymous1177`. Bot games are still stored and flagged
+  rather than skipped at sync, so a re-sync backfills the flag on games saved before it existed.
 - **`matchesCriteria` in `lib/game-filters.ts` is the single scope rule** — site, colour, time
-  format, date window and rating band. The dashboard and `/api/export` both run it, so a slice you read on screen and a slice I pull over HTTP can never
+  control, date window, rating band and the phase a game ended in.
+- **Analysis filters by time control, not time class.** 10+0 and 15+10 are both "rapid" and behave
+  nothing alike on the clock, so `timeControls` holds canonical ids (`180+2`) and `timeControlKey`
+  reconciles chess.com's `600` with lichess's `600+0`. The dashboard offers only the controls
+  present in the stored games, via `timeControlsIn`. The *sync* path still speaks time classes,
+  because that is what both provider APIs filter on. The dashboard and `/api/export` both run it, so a slice you read on screen and a slice I pull over HTTP can never
   drift apart. A game with no recorded rating survives a rating filter rather than vanishing.
 - **Reads are cache-first, because Firestore bills per document.** The dashboard needs the whole
   games collection, so a server read per page view burns the free daily quota in a few dozen

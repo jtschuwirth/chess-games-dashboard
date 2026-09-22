@@ -27,6 +27,8 @@ export interface SyncedGame {
   result: GameResult
   termination: string
   opponent: string
+  /** The opponent is an engine, not a person. Lichess reports this; chess.com does not. */
+  opponentIsBot: boolean
   opponentRating: number | null
   userRating: number | null
   eco: string | null

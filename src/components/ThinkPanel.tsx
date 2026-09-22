@@ -55,8 +55,8 @@ export default function ThinkPanel({
       <div>
         <h2 className="font-semibold text-sm">Game phase analysis</h2>
         <p className="text-xs text-zinc-500 mt-0.5">
-          Counted in your own moves. Click an <em>ended</em> count to list those games below.
-          Pick an opening above to scope it to that line.
+          Counted in your own moves. Click a phase to scope everything to the games that ended
+          there. Pick an opening above to scope it to that line.
         </p>
       </div>
 
@@ -108,7 +108,21 @@ export default function ThinkPanel({
                 }`}
               >
                 <td className="px-5 py-3 whitespace-nowrap">
-                  <div className="text-zinc-100">{phase.name}</div>
+                  <button
+                    onClick={() => onPickPhase(phase.label)}
+                    className={`text-left hover:underline transition-colors ${
+                      endedIn === phase.label
+                        ? 'text-zinc-100 underline'
+                        : 'text-zinc-100 hover:text-white'
+                    }`}
+                    title={
+                      endedIn === phase.label
+                        ? 'Clear the filter'
+                        : 'Filter to the games that ended in this phase'
+                    }
+                  >
+                    {phase.name}
+                  </button>
                   <div className="text-xs text-zinc-600 mt-0.5">moves {phase.label}</div>
                 </td>
 
@@ -116,23 +130,7 @@ export default function ThinkPanel({
                   <span className="text-zinc-300">{phase.gamesReaching}</span>
                   <span className="text-zinc-600 text-xs"> {phase.reachShare}%</span>
                 </td>
-                <td className="px-3 py-3 text-right">
-                  {phase.endedHere === 0 ? (
-                    <span className="text-zinc-600">0</span>
-                  ) : (
-                    <button
-                      onClick={() => onPickPhase(phase.label)}
-                      className={`hover:underline transition-colors ${
-                        endedIn === phase.label
-                          ? 'text-zinc-100 underline'
-                          : 'text-zinc-300 hover:text-white'
-                      }`}
-                      title={`List the ${phase.endedHere} games that ended here`}
-                    >
-                      {phase.endedHere}
-                    </button>
-                  )}
-                </td>
+                <td className="px-3 py-3 text-right text-zinc-300">{phase.endedHere}</td>
 
                 <td className={`px-3 py-3 text-right ${GROUP} text-emerald-400`}>
                   <Tally count={phase.stats.wins} pct={phase.stats.winPct} empty={phase.stats.total === 0} />

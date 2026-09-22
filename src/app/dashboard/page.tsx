@@ -30,9 +30,9 @@ import {
   type Filters,
 } from '@/lib/dashboard-filters'
 import { SINCE_OPTIONS, matchesCriteria } from '@/lib/game-filters'
-import { computeClockStats, computePhases, endingPhaseOf } from '@/lib/clocks'
+import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
-import { SOURCE_LABEL, TIME_CLASSES } from '@/types/chess'
+import { SOURCE_LABEL } from '@/types/chess'
 import type { Color, GameRecord, PatternRecord, Source } from '@/types/chess'
 
 const PAGE_SIZE = 50
@@ -69,7 +69,7 @@ function DashboardBody({ userId }: { userId: string }) {
 
   const {
     opening,
-    timeClasses,
+    timeControls,
     since,
     minRating,
     maxRating,
@@ -115,6 +115,9 @@ function DashboardBody({ userId }: { userId: string }) {
     return map
   }, [games])
 
+  /** Only offer controls the user has actually played. */
+  const availableControls = useMemo(() => timeControlsIn(games ?? []), [games])
+
   const tree = useMemo(() => buildPatternTree(patterns), [patterns])
   const allNodes = useMemo(() => flattenTree(tree), [tree])
   const unclassifiedView = opening === UNCLASSIFIED_OPENING
@@ -153,20 +156,15 @@ function DashboardBody({ userId }: { userId: string }) {
   const clock = useMemo(() => computeClockStats(scoped), [scoped])
   const phases = useMemo(() => computePhases(scoped), [scoped])
 
-  const listed = useMemo(
-    () => (endedIn ? scoped.filter(game => endingPhaseOf(game) === endedIn) : scoped),
-    [scoped, endedIn],
-  )
-
   /** Which of the saved lines each visible game followed, computed only for the rendered slice. */
   const linesByGame = useMemo(() => {
     const map = new Map<string, string[]>()
-    for (const game of listed.slice(0, limit)) {
+    for (const game of scoped.slice(0, limit)) {
       const nodes = matchingPath(tree, game, positionKeys.get(game.id) ?? new Set())
       if (nodes.length > 0) map.set(game.id, nodes.map(node => node.pattern.name))
     }
     return map
-  }, [listed, limit, tree, positionKeys])
+  }, [scoped, limit, tree, positionKeys])
 
   /** One row per sub-variation of the current selection, or per top-level opening. */
   const breakdown = useMemo(() => {
@@ -338,21 +336,36 @@ function DashboardBody({ userId }: { userId: string }) {
             ))}
           </div>
 
-          <FilterLabel>Format</FilterLabel>
+          <FilterLabel>Control</FilterLabel>
           <div className="flex gap-1.5 flex-wrap">
-            <Chip active={timeClasses.length === 0} onClick={() => patch({ timeClasses: [] })}>
+            <Chip active={timeControls.length === 0} onClick={() => patch({ timeControls: [] })}>
               any
             </Chip>
-            {TIME_CLASSES.map(timeClass => (
+            {availableControls.map(control => (
               <Chip
-                key={timeClass}
-                active={timeClasses.includes(timeClass)}
-                onClick={() => patch({ timeClasses: toggle(timeClasses, timeClass) })}
+                key={control.key}
+                active={timeControls.includes(control.key)}
+                onClick={() => patch({ timeControls: toggle(timeControls, control.key) })}
+                title={`${control.games} game${control.games === 1 ? '' : 's'}`}
               >
-                {timeClass}
+                {control.label}
               </Chip>
             ))}
           </div>
+
+          <FilterLabel>Ended in</FilterLabel>
+          <select
+            value={endedIn ?? ''}
+            onChange={event => patch({ endedIn: event.target.value || null })}
+            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600 sm:max-w-xs"
+          >
+            <option value="">Any phase</option>
+            {GAME_PHASES.map(phase => (
+              <option key={phase.label} value={phase.label}>
+                {phase.name} (moves {phase.label})
+              </option>
+            ))}
+          </select>
 
           <FilterLabel>Colour</FilterLabel>
           <div className="flex gap-1.5 flex-wrap">
@@ -473,37 +486,24 @@ function DashboardBody({ userId }: { userId: string }) {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold text-sm">
-            Games ({listed.length})
-            {endedIn && (
-              <span className="ml-2 font-normal text-xs text-zinc-500">
-                ending in moves {endedIn}
-                <button
-                  onClick={() => patch({ endedIn: null })}
-                  className="ml-1.5 text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  clear
-                </button>
-              </span>
-            )}
-          </h2>
+          <h2 className="font-semibold text-sm">Games ({scoped.length})</h2>
         </div>
 
-        {listed.length === 0 ? (
+        {scoped.length === 0 ? (
           <div className="py-12 text-center text-zinc-500">No games match these filters.</div>
         ) : (
           <>
             <div className="flex flex-col divide-y divide-zinc-800 border border-zinc-800 rounded-xl overflow-hidden">
-              {listed.slice(0, limit).map(game => (
+              {scoped.slice(0, limit).map(game => (
                 <GameRow key={game.id} game={game} line={linesByGame.get(game.id) ?? []} />
               ))}
             </div>
-            {listed.length > limit && (
+            {scoped.length > limit && (
               <button
                 onClick={() => setLimit(prev => prev + PAGE_SIZE)}
                 className="self-center text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
               >
-                Show more ({listed.length - limit} left)
+                Show more ({scoped.length - limit} left)
               </button>
             )}
           </>

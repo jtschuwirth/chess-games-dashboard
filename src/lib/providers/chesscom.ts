@@ -105,6 +105,8 @@ function normalize(game: ChessComGame, username: string): SyncedGame | null {
     result: resultFor(me.result),
     termination: me.result === 'win' ? opponent.result : me.result,
     opponent: opponent.username,
+    // the public archive carries no bot marker, and chess.com bots are ordinary accounts
+    opponentIsBot: false,
     opponentRating: opponent.rating ?? null,
     userRating: me.rating ?? null,
     eco: headerValue(pgn, 'ECO'),
