@@ -101,6 +101,18 @@ function ProfileBody({ userId }: { userId: string }) {
         </div>
       </section>
 
+      <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-2">
+        <h2 className="font-semibold">Data export</h2>
+        <p className="text-sm text-zinc-500">
+          <code className="text-zinc-400">GET /api/export</code> returns your games, saved lines and
+          their results as JSON. It needs <code className="text-zinc-400">EXPORT_API_KEY</code> and
+          an admin credential in <code className="text-zinc-400">.env.local</code> — see the README.
+        </p>
+        <p className="text-xs text-zinc-600">
+          Your user id: <code className="text-zinc-400 break-all">{userId}</code>
+        </p>
+      </section>
+
       <SyncPanel
         userId={userId}
         profile={profile}

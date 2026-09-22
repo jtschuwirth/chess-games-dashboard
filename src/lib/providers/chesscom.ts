@@ -1,8 +1,8 @@
 import type { Color, GameResult, SyncedGame, TimeClass } from '@/types/chess'
-import { ProviderError, USER_AGENT, movesFromPgn } from './shared'
+import { ProviderError, USER_AGENT, clocksFromPgn, movesFromPgn } from './shared'
 
 /** Chess.com only exposes monthly archives, so we walk back at most this many months. */
-const MAX_ARCHIVES = 24
+const MAX_ARCHIVES = 36
 
 /** Chess.com has no classical bucket — a selection of only `classical` yields nothing here. */
 const TIME_CLASS_BY_SELECTION: Partial<Record<TimeClass, string>> = {
@@ -110,6 +110,7 @@ function normalize(game: ChessComGame, username: string): SyncedGame | null {
     eco: headerValue(pgn, 'ECO'),
     openingName: openingFromEcoUrl(pgn),
     moves: movesFromPgn(pgn),
+    clocks: clocksFromPgn(pgn),
   }
 }
 

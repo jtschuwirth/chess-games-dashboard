@@ -1,8 +1,15 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { MAX_PATTERN_PLY, formatMoves, parsePattern } from '@/lib/pattern'
-import type { NewPattern, PatternColor } from '@/types/chess'
+import {
+  MAX_PATTERN_PLY,
+  canNest,
+  formatMoves,
+  isParentLine,
+  parsePattern,
+  patternLabel,
+} from '@/lib/pattern'
+import type { NewPattern, PatternColor, PatternRecord } from '@/types/chess'
 
 const COLORS: { value: PatternColor; label: string }[] = [
   { value: 'any', label: 'Either colour' },
@@ -10,10 +17,22 @@ const COLORS: { value: PatternColor; label: string }[] = [
   { value: 'black', label: 'As Black' },
 ]
 
-export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) => Promise<void> }) {
-  const [name, setName] = useState('')
-  const [pgn, setPgn] = useState('')
-  const [color, setColor] = useState<PatternColor>('any')
+export default function PatternForm({
+  initial,
+  others,
+  onSubmit,
+  onCancel,
+}: {
+  /** The line being edited, or null when adding a new one. */
+  initial: PatternRecord | null
+  /** Every other saved line, used to show which variation this one sits under. */
+  others: PatternRecord[]
+  onSubmit: (pattern: NewPattern) => Promise<void>
+  onCancel?: () => void
+}) {
+  const [name, setName] = useState(initial?.name ?? '')
+  const [pgn, setPgn] = useState(initial?.pgn ?? '')
+  const [color, setColor] = useState<PatternColor>(initial?.color ?? 'any')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -26,14 +45,31 @@ export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) 
     }
   }, [pgn])
 
+  /**
+   * Where this line will be filed. `blocked` is a line it continues but cannot join
+   * because that repertoire is saved for the other colour.
+   */
+  const nesting = useMemo(() => {
+    if (!parsed?.ok) return null
+
+    const continues = others
+      .filter(other => isParentLine(other.moves, parsed.value.moves))
+      .sort((a, b) => b.ply - a.ply)
+
+    return {
+      parent: continues.find(other => canNest(other, { color })) ?? null,
+      blocked: continues.find(other => !canNest(other, { color })) ?? null,
+    }
+  }, [parsed, others, color])
+
   const canSave = Boolean(name.trim()) && parsed?.ok === true && !saving
 
-  async function handleSave() {
+  async function handleSubmit() {
     if (!parsed?.ok) return
     setSaving(true)
     setError(null)
     try {
-      await onSave({
+      await onSubmit({
         name: name.trim(),
         pgn: pgn.trim(),
         moves: parsed.value.moves,
@@ -41,9 +77,11 @@ export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) 
         ply: parsed.value.ply,
         color,
       })
-      setName('')
-      setPgn('')
-      setColor('any')
+      if (!initial) {
+        setName('')
+        setPgn('')
+        setColor('any')
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save that opening.')
     } finally {
@@ -54,10 +92,13 @@ export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) 
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
       <div>
-        <h2 className="font-semibold">Save an opening</h2>
+        <h2 className="font-semibold">
+          {initial ? `Editing “${initial.name}”` : 'Save an opening'}
+        </h2>
         <p className="text-sm text-zinc-500 mt-0.5">
-          Paste the line you want to track. A game counts as following it whenever the game reaches
-          the position at the end of the line — move-order transpositions included.
+          Paste the line you want to track. A line that continues another saved line is filed under
+          it as a sub-variation, so you can save 1.e4 c6 as Caro-Kann and 1.e4 c6 2.d4 d5 3.e5 as
+          the Advance Variation inside it.
         </p>
       </div>
 
@@ -66,7 +107,7 @@ export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) 
         <input
           value={name}
           onChange={event => setName(event.target.value)}
-          placeholder="Caro-Kann Tartakower, with Bd3"
+          placeholder="Advance Variation"
           className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-zinc-600"
         />
       </label>
@@ -77,7 +118,7 @@ export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) 
           value={pgn}
           onChange={event => setPgn(event.target.value)}
           rows={3}
-          placeholder="1. e4 c6 2. d4 d5 3. Nc3 dxe4 4. Nxe4 Nf6 5. Nxf6+ exf6 6. Bd3"
+          placeholder="1. e4 c6 2. d4 d5 3. e5"
           className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-zinc-600 resize-y"
         />
       </label>
@@ -102,7 +143,24 @@ export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) 
       {parsed?.ok && (
         <div className="text-xs text-zinc-500 flex flex-col gap-1">
           <span className="font-mono text-zinc-400">{formatMoves(parsed.value.moves)}</span>
-          <span>{parsed.value.ply} half-moves</span>
+          <span>
+            {parsed.value.ply} half-moves ·{' '}
+            {nesting?.parent ? (
+              <>
+                sub-variation of{' '}
+                <span className="text-zinc-300">{patternLabel(nesting.parent)}</span>
+              </>
+            ) : (
+              'a top-level opening'
+            )}
+          </span>
+          {!nesting?.parent && nesting?.blocked && (
+            <span className="text-amber-400">
+              It continues {patternLabel(nesting.blocked)}, but that line is saved for the other
+              colour — pick the matching colour above to file it there instead of starting a new
+              top-level opening.
+            </span>
+          )}
           {parsed.value.ply > MAX_PATTERN_PLY && (
             <span className="text-amber-400">
               Longer than {MAX_PATTERN_PLY} half-moves — games are only searched that deep, so this
@@ -114,13 +172,23 @@ export default function PatternForm({ onSave }: { onSave: (pattern: NewPattern) 
 
       {error && <p className="text-sm text-red-400">{error}</p>}
 
-      <button
-        onClick={handleSave}
-        disabled={!canSave}
-        className="self-start px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-      >
-        {saving ? 'Saving…' : 'Save opening'}
-      </button>
+      <div className="flex items-center gap-3">
+        <button
+          onClick={handleSubmit}
+          disabled={!canSave}
+          className="px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {saving ? 'Saving…' : initial ? 'Save changes' : 'Save opening'}
+        </button>
+        {onCancel && (
+          <button
+            onClick={onCancel}
+            className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
+          >
+            Cancel
+          </button>
+        )}
+      </div>
     </section>
   )
 }

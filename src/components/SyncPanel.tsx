@@ -8,7 +8,7 @@ import { fetchProviderGames } from '@/lib/sync'
 import { SOURCE_LABEL, TIME_CLASSES } from '@/types/chess'
 import type { GameRecord, Source, SyncedGame, TimeClass, UserProfile } from '@/types/chess'
 
-const COUNTS = [25, 50, 100, 200, 500]
+const COUNTS = [50, 100, 200, 500, 1000]
 const SOURCES: Source[] = ['chesscom', 'lichess']
 
 function toggle<T>(values: T[], value: T): T[] {
@@ -59,11 +59,13 @@ export default function SyncPanel({
         notes.push(`${SOURCE_LABEL[source]}: fetched ${games.length} game(s).`, ...warnings)
       }
 
-      const { added, skipped } = await saveGames(userId, fetched)
+      const { added, updated } = await saveGames(userId, fetched)
       const syncedAt = Date.now()
       await saveProfile(userId, { lastSyncAt: syncedAt })
 
-      notes.push(`Saved ${added.length} new game(s); ${skipped} were already stored.`)
+      notes.push(
+        `Saved ${added.length} new game(s) and refreshed ${updated} already stored.`,
+      )
       setMessages(notes)
       onSynced(added)
     } catch (caught) {
@@ -78,8 +80,8 @@ export default function SyncPanel({
       <div>
         <h2 className="font-semibold">Sync games</h2>
         <p className="text-sm text-zinc-500 mt-0.5">
-          Pulls your most recent games. Games already stored are left alone, so anything you
-          ignored stays ignored.
+          Pulls your most recent games. Anything already stored is rewritten with fresh data, so
+          re-syncing also backfills fields added since the last sync.
         </p>
       </div>
 

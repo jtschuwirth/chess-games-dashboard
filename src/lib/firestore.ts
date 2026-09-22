@@ -58,10 +58,7 @@ export async function saveProfile(userId: string, profile: Partial<UserProfile>)
 export async function getGames(userId: string): Promise<GameRecord[]> {
   const ref = collection(db, 'users', userId, 'games')
   const snapshot = await getDocs(query(ref, orderBy('playedAt', 'desc')))
-  return snapshot.docs.map(d => {
-    const data = d.data()
-    return { ...data, id: d.id, ignored: data.ignored === true } as GameRecord
-  })
+  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as GameRecord)
 }
 
 /** Ids of every stored game, used to skip games a previous sync already wrote. */
@@ -72,43 +69,45 @@ export async function getGameIds(userId: string): Promise<Set<string>> {
 
 export interface SaveGamesResult {
   added: GameRecord[]
-  skipped: number
+  /** Games that were already stored and have been rewritten with fresh data. */
+  updated: number
 }
 
 /**
- * Writes only games we have never stored. Existing documents are left untouched,
- * which is what keeps a game the user ignored from coming back on the next sync.
+ * Upserts every fetched game. Rewriting the ones already stored is what lets a re-sync
+ * backfill fields added later — clock readings, for one — and `merge` leaves anything
+ * not in the payload alone.
  */
 export async function saveGames(userId: string, games: SyncedGame[]): Promise<SaveGamesResult> {
   const existing = await getGameIds(userId)
-  const added: GameRecord[] = []
   const seen = new Set<string>()
-  let skipped = 0
+  const records: GameRecord[] = []
+  const added: GameRecord[] = []
 
   for (const game of games) {
     const id = gameDocId(game.source, game.sourceId)
-    if (existing.has(id) || seen.has(id)) {
-      skipped++
-      continue
-    }
+    if (seen.has(id)) continue
+
     seen.add(id)
-    added.push({ ...game, id, ignored: false })
+    const record: GameRecord = { ...game, id }
+    records.push(record)
+    if (!existing.has(id)) added.push(record)
   }
 
-  for (let i = 0; i < added.length; i += BATCH_LIMIT) {
+  for (let i = 0; i < records.length; i += BATCH_LIMIT) {
     const batch = writeBatch(db)
-    for (const game of added.slice(i, i + BATCH_LIMIT)) {
+    for (const game of records.slice(i, i + BATCH_LIMIT)) {
       const { id, ...rest } = game
-      batch.set(doc(db, 'users', userId, 'games', id), { ...rest, syncedAt: serverTimestamp() })
+      batch.set(
+        doc(db, 'users', userId, 'games', id),
+        { ...rest, syncedAt: serverTimestamp() },
+        { merge: true },
+      )
     }
     await batch.commit()
   }
 
-  return { added, skipped }
-}
-
-export async function setGameIgnored(userId: string, gameId: string, ignored: boolean): Promise<void> {
-  await updateDoc(doc(db, 'users', userId, 'games', gameId), { ignored })
+  return { added, updated: records.length - added.length }
 }
 
 /* --------------------------------------------------------------- patterns */
@@ -123,6 +122,14 @@ export async function savePattern(userId: string, pattern: NewPattern): Promise<
   const ref = collection(db, 'users', userId, 'patterns')
   const docRef = await addDoc(ref, { ...pattern, createdAt: serverTimestamp() })
   return docRef.id
+}
+
+export async function updatePattern(
+  userId: string,
+  patternId: string,
+  pattern: NewPattern,
+): Promise<void> {
+  await updateDoc(doc(db, 'users', userId, 'patterns', patternId), { ...pattern })
 }
 
 export async function deletePattern(userId: string, patternId: string): Promise<void> {

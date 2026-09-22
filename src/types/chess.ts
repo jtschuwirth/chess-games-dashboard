@@ -33,14 +33,17 @@ export interface SyncedGame {
   openingName: string | null
   /** Full move list in SAN. */
   moves: string[]
+  /**
+   * Seconds left on the clock after each ply, index-aligned with `moves`. Null when the
+   * provider gave none — daily games, or a game synced before clocks were captured.
+   */
+  clocks: number[] | null
 }
 
 /** A game as stored in Firestore under users/{uid}/games/{id}. */
 export interface GameRecord extends SyncedGame {
   /** `chesscom_${uuid}` | `lichess_${id}` — deterministic so re-syncs dedupe. */
   id: string
-  /** Excluded from the dataset by the user. Never written by a sync. */
-  ignored: boolean
 }
 
 export interface PatternRecord {

@@ -15,38 +15,52 @@ const RESULT_LABEL: Record<GameResult, string> = {
 
 export default function GameRow({
   game,
-  onToggleIgnore,
-  busy,
+  line,
 }: {
   game: GameRecord
-  onToggleIgnore: (game: GameRecord) => void
-  busy: boolean
+  /** Names of the saved variations this game followed, root first. Empty if none matched. */
+  line: string[]
 }) {
   return (
-    <div
-      className={`flex items-start gap-4 px-5 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors group ${
-        game.ignored ? 'opacity-40' : ''
-      }`}
-    >
-      <div className="flex flex-col items-center gap-1 shrink-0 mt-0.5 w-12">
+    <div className="flex items-start gap-4 px-5 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors">
+      <div className="shrink-0 mt-0.5 w-12">
         <span className={`text-sm font-bold ${RESULT_COLOR[game.result]}`}>
           {RESULT_LABEL[game.result]}
-        </span>
-        <span className="text-xs text-zinc-500" title={`Played as ${game.color}`}>
-          {game.color === 'white' ? '○' : '●'}
         </span>
       </div>
 
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-300 shrink-0"
+            title={`You played ${game.color}`}
+          >
+            <span
+              className={`w-2.5 h-2.5 rounded-full shrink-0 ${
+                game.color === 'white' ? 'bg-white' : 'bg-black ring-1 ring-zinc-500'
+              }`}
+            />
+            {game.color === 'white' ? 'White' : 'Black'}
+          </span>
           <span className="text-sm text-zinc-100 truncate">
             vs {game.opponent}
             {game.opponentRating ? ` (${game.opponentRating})` : ''}
           </span>
           {game.eco && <span className="text-xs text-zinc-500">{game.eco}</span>}
         </div>
-        {game.openingName && (
-          <div className="text-xs text-zinc-500 mt-0.5 truncate">{game.openingName}</div>
+        {line.length > 0 ? (
+          <div className="text-xs text-zinc-400 mt-0.5 truncate" title="One of your saved lines">
+            {line.join(' › ')}
+          </div>
+        ) : (
+          game.openingName && (
+            <div
+              className="text-xs text-zinc-600 mt-0.5 truncate"
+              title={`Not in a saved opening — name from ${SOURCE_LABEL[game.source]}`}
+            >
+              {game.openingName}
+            </div>
+          )
         )}
         <div className="text-xs text-zinc-600 mt-0.5">
           {new Date(game.playedAt).toLocaleDateString()} · {game.timeClass} · {game.timeControl} ·{' '}
@@ -54,24 +68,14 @@ export default function GameRow({
         </div>
       </div>
 
-      <div className="flex items-center gap-3 shrink-0">
-        <a
-          href={game.url}
-          target="_blank"
-          rel="noreferrer"
-          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-        >
-          View
-        </a>
-        <button
-          onClick={() => onToggleIgnore(game)}
-          disabled={busy}
-          className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-40"
-          title={game.ignored ? 'Put this game back in the data set' : 'Exclude this game from the stats'}
-        >
-          {game.ignored ? 'Restore' : 'Ignore'}
-        </button>
-      </div>
+      <a
+        href={game.url}
+        target="_blank"
+        rel="noreferrer"
+        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
+      >
+        View
+      </a>
     </div>
   )
 }

@@ -4,7 +4,7 @@ import { TIME_CLASSES, type TimeClass } from '@/types/chess'
 export const USER_AGENT =
   'chess-games-dashboard/0.1 (+https://github.com/jtschuwirth/chess-games-dashboard)'
 
-export const MAX_GAMES = 500
+export const MAX_GAMES = 1000
 
 /** An error whose message is safe to show the user, with the status to return. */
 export class ProviderError extends Error {
@@ -47,6 +47,23 @@ export function movesFromPgn(pgn: string): string[] {
     return []
   }
   return chess.history()
+}
+
+const CLOCK_COMMENT = /\{\[%clk\s+([0-9]+):([0-9]{2}):([0-9]{2}(?:\.[0-9]+)?)\]\}/g
+
+/**
+ * Seconds left after each ply, read from the `{[%clk h:mm:ss]}` comments chess.com puts
+ * on every move. They appear in move order, so the nth match belongs to the nth ply.
+ * Returns null when the PGN carries none, which is the case for daily games.
+ */
+export function clocksFromPgn(pgn: string): number[] | null {
+  const seconds: number[] = []
+
+  for (const match of pgn.matchAll(CLOCK_COMMENT)) {
+    seconds.push(Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]))
+  }
+
+  return seconds.length > 0 ? seconds : null
 }
 
 export interface SyncParams {

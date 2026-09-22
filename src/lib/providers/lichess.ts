@@ -1,4 +1,5 @@
 import type { Color, SyncedGame, TimeClass } from '@/types/chess'
+import { alignClocks } from '@/lib/clocks'
 import { ProviderError, USER_AGENT } from './shared'
 
 /** Our time classes mapped onto Lichess perf types. */
@@ -36,6 +37,8 @@ interface LichessGame {
   daysPerTurn?: number
   opening?: { eco: string; name: string; ply: number }
   moves?: string
+  /** Centiseconds left after each ply. */
+  clocks?: number[]
   players: { white: LichessPlayer; black: LichessPlayer }
 }
 
@@ -63,6 +66,7 @@ function normalize(game: LichessGame, username: string): SyncedGame | null {
 
   const me = game.players[color]
   const opponent = game.players[color === 'white' ? 'black' : 'white']
+  const moves = game.moves ? game.moves.split(' ').filter(Boolean) : []
 
   return {
     source: 'lichess',
@@ -79,7 +83,13 @@ function normalize(game: LichessGame, username: string): SyncedGame | null {
     userRating: me.rating ?? null,
     eco: game.opening?.eco ?? null,
     openingName: game.opening?.name ?? null,
-    moves: game.moves ? game.moves.split(' ').filter(Boolean) : [],
+    moves,
+    clocks: game.clocks
+      ? alignClocks(
+          game.clocks.map(centiseconds => centiseconds / 100),
+          moves.length,
+        )
+      : null,
   }
 }
 
@@ -98,7 +108,7 @@ export async function fetchLichessGames(
     perfType: perfTypes.join(','),
     moves: 'true',
     opening: 'true',
-    clocks: 'false',
+    clocks: 'true',
     evals: 'false',
     tags: 'false',
   })
