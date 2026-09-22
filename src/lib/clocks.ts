@@ -112,8 +112,15 @@ export function clockUsage(game: GameRecord): ClockUsage | null {
   }
 }
 
+export interface GamePhase {
+  name: string
+  label: string
+  from: number
+  to: number
+}
+
 /** Phases of a game, in the user's own move numbers. */
-const PHASES: { name: string; label: string; from: number; to: number }[] = [
+export const GAME_PHASES: GamePhase[] = [
   { name: 'Opening setup', label: '1-4', from: 1, to: 4 },
   { name: 'Variation development', label: '5-10', from: 5, to: 10 },
   { name: 'Structure definition', label: '11-15', from: 11, to: 15 },
@@ -125,6 +132,12 @@ const PHASES: { name: string; label: string; from: number; to: number }[] = [
 export function userMoveCount(game: GameRecord): number {
   const offset = game.color === 'white' ? 0 : 1
   return Math.max(0, Math.floor((game.moves.length - offset + 1) / 2))
+}
+
+/** The phase a game ended in, by the label used in the phase table. */
+export function endingPhaseOf(game: GameRecord): string | null {
+  const moves = userMoveCount(game)
+  return GAME_PHASES.find(phase => moves >= phase.from && moves <= phase.to)?.label ?? null
 }
 
 export interface PhaseBucket {
@@ -177,7 +190,7 @@ export function computePhases(games: GameRecord[]): PhaseBucket[] {
   // reach and result counts use every game; only the timing medians need clock data
   const lengths = games.map(game => ({ game, moves: userMoveCount(game) }))
 
-  return PHASES.map(phase => {
+  return GAME_PHASES.map(phase => {
     const seconds: number[] = []
     for (const usage of usages) {
       for (let move = phase.from; move <= Math.min(phase.to, usage.spent.length); move++) {

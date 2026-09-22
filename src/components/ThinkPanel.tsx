@@ -38,7 +38,16 @@ function ResultBar({ phase }: { phase: PhaseBucket }) {
  * counts cover every game in the slice, the clock columns only cover games that carry
  * move times.
  */
-export default function ThinkPanel({ phases }: { phases: PhaseBucket[] }) {
+export default function ThinkPanel({
+  phases,
+  endedIn,
+  onPickPhase,
+}: {
+  phases: PhaseBucket[]
+  /** Label of the phase the games list is currently pinned to, if any. */
+  endedIn: string | null
+  onPickPhase: (label: string) => void
+}) {
   const timed = phases.some(phase => phase.moves > 0)
 
   return (
@@ -46,12 +55,13 @@ export default function ThinkPanel({ phases }: { phases: PhaseBucket[] }) {
       <div>
         <h2 className="font-semibold text-sm">Game phase analysis</h2>
         <p className="text-xs text-zinc-500 mt-0.5">
-          Counted in your own moves. Pick an opening above to scope it to that line.
+          Counted in your own moves. Click an <em>ended</em> count to list those games below.
+          Pick an opening above to scope it to that line.
         </p>
       </div>
 
       <div className="border border-zinc-800 rounded-xl overflow-x-auto">
-        <table className="w-full text-sm min-w-[52rem] tabular-nums">
+        <table className="w-full text-sm min-w-[48rem] tabular-nums">
           <thead className="bg-zinc-900 text-zinc-500">
             <tr className="text-xs uppercase tracking-wide">
               <th className="px-5 pt-3 pb-1 text-left font-medium" rowSpan={2}>
@@ -63,7 +73,7 @@ export default function ThinkPanel({ phases }: { phases: PhaseBucket[] }) {
               <th className={`px-3 pt-3 pb-1 text-center font-medium ${GROUP}`} colSpan={4}>
                 Ended in this phase
               </th>
-              <th className={`px-3 pt-3 pb-1 text-center font-medium ${GROUP}`} colSpan={4}>
+              <th className={`px-3 pt-3 pb-1 text-center font-medium ${GROUP}`} colSpan={3}>
                 Clock
               </th>
             </tr>
@@ -83,7 +93,6 @@ export default function ThinkPanel({ phases }: { phases: PhaseBucket[] }) {
                 left on entry
               </th>
               <th className="px-3 pb-2 text-right font-normal">s / move</th>
-              <th className="px-3 pb-2 text-right font-normal">of clock</th>
               <th className="px-5 pb-2 text-right font-normal" title="Games whose slowest move landed here">
                 slowest
               </th>
@@ -92,7 +101,12 @@ export default function ThinkPanel({ phases }: { phases: PhaseBucket[] }) {
 
           <tbody className="divide-y divide-zinc-800 border-t border-zinc-800">
             {phases.map(phase => (
-              <tr key={phase.label} className="bg-zinc-900 group hover:bg-zinc-800/60">
+              <tr
+                key={phase.label}
+                className={`group ${
+                  endedIn === phase.label ? 'bg-zinc-800' : 'bg-zinc-900 hover:bg-zinc-800/60'
+                }`}
+              >
                 <td className="px-5 py-3 whitespace-nowrap">
                   <div className="text-zinc-100">{phase.name}</div>
                   <div className="text-xs text-zinc-600 mt-0.5">moves {phase.label}</div>
@@ -102,7 +116,23 @@ export default function ThinkPanel({ phases }: { phases: PhaseBucket[] }) {
                   <span className="text-zinc-300">{phase.gamesReaching}</span>
                   <span className="text-zinc-600 text-xs"> {phase.reachShare}%</span>
                 </td>
-                <td className="px-3 py-3 text-right text-zinc-300">{phase.endedHere}</td>
+                <td className="px-3 py-3 text-right">
+                  {phase.endedHere === 0 ? (
+                    <span className="text-zinc-600">0</span>
+                  ) : (
+                    <button
+                      onClick={() => onPickPhase(phase.label)}
+                      className={`hover:underline transition-colors ${
+                        endedIn === phase.label
+                          ? 'text-zinc-100 underline'
+                          : 'text-zinc-300 hover:text-white'
+                      }`}
+                      title={`List the ${phase.endedHere} games that ended here`}
+                    >
+                      {phase.endedHere}
+                    </button>
+                  )}
+                </td>
 
                 <td className={`px-3 py-3 text-right ${GROUP} text-emerald-400`}>
                   <Tally count={phase.stats.wins} pct={phase.stats.winPct} empty={phase.stats.total === 0} />
@@ -136,9 +166,6 @@ export default function ThinkPanel({ phases }: { phases: PhaseBucket[] }) {
                 </td>
                 <td className="px-3 py-3 text-right text-zinc-300">
                   {phase.medianPerMove === null ? '–' : `${phase.medianPerMove}s`}
-                </td>
-                <td className="px-3 py-3 text-right text-zinc-300">
-                  {timed ? `${phase.clockShare}%` : '–'}
                 </td>
                 <td className="px-5 py-3 text-right text-zinc-300">
                   {timed ? `${phase.slowestShare}%` : '–'}

@@ -11,10 +11,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    formats
 3. `/patterns` — paste an opening line, name it, optionally tie it to a colour; a line that
    continues an existing one nests under it as a sub-variation. Saved lines can be edited.
-4. `/dashboard` — pick "All games" or a saved opening; narrow by site, colour, time format, date
-   window and your own rating band; read overall / as White / as Black stats, the clock KPI, and
-   thinking time by phase, plus a table breaking the slice down by sub-variation with each line's
-   seconds-per-move and flag rate; drill in by clicking a row
+4. `/dashboard` — the Opening dropdown picks "All games", any saved line, or "Not in a saved
+   opening" as the last entry; narrow further by site, colour, time format, date window and your
+   own rating band. Read overall / as White / as Black stats, the clock KPI, and the game phase
+   analysis, plus a table breaking the slice down by sub-variation. Clicking a phase's *ended*
+   count lists exactly those games (`?phase=11-15`), which is a games-list filter and leaves the
+   analysis above it scoped as it was.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
@@ -84,6 +86,14 @@ src/
 - **`matchesCriteria` in `lib/game-filters.ts` is the single scope rule** — site, colour, time
   format, date window and rating band. The dashboard and `/api/export` both run it, so a slice you read on screen and a slice I pull over HTTP can never
   drift apart. A game with no recorded rating survives a rating filter rather than vanishing.
+- **Reads are cache-first, because Firestore bills per document.** The dashboard needs the whole
+  games collection, so a server read per page view burns the free daily quota in a few dozen
+  visits — it was actually exhausted once during development. `db` is built with
+  `persistentLocalCache`, and `readDocs` in `lib/firestore.ts` tries `getDocsFromCache` before the
+  server. Note that `persistentLocalCache` alone changes nothing: `getDocs` still queries the
+  server and bills for every document, so the explicit cache read is the part that saves quota.
+  Syncs write through the cache, so it is only stale if another device synced; the dashboard's
+  Refresh button and the `fresh` option force a server read.
 - **Stats are never stored.** `computeSplit` runs over the loaded games on every render.
 - **Pattern matching is position-based**: `positionKey` is FEN fields 1–3 (placement, side to move,
   castling) after the pattern's last move, and a game matches if it ever reaches that key within

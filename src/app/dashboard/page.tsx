@@ -24,12 +24,13 @@ import {
 import {
   ALL_OPENINGS,
   DEFAULT_FILTERS,
+  UNCLASSIFIED_OPENING,
   readFilters,
   writeFilters,
   type Filters,
 } from '@/lib/dashboard-filters'
 import { SINCE_OPTIONS, matchesCriteria } from '@/lib/game-filters'
-import { computeClockStats, computePhases } from '@/lib/clocks'
+import { computeClockStats, computePhases, endingPhaseOf } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL, TIME_CLASSES } from '@/types/chess'
 import type { Color, GameRecord, PatternRecord, Source } from '@/types/chess'
@@ -64,9 +65,18 @@ function DashboardBody({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
   const [limit, setLimit] = useState(PAGE_SIZE)
+  const [refreshing, setRefreshing] = useState(false)
 
-  const { opening, timeClasses, since, minRating, maxRating, color, source, unclassifiedOnly } =
-    filters
+  const {
+    opening,
+    timeClasses,
+    since,
+    minRating,
+    maxRating,
+    color,
+    source,
+    endedIn,
+  } = filters
 
   /** Mirror the filters into the address bar so a reload — or a shared link — restores the view. */
   useEffect(() => {
@@ -83,6 +93,21 @@ function DashboardBody({ userId }: { userId: string }) {
     getPatterns(userId).then(setPatterns)
   }, [userId])
 
+  /** Reads come from the local cache; this bills a server read to pick up other devices. */
+  async function refresh() {
+    setRefreshing(true)
+    try {
+      const [freshGames, freshPatterns] = await Promise.all([
+        getGames(userId, { fresh: true }),
+        getPatterns(userId, { fresh: true }),
+      ])
+      setGames(freshGames)
+      setPatterns(freshPatterns)
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
   /** Every position each game passed through, so switching variations is instant. */
   const positionKeys = useMemo(() => {
     const map = new Map<string, Set<string>>()
@@ -92,32 +117,19 @@ function DashboardBody({ userId }: { userId: string }) {
 
   const tree = useMemo(() => buildPatternTree(patterns), [patterns])
   const allNodes = useMemo(() => flattenTree(tree), [tree])
+  const unclassifiedView = opening === UNCLASSIFIED_OPENING
   const path = useMemo(
-    () => (opening === ALL_OPENINGS ? [] : findPath(tree, opening)),
+    () =>
+      opening === ALL_OPENINGS || opening === UNCLASSIFIED_OPENING
+        ? []
+        : findPath(tree, opening),
     [tree, opening],
   )
   const current = path.length > 0 ? path[path.length - 1] : null
   const parent = path.length > 1 ? path[path.length - 2] : null
 
-  /** Every game passing the date / rating / format filters and the selected variation. */
-  const scoped = useMemo(() => {
-    const now = new Date()
-    return (games ?? []).filter(game => {
-      if (!matchesCriteria(game, filters, now)) return false
-      if (!current) return true
-      return gameMatchesNode(game, positionKeys.get(game.id) ?? new Set(), current)
-    })
-  }, [games, filters, current, positionKeys])
-
-  const split = useMemo(() => computeSplit(scoped), [scoped])
-  const clock = useMemo(() => computeClockStats(scoped), [scoped])
-  const phases = useMemo(() => computePhases(scoped), [scoped])
-  /**
-   * Games the breakdown table cannot place: with nothing selected, games that reached
-   * no saved opening at all; inside a variation, games that reached it but none of its
-   * sub-variations. Same set as the table's catch-all row.
-   */
-  const isUnclassified = useCallback(
+  /** Games that reached none of the lines at the level currently in view. */
+  const reachedNoLine = useCallback(
     (game: GameRecord) => {
       const lines = current ? current.children : tree
       const keys = positionKeys.get(game.id) ?? new Set<string>()
@@ -126,9 +138,24 @@ function DashboardBody({ userId }: { userId: string }) {
     [current, tree, positionKeys],
   )
 
+  /** Every game passing the date / rating / format filters and the selected variation. */
+  const scoped = useMemo(() => {
+    const now = new Date()
+    return (games ?? []).filter(game => {
+      if (!matchesCriteria(game, filters, now)) return false
+      if (unclassifiedView) return reachedNoLine(game)
+      if (!current) return true
+      return gameMatchesNode(game, positionKeys.get(game.id) ?? new Set(), current)
+    })
+  }, [games, filters, current, positionKeys, unclassifiedView, reachedNoLine])
+
+  const split = useMemo(() => computeSplit(scoped), [scoped])
+  const clock = useMemo(() => computeClockStats(scoped), [scoped])
+  const phases = useMemo(() => computePhases(scoped), [scoped])
+
   const listed = useMemo(
-    () => (unclassifiedOnly ? scoped.filter(isUnclassified) : scoped),
-    [scoped, unclassifiedOnly, isUnclassified],
+    () => (endedIn ? scoped.filter(game => endingPhaseOf(game) === endedIn) : scoped),
+    [scoped, endedIn],
   )
 
   /** Which of the saved lines each visible game followed, computed only for the rendered slice. */
@@ -143,6 +170,8 @@ function DashboardBody({ userId }: { userId: string }) {
 
   /** One row per sub-variation of the current selection, or per top-level opening. */
   const breakdown = useMemo(() => {
+    if (unclassifiedView) return []
+
     const children = current ? current.children : tree
     if (children.length === 0) return []
 
@@ -160,7 +189,6 @@ function DashboardBody({ userId }: { userId: string }) {
         note: formatMoves(node.pattern.moves),
         stats: computeStats(matching),
         think: matchingClock.medianPerMove,
-        flagged: matchingClock.timeoutPctOfLosses,
         onSelect: () => patch({ opening: node.pattern.id }),
       }
     })
@@ -178,13 +206,12 @@ function DashboardBody({ userId }: { userId: string }) {
           : undefined,
         stats: computeStats(rest),
         think: restClock.medianPerMove,
-        flagged: restClock.timeoutPctOfLosses,
-        onSelect: () => patch({ unclassifiedOnly: true }),
+        onSelect: current ? undefined : () => patch({ opening: UNCLASSIFIED_OPENING }),
       })
     }
 
     return rows
-  }, [scoped, current, tree, positionKeys, patch])
+  }, [scoped, current, tree, positionKeys, patch, unclassifiedView])
 
   if (games === null) {
     return (
@@ -220,14 +247,24 @@ function DashboardBody({ userId }: { userId: string }) {
       <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-xs uppercase tracking-wide text-zinc-500">Filters</h2>
-          {isFiltered && (
+          <div className="flex items-center gap-3">
+            {isFiltered && (
+              <button
+                onClick={() => setFilters(DEFAULT_FILTERS)}
+                className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
+              >
+                Reset
+              </button>
+            )}
             <button
-              onClick={() => setFilters(DEFAULT_FILTERS)}
-              className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
+              onClick={refresh}
+              disabled={refreshing}
+              title="Games load from a local cache — this re-reads them from Firestore"
+              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-40"
             >
-              Reset
+              {refreshing ? 'Refreshing…' : 'Refresh'}
             </button>
-          )}
+          </div>
         </div>
 
         <div className="grid sm:grid-cols-[6rem_1fr] gap-x-4 gap-y-3 items-start">
@@ -245,7 +282,21 @@ function DashboardBody({ userId }: { userId: string }) {
                   {patternLabel(node.pattern)}
                 </option>
               ))}
+              <option value={UNCLASSIFIED_OPENING}>Not in a saved opening</option>
             </select>
+
+            {unclassifiedView && (
+              <div className="flex items-center gap-1.5 text-xs">
+                <button
+                  onClick={() => patch({ opening: ALL_OPENINGS })}
+                  className="text-zinc-400 hover:text-zinc-100 transition-colors"
+                >
+                  All games
+                </button>
+                <span className="text-zinc-700">›</span>
+                <span className="text-zinc-200">Not in a saved opening</span>
+              </div>
+            )}
 
             {path.length > 0 && (
               <div className="flex items-center gap-1.5 text-xs flex-wrap">
@@ -359,7 +410,9 @@ function DashboardBody({ userId }: { userId: string }) {
       <p className="text-xs text-zinc-500 -mt-3">
         {current
           ? `${scoped.length} of ${games.length} games reached ${patternLabel(current.pattern)} or one of its sub-variations.`
-          : `${scoped.length} of ${games.length} games in scope.`}
+          : unclassifiedView
+            ? `${scoped.length} of ${games.length} games reached none of your saved openings.`
+            : `${scoped.length} of ${games.length} games in scope.`}
         {patterns.length === 0 && (
           <>
             {' '}
@@ -379,7 +432,11 @@ function DashboardBody({ userId }: { userId: string }) {
 
       <ClockPanel stats={clock} totalGames={scoped.length} />
 
-      <ThinkPanel phases={phases} />
+      <ThinkPanel
+        phases={phases}
+        endedIn={endedIn}
+        onPickPhase={label => patch({ endedIn: endedIn === label ? null : label })}
+      />
 
       {breakdown.length > 0 ? (
         <VariationTable
@@ -416,22 +473,20 @@ function DashboardBody({ userId }: { userId: string }) {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold text-sm">Games ({listed.length})</h2>
-          <div className="flex gap-2 flex-wrap">
-            {patterns.length > 0 && (
-              <Chip
-                active={unclassifiedOnly}
-                onClick={() => patch({ unclassifiedOnly: !unclassifiedOnly })}
-                title={
-                  current
-                    ? 'Only games that reached no saved sub-variation of this line'
-                    : 'Only games that reached none of your saved openings'
-                }
-              >
-                {current ? 'no sub-variation' : 'not in a saved opening'}
-              </Chip>
+          <h2 className="font-semibold text-sm">
+            Games ({listed.length})
+            {endedIn && (
+              <span className="ml-2 font-normal text-xs text-zinc-500">
+                ending in moves {endedIn}
+                <button
+                  onClick={() => patch({ endedIn: null })}
+                  className="ml-1.5 text-zinc-400 hover:text-zinc-100 transition-colors"
+                >
+                  clear
+                </button>
+              </span>
             )}
-          </div>
+          </h2>
         </div>
 
         {listed.length === 0 ? (

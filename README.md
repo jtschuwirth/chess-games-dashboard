@@ -114,6 +114,10 @@ users/{uid}/patterns/{id}       name, pgn, moves: string[], positionKey, ply, co
 Nothing aggregated is ever stored: every number on the dashboard is derived from the games list at
 read time, so changing a filter or syncing more games immediately changes the stats.
 
+Games are read from an IndexedDB cache rather than Firestore on every page view, because Firestore
+bills one read per document and the dashboard needs the whole collection. Syncing writes through
+the cache; the dashboard's **Refresh** re-reads from the server when another device has synced.
+
 ## Commands
 
 ```bash

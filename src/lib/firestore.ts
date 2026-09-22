@@ -2,7 +2,9 @@ import {
   collection,
   doc,
   getDoc,
+  getDocFromCache,
   getDocs,
+  getDocsFromCache,
   setDoc,
   addDoc,
   deleteDoc,
@@ -13,6 +15,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from './firebase'
+import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
   GameRecord,
   NewPattern,
@@ -24,6 +27,30 @@ import type {
 
 /** Firestore caps a batch at 500 writes. */
 const BATCH_LIMIT = 400
+
+export interface ReadOptions {
+  /** Skip the local cache and bill a server read. */
+  fresh?: boolean
+}
+
+/**
+ * Cache-first reads. Firestore bills one read per document returned, and the dashboard
+ * needs the whole games collection, so a server read on every page view burns the daily
+ * quota within a few dozen visits. Syncs write through the cache, so a stale cache only
+ * means another device synced — `fresh` forces the server when that matters.
+ */
+async function readDocs(query: Query, options?: ReadOptions): Promise<QuerySnapshot> {
+  if (!options?.fresh) {
+    try {
+      const cached = await getDocsFromCache(query)
+      if (!cached.empty) return cached
+    } catch {
+      // no IndexedDB (private window, prerender) — fall through to the server
+    }
+  }
+
+  return getDocs(query)
+}
 
 const EMPTY_PROFILE: UserProfile = {
   chesscomUsername: null,
@@ -38,8 +65,19 @@ export function gameDocId(source: Source, sourceId: string): string {
 
 /* ---------------------------------------------------------------- profile */
 
-export async function getProfile(userId: string): Promise<UserProfile> {
-  const snapshot = await getDoc(doc(db, 'users', userId))
+export async function getProfile(userId: string, options?: ReadOptions): Promise<UserProfile> {
+  const ref = doc(db, 'users', userId)
+  let snapshot = null
+
+  if (!options?.fresh) {
+    try {
+      snapshot = await getDocFromCache(ref)
+    } catch {
+      snapshot = null
+    }
+  }
+
+  if (!snapshot || !snapshot.exists()) snapshot = await getDoc(ref)
   if (!snapshot.exists()) return { ...EMPTY_PROFILE }
   const data = snapshot.data()
   return {
@@ -55,15 +93,15 @@ export async function saveProfile(userId: string, profile: Partial<UserProfile>)
 
 /* ------------------------------------------------------------------ games */
 
-export async function getGames(userId: string): Promise<GameRecord[]> {
+export async function getGames(userId: string, options?: ReadOptions): Promise<GameRecord[]> {
   const ref = collection(db, 'users', userId, 'games')
-  const snapshot = await getDocs(query(ref, orderBy('playedAt', 'desc')))
+  const snapshot = await readDocs(query(ref, orderBy('playedAt', 'desc')), options)
   return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as GameRecord)
 }
 
 /** Ids of every stored game, used to skip games a previous sync already wrote. */
-export async function getGameIds(userId: string): Promise<Set<string>> {
-  const snapshot = await getDocs(collection(db, 'users', userId, 'games'))
+export async function getGameIds(userId: string, options?: ReadOptions): Promise<Set<string>> {
+  const snapshot = await readDocs(collection(db, 'users', userId, 'games'), options)
   return new Set(snapshot.docs.map(d => d.id))
 }
 
@@ -112,9 +150,9 @@ export async function saveGames(userId: string, games: SyncedGame[]): Promise<Sa
 
 /* --------------------------------------------------------------- patterns */
 
-export async function getPatterns(userId: string): Promise<PatternRecord[]> {
+export async function getPatterns(userId: string, options?: ReadOptions): Promise<PatternRecord[]> {
   const ref = collection(db, 'users', userId, 'patterns')
-  const snapshot = await getDocs(query(ref, orderBy('name')))
+  const snapshot = await readDocs(query(ref, orderBy('name')), options)
   return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as PatternRecord)
 }
 

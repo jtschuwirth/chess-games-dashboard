@@ -5,9 +5,13 @@ import type { TimeClass } from '@/types/chess'
 /** Dropdown value meaning "every game", not a saved opening id. */
 export const ALL_OPENINGS = 'all'
 
+/** Dropdown value meaning "games that reached none of the saved openings". */
+export const UNCLASSIFIED_OPENING = 'unclassified'
+
 export interface Filters extends GameCriteria {
   opening: string
-  unclassifiedOnly: boolean
+  /** Games-list-only: show just the games that ended in this phase. Its label, or null. */
+  endedIn: string | null
 }
 
 export const DEFAULT_FILTERS: Filters = {
@@ -18,7 +22,7 @@ export const DEFAULT_FILTERS: Filters = {
   maxRating: null,
   color: 'both',
   source: 'both',
-  unclassifiedOnly: false,
+  endedIn: null,
 }
 
 function readRating(raw: string | null): number | null {
@@ -44,7 +48,7 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
     maxRating: readRating(params.get('maxElo')),
     color: color === 'white' || color === 'black' ? color : 'both',
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
-    unclassifiedOnly: params.get('unclassified') === '1',
+    endedIn: params.get('phase') || null,
   }
 }
 
@@ -58,7 +62,7 @@ export function writeFilters(filters: Filters): string {
   if (filters.maxRating !== null) params.set('maxElo', String(filters.maxRating))
   if (filters.color !== 'both') params.set('color', filters.color)
   if (filters.source !== 'both') params.set('source', filters.source)
-  if (filters.unclassifiedOnly) params.set('unclassified', '1')
+  if (filters.endedIn) params.set('phase', filters.endedIn)
 
   const query = params.toString()
   return query ? '?' + query : ''
