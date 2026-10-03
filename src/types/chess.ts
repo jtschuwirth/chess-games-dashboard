@@ -105,12 +105,15 @@ export interface ReviewedMistake {
 }
 
 /**
- * A move you would play instead of the one you played. The reason is the point: a bare
+ * A line you would play instead of the move you played. The reason is the point: a bare
  * move is a line to memorise, while the reason is what you can apply in the next game.
+ *
+ * `line` is one or more plies in SAN from the position before the mistake. Only its
+ * first move is a decision you actually get to make — the rest is the continuation you
+ * were counting on, which is worth recording and worth being able to play out.
  */
 export interface ProposedMove {
-  /** SAN, validated against the position before the mistake. */
-  san: string
+  line: string[]
   /** Why it holds the game. Optional — sometimes the move really does speak for itself. */
   why: string
 }

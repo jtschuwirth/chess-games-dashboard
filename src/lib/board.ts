@@ -133,6 +133,88 @@ export function sanFromUci(fen: string, uci: string): string | null {
   }
 }
 
+/**
+ * How long a proposed line may run: ten moves each. Past that you are not recording
+ * what you would have played, you are writing out an engine line.
+ */
+export const MAX_LINE_PLIES = 20
+
+export interface PlayedLine {
+  /** The legal moves, in SAN, in order. */
+  line: string[]
+  /** `fens[i]` is the position after `line[i]`. */
+  fens: string[]
+  /** Where each move came from and went, for highlighting it on a board. */
+  squares: { from: string; to: string }[]
+  /** The first token that was not a legal move here, if any. */
+  invalid: string | null
+  /** True when the input ran past `MAX_LINE_PLIES`. */
+  tooLong: boolean
+}
+
+/** Plays a sequence of SAN moves from a position, stopping at the first illegal one. */
+export function playLine(
+  fen: string,
+  moves: string[],
+  maxPlies: number = MAX_LINE_PLIES,
+): PlayedLine {
+  const chess = new Chess(fen)
+  const line: string[] = []
+  const fens: string[] = []
+  const squares: { from: string; to: string }[] = []
+
+  for (const move of moves) {
+    if (line.length >= maxPlies) return { line, fens, squares, invalid: null, tooLong: true }
+
+    let played
+    for (const candidate of [move, move[0].toUpperCase() + move.slice(1)]) {
+      try {
+        played = chess.move(candidate)
+        break
+      } catch {
+        // try the next spelling
+      }
+    }
+
+    if (!played) return { line, fens, squares, invalid: move, tooLong: false }
+    line.push(played.san)
+    fens.push(chess.fen())
+    squares.push({ from: played.from, to: played.to })
+  }
+
+  return { line, fens, squares, invalid: null, tooLong: false }
+}
+
+/**
+ * Parses a typed line — "Nd5 Bxe7 Qxe7", or pasted with move numbers — and plays it.
+ * Move numbers are dropped rather than checked: the line starts from the position in
+ * front of you, so whatever numbering was pasted in is not necessarily this game's.
+ */
+export function parseLine(
+  fen: string,
+  input: string,
+  maxPlies: number = MAX_LINE_PLIES,
+): PlayedLine {
+  const tokens = input
+    .split(/[\s,]+/)
+    .map(part => part.trim().replace(/^\d+\.+/, ''))
+    .filter(part => part.length > 0 && !/^\d+\.*$/.test(part))
+
+  return playLine(fen, tokens, maxPlies)
+}
+
+/** "14... h6 15. Bxh6 gxh6" — a line written from the ply it branches at. */
+export function formatLine(startPly: number, moves: string[]): string {
+  return moves
+    .map((san, offset) => {
+      const ply = startPly + offset
+      const number = Math.floor(ply / 2) + 1
+      if (ply % 2 === 0) return `${number}. ${san}`
+      return offset === 0 ? `${number}... ${san}` : san
+    })
+    .join(' ')
+}
+
 /** "e4" -> "1. e4", "c6" -> "1... c6", by ply index. */
 export function plyLabel(index: number, san: string): string {
   const number = Math.floor(index / 2) + 1

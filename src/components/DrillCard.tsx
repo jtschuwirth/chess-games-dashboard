@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Board from '@/components/Board'
 import { Spinner } from '@/components/PageShell'
-import { playMove, plyLabel, sanFromUci } from '@/lib/board'
+import { formatLine, playMove, plyLabel, sanFromUci } from '@/lib/board'
 import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
 import { analyzePosition } from '@/lib/engine'
 import { formatEval, isFault } from '@/lib/review'
@@ -233,9 +233,11 @@ export default function DrillCardView({
                     <span className="text-xs uppercase tracking-wide text-zinc-500">
                       What you found in review
                     </span>
-                    {card.proposed.map(move => (
-                      <p key={move.san} className="text-sm">
-                        <span className="font-mono text-emerald-400">{move.san}</span>
+                    {card.proposed.map((move, index) => (
+                      <p key={index} className="text-sm">
+                        <span className="font-mono text-emerald-400">
+                          {formatLine(card.ply, move.line)}
+                        </span>
                         {move.why && <span className="text-zinc-400"> — {move.why}</span>}
                       </p>
                     ))}

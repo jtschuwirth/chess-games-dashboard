@@ -145,8 +145,10 @@ src/
   sized to their contents grew around a tall piece, and a board column sized with
   `minmax(0,28rem)` took its width from the readout *under* the board, so the board shrank on
   moves with no clock reading to show. The track is a fixed `28rem` for the same reason.
-- **Each row in the game list says what has been done to that game** — `◆ reviewed`, the engine
-  depth as `d16`, and the blunder count when there is one. The depth badge shows on every
+- **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
+  engine depth as a yellow `⚙ d21`, and the blunder count when there is one. The game view's own
+  header repeats the engine badge in the same colours, since the depth a game was analysed at
+  changes how much its marks are worth and that is worth knowing while reading it. The depth badge shows on every
   analysed game, including a clean one: without it a game the engine found nothing in looks
   exactly like a game the engine has never seen, which is the one thing the badge is for. The
   Engine filter has a matching `Not analysed yet` to list what is still missing.
@@ -158,8 +160,21 @@ src/
   validated against the position with chess.js and only the legal ones are stored, since the
   point is a move you could actually have played. Each proposed move is a row of its own with
   its own reasoning: a bare move is a line to memorise, while the reason is the part that
-  transfers to the next game. Reviews saved before that existed hold plain SAN strings in
-  `betterMoves`, so `betterMovesOf` converts on read rather than migrating the documents.
+  transfers to the next game.
+- **An alternative is a line, not a move** — up to ten moves each side (`MAX_LINE_PLIES`), typed
+  as "Nd5 Bxe7 Qxe7" with move numbers tolerated and stripped. Only the *first* move is judged by
+  the engine, and only the first is what a drill asks for, because the rest depends on the
+  opponent playing along; the continuation is still worth recording, since it is the plan you
+  were actually counting on. An illegal move ends the line there, and the legal prefix is kept
+  rather than the whole row being thrown away.
+- **Saved lines play out on the board.** At a reviewed move the game view offers each line under
+  the board; clicking one puts the board on it, and the controls walk the variation instead of
+  the game. Stepping back past its first move returns you to the branch point, which is also what
+  `⏮` and "back to the game" do. The clock and evaluation readouts hide while a variation is
+  open, because neither belongs to a position that was never reached.
+- **`betterMoves` has had three stored shapes** — a plain SAN string, `{ san, why }`, and now
+  `{ line, why }` — and `betterMovesOf` converts the older two on read rather than migrating the
+  documents, the same habit as the pre-game ratings and the variation tree.
 - **Your alternatives are judged by the rule that judged your move.** Each legal one is
   evaluated — the position before it and the position it leads to, both at `REVIEW_DEPTH` so the
   two numbers are comparable — and run through the same `classifyMove`, so an idea that answers a
@@ -245,7 +260,8 @@ src/
   game view takes the filters from the query string it was linked with.
 - **`matchesCriteria` in `lib/game-filters.ts` is the single scope rule** — site, colour, time
   control, date window, rating band, the phase a game ended in, whether you have reviewed it and
-  which tag that review carries.
+  which tag that review carries. Date windows carry months *or* days, so "1 week" is seven days
+  back rather than a fraction of a month.
 - **Analysis filters by time control, not time class.** 10+0 and 15+10 are both "rapid" and behave
   nothing alike on the clock, so `timeControls` holds canonical ids (`180+2`) and `timeControlKey`
   reconciles chess.com's `600` with lichess's `600+0`. The dashboard offers only the controls

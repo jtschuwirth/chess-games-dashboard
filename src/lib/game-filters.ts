@@ -2,31 +2,37 @@ import { endingPhaseOf, timeControlKey } from '@/lib/clocks'
 import { hasReview, tagsOf } from '@/lib/review'
 import type { Color, GameRecord, Source } from '@/types/chess'
 
-export type SinceKey = 'all' | '1m' | '3m' | '6m' | '12m' | '24m' | '36m'
+export type SinceKey = 'all' | '1w' | '1m' | '3m' | '6m' | '12m' | '24m' | '36m'
 
-export const SINCE_OPTIONS: { value: SinceKey; label: string; months: number }[] = [
-  { value: 'all', label: 'all time', months: 0 },
-  { value: '1m', label: '1 month', months: 1 },
-  { value: '3m', label: '3 months', months: 3 },
-  { value: '6m', label: '6 months', months: 6 },
-  { value: '12m', label: '1 year', months: 12 },
-  { value: '24m', label: '2 years', months: 24 },
-  { value: '36m', label: '3 years', months: 36 },
+/**
+ * Windows carry months *or* days, because a week is not a fraction of a month and
+ * approximating it as one would make "last week" drift by a couple of days a year.
+ */
+export const SINCE_OPTIONS: { value: SinceKey; label: string; months: number; days: number }[] = [
+  { value: 'all', label: 'all time', months: 0, days: 0 },
+  { value: '1w', label: '1 week', months: 0, days: 7 },
+  { value: '1m', label: '1 month', months: 1, days: 0 },
+  { value: '3m', label: '3 months', months: 3, days: 0 },
+  { value: '6m', label: '6 months', months: 6, days: 0 },
+  { value: '12m', label: '1 year', months: 12, days: 0 },
+  { value: '24m', label: '2 years', months: 24, days: 0 },
+  { value: '36m', label: '3 years', months: 36, days: 0 },
 ]
 
-const MONTHS_BY_KEY = new Map(SINCE_OPTIONS.map(option => [option.value, option.months]))
+const OPTION_BY_KEY = new Map(SINCE_OPTIONS.map(option => [option.value, option]))
 
 export function isSinceKey(value: string): value is SinceKey {
-  return MONTHS_BY_KEY.has(value as SinceKey)
+  return OPTION_BY_KEY.has(value as SinceKey)
 }
 
 /** Epoch ms of the window start, or null for "all time". */
 export function sinceTimestamp(since: SinceKey, now: Date = new Date()): number | null {
-  const months = MONTHS_BY_KEY.get(since) ?? 0
-  if (months === 0) return null
+  const option = OPTION_BY_KEY.get(since)
+  if (!option || (option.months === 0 && option.days === 0)) return null
 
   const start = new Date(now)
-  start.setMonth(start.getMonth() - months)
+  if (option.months > 0) start.setMonth(start.getMonth() - option.months)
+  if (option.days > 0) start.setDate(start.getDate() - option.days)
   return start.getTime()
 }
 

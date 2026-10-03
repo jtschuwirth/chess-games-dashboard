@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Chip from '@/components/Chip'
-import { playMove, plyLabel, sanFromUci, type Ply } from '@/lib/board'
+import { MAX_LINE_PLIES, formatLine, parseLine, plyLabel, sanFromUci, type Ply } from '@/lib/board'
 import { ENGINE_DEPTH, classifyMove, type MoveTag } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { deleteReview, saveReview } from '@/lib/firestore'
@@ -28,7 +28,7 @@ type Verdict = { cpBefore: number; cpAfter: number; tag: MoveTag } | 'failed'
 /** How long to sit still before spending engine time on what you are still typing. */
 const CHECK_DELAY = 700
 
-/** A move being proposed. `input` is what you typed; its SAN is resolved as you type. */
+/** A line being proposed. `input` is what you typed; it is parsed as you type. */
 interface ProposedRow {
   input: string
   why: string
@@ -56,7 +56,7 @@ function draftFrom(mistake: ReviewedMistake): Draft {
     moveNumber: mistake.moveNumber,
     cause: mistake.cause,
     signal: mistake.signal,
-    better: betterMovesOf(mistake).map(move => ({ input: move.san, why: move.why })),
+    better: betterMovesOf(mistake).map(move => ({ input: move.line.join(' '), why: move.why })),
     tags: mistake.tags,
     unreasonable: mistake.unreasonable,
     cpBefore: mistake.cpBefore,
@@ -141,14 +141,16 @@ export default function ReviewEditor({
         const move = plyByIndex.get(draft.ply)
         if (!move) return []
 
+        // only the first move of a line is a decision you get to make, so that is what
+        // gets judged; the rest depends on the opponent playing along
         const rows = draft.better.flatMap(row => {
-          const played = playMove(move.fenBefore, row.input)
-          if (!played) return []
+          const parsed = parseLine(move.fenBefore, row.input)
+          if (parsed.line.length === 0) return []
           return [
             {
-              key: `${draft.ply}:${played.san}`,
+              key: `${draft.ply}:${parsed.line[0]}`,
               fenBefore: move.fenBefore,
-              fenAfter: played.fen,
+              fenAfter: parsed.fens[0],
             },
           ]
         })
@@ -289,10 +291,13 @@ export default function ReviewEditor({
     const move = plyByIndex.get(draft.ply)
 
     // only legal moves are stored; the illegal ones are flagged in the form instead
+    // only the legal prefix is stored; whatever stopped the parse is flagged in the form
     const betterMoves: ProposedMove[] = []
     for (const row of draft.better) {
-      const played = move ? playMove(move.fenBefore, row.input) : null
-      if (played) betterMoves.push({ san: played.san, why: row.why.trim() })
+      const parsed = move ? parseLine(move.fenBefore, row.input) : null
+      if (parsed && parsed.line.length > 0) {
+        betterMoves.push({ line: parsed.line, why: row.why.trim() })
+      }
     }
 
     return {
@@ -393,7 +398,7 @@ export default function ReviewEditor({
             }}
             className="bg-zinc-950 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600 disabled:opacity-40"
           >
-            <option value="">+ another move…</option>
+            <option value="">+ another line…</option>
             {yourPlies
               .filter(ply => !taken.has(ply.index))
               .map(ply => (
@@ -503,44 +508,68 @@ export default function ReviewEditor({
             )}
 
             <div className="flex flex-col gap-2">
-              <Label hint="Not the engine's best — anything that holds the game, and what makes it hold.">
+              <Label
+                hint={`Not the engine's best — anything that holds, and what makes it hold. A whole line is fine, up to ${
+                  MAX_LINE_PLIES / 2
+                } moves each; only the first is judged, since the rest is the opponent's to choose.`}
+              >
                 What would you play instead?
               </Label>
 
               {draft.better.map((row, index) => {
-                const played = move ? playMove(move.fenBefore, row.input) : null
-                const illegal = row.input.trim().length > 0 && played === null
-                const verdict = played ? verdicts[`${draft.ply}:${played.san}`] : undefined
+                const parsed = move ? parseLine(move.fenBefore, row.input) : null
+                const played = parsed && parsed.line.length > 0 ? parsed : null
+                const verdict = played ? verdicts[`${draft.ply}:${played.line[0]}`] : undefined
 
                 return (
-                  <div key={index} className="flex flex-col sm:flex-row gap-2 items-start">
-                    <div className="flex flex-col gap-1 w-full sm:w-36 shrink-0">
+                  <div
+                    key={index}
+                    className="border border-zinc-800 rounded-lg p-3 flex flex-col gap-2 bg-zinc-950/30"
+                  >
+                    <div className="flex gap-2 items-start">
                       <input
                         value={row.input}
                         onChange={event => setRow(draft, index, { input: event.target.value })}
-                        placeholder="Nd5"
-                        aria-label="Move"
-                        className={`${FIELD} font-mono ${illegal ? 'border-red-500/60' : ''}`}
+                        placeholder="Nd5 Bxe7 Qxe7"
+                        aria-label="Line"
+                        className={`${FIELD} font-mono flex-1 min-w-0 ${
+                          parsed?.invalid ? 'border-red-500/60' : ''
+                        }`}
                       />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          patch(draft.ply, {
+                            better: draft.better.filter((entry, at) => at !== index),
+                          })
+                        }
+                        title="Remove this line"
+                        aria-label="Remove this line"
+                        className="text-xs text-zinc-600 hover:text-red-400 transition-colors px-1 py-2 shrink-0"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-3 flex-wrap text-xs">
                       {played && (
-                        <span className="text-xs text-zinc-500 font-mono">✓ {played.san}</span>
+                        <span className="text-zinc-400 font-mono">
+                          {formatLine(draft.ply, played.line)}
+                        </span>
                       )}
-                      {illegal && <span className="text-xs text-red-400">not legal here</span>}
 
                       {played &&
                         (verdict === undefined ? (
-                          <span className="text-xs text-zinc-600">checking…</span>
+                          <span className="text-zinc-600">checking…</span>
                         ) : verdict === 'failed' ? (
-                          <span className="text-xs text-zinc-600">not checked</span>
+                          <span className="text-zinc-600">not checked</span>
                         ) : (
                           <span
-                            className={`text-xs font-mono ${
-                              TAG_COLOR[verdict.tag] ?? 'text-emerald-400'
-                            }`}
+                            className={`font-mono ${TAG_COLOR[verdict.tag] ?? 'text-emerald-400'}`}
                             title={
                               isFault(verdict.tag)
-                                ? 'Your alternative gives something away too'
-                                : 'Your alternative holds the position'
+                                ? `${played.line[0]} gives something away too`
+                                : `${played.line[0]} holds the position`
                             }
                           >
                             {formatEval(verdict.cpBefore, game.color)} →{' '}
@@ -548,30 +577,27 @@ export default function ReviewEditor({
                             {isFault(verdict.tag) && ` ${verdict.tag}`}
                           </span>
                         ))}
+
+                      {parsed?.invalid && (
+                        <span className="text-red-400">
+                          {played ? 'the line stops at' : 'not legal here:'} {parsed.invalid}
+                        </span>
+                      )}
+                      {parsed?.tooLong && (
+                        <span className="text-amber-400">
+                          lines stop at {MAX_LINE_PLIES / 2} moves each
+                        </span>
+                      )}
                     </div>
 
                     <textarea
                       value={row.why}
                       onChange={event => setRow(draft, index, { why: event.target.value })}
                       rows={2}
-                      aria-label="Why this move"
+                      aria-label="Why this line"
                       placeholder="Holds f6 and keeps the h-file shut, so the queen has nothing to come to."
-                      className={`${FIELD} flex-1 w-full resize-y`}
+                      className={`${FIELD} w-full resize-y`}
                     />
-
-                    <button
-                      type="button"
-                      onClick={() =>
-                        patch(draft.ply, {
-                          better: draft.better.filter((entry, at) => at !== index),
-                        })
-                      }
-                      title="Remove this move"
-                      aria-label="Remove this move"
-                      className="text-xs text-zinc-600 hover:text-red-400 transition-colors px-1 py-2 shrink-0"
-                    >
-                      ✕
-                    </button>
                   </div>
                 )
               })}

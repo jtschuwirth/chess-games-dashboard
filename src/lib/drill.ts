@@ -1,6 +1,6 @@
 import { replayGame } from './board'
-import { isFault, trainableMistakes } from './review'
-import type { Color, DrillStat, GameRecord, ProposedMove } from '@/types/chess'
+import { betterMovesOf, firstMoveOf, isFault, trainableMistakes } from './review'
+import type { Color, DrillStat, GameRecord, ProposedMove, ReviewedMistake } from '@/types/chess'
 
 /**
  * Which positions to drill. `reviewed` is the set you have taken apart and written
@@ -101,7 +101,7 @@ export function buildDrillCards(games: GameRecord[], source: DrillSource): Drill
         moveNumber: Math.floor(ply / 2) + 1,
         played: mistake?.san ?? game.moves[ply] ?? '',
         playedTag: tags.get(ply) ?? null,
-        proposed: mistake?.betterMoves ?? [],
+        proposed: betterMovesOf(mistake ?? ({ betterMoves: [] } as unknown as ReviewedMistake)),
         cause: mistake?.cause ?? '',
         signal: mistake?.signal ?? '',
         tags: mistake?.tags ?? [],
@@ -131,7 +131,7 @@ export function judgeAttempt(
   engineBestSan: string | null,
   tag: string,
 ): DrillVerdict {
-  if (card.proposed.some(move => move.san === san)) return 'yours'
+  if (card.proposed.some(move => firstMoveOf(move) === san)) return 'yours'
   if (engineBestSan && san === engineBestSan) return 'engine'
   return isFault(tag) ? 'miss' : 'holds'
 }

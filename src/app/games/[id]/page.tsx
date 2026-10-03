@@ -7,7 +7,7 @@ import Board from '@/components/Board'
 import MoveList from '@/components/MoveList'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
-import { replayGame } from '@/lib/board'
+import { formatLine, playLine, replayGame } from '@/lib/board'
 import { alignClocks, formatClock, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
 import { AnalysisStopped, ENGINE_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
 import { terminateEngine } from '@/lib/engine'
@@ -15,7 +15,7 @@ import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
 import { buildPatternTree, matchingPath, patternLabel } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
-import { formatEval, hasReview, isFault, knownTags } from '@/lib/review'
+import { betterMovesOf, formatEval, hasReview, isFault, knownTags } from '@/lib/review'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
 import type { Color, GameRecord, GameResult, GameReview, PatternRecord } from '@/types/chess'
@@ -33,6 +33,17 @@ function duration(ms: number): string {
   const seconds = Math.round(ms / 1000)
   if (seconds < 60) return `${seconds}s`
   return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
+
+interface Variation {
+  /** The ply it branches at — the move you played instead. */
+  ply: number
+  line: string[]
+  fens: string[]
+  squares: { from: string; to: string }[]
+  /** How far into the line the board is. */
+  index: number
+  why: string
 }
 
 interface Neighbours {
@@ -179,6 +190,11 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const [shown, setShown] = useState<number | null>(null)
   const [flipped, setFlipped] = useState(false)
   const [copied, setCopied] = useState(false)
+  /**
+   * A line from your review, played out on the board instead of the game's own
+   * continuation. Null when the board is following what actually happened.
+   */
+  const [variation, setVariation] = useState<Variation | null>(null)
 
   /** The dashboard's filters ride along in the URL, so Back lands where you left. */
   const search = useMemo(() => writeFilters(readFilters(searchParams)), [searchParams])
@@ -243,11 +259,24 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
   const step = useCallback(
     (delta: number) => {
+      // while a variation is open the controls walk it, and stepping back past its
+      // first move returns you to the game at the branch point
+      if (variation) {
+        setVariation(current => {
+          if (!current) return current
+          const next = current.index + delta
+          if (next < 0) return null
+          if (next >= current.fens.length) return current
+          return { ...current, index: next }
+        })
+        return
+      }
+
       setShown(current =>
         Math.max(-1, Math.min(replay.plies.length - 1, (current ?? openingPly) + delta)),
       )
     },
-    [replay.plies.length, openingPly],
+    [replay.plies.length, openingPly, variation],
   )
 
   /** Arrow keys step through the game, unless you are typing in the review. */
@@ -300,6 +329,12 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     }
     return map
   }, [game])
+
+  /** The alternatives you wrote for the move currently on the board, if any. */
+  const linesHere = useMemo(() => {
+    const entry = (game?.review?.mistakes ?? []).find(mistake => mistake.ply === cursor)
+    return entry ? betterMovesOf(entry).filter(move => move.line.length > 0) : []
+  }, [game, cursor])
 
   const reviewedPlies = useMemo(
     () => new Set((game?.review?.mistakes ?? []).map(mistake => mistake.ply)),
@@ -396,7 +431,10 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const other: Color = game.color === 'white' ? 'black' : 'white'
   const orientation = flipped ? other : game.color
   const current = cursor >= 0 ? replay.plies[cursor] : null
-  const fen = replay.fens[Math.min(cursor + 1, replay.fens.length - 1)]
+  const variationSquare = variation?.squares[variation.index]
+  const fen = variation
+    ? variation.fens[variation.index]
+    : replay.fens[Math.min(cursor + 1, replay.fens.length - 1)]
   const analysed = game.analysis
   const shownMove = analysed?.moves.find(move => move.ply === cursor)
 
@@ -483,13 +521,13 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             label="Engine"
             value={
               analysed ? (
-                <span className="font-mono text-xs">
-                  <span className="text-red-400">{analysed.blunders}??</span>{' '}
-                  <span className="text-amber-400">{analysed.mistakes}?</span>{' '}
-                  <span className="text-zinc-600">d{analysed.depth}</span>
+                <span className="font-mono text-xs flex items-center gap-2">
+                  <span className="text-yellow-400">⚙ d{analysed.depth}</span>
+                  <span className="text-red-400">{analysed.blunders}??</span>
+                  <span className="text-amber-400">{analysed.mistakes}?</span>
                 </span>
               ) : (
-                <span className="text-zinc-600 text-sm">not analysed</span>
+                <span className="text-zinc-600 text-sm">no engine</span>
               )
             }
           />
@@ -531,19 +569,42 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           <Board
             fen={fen}
             orientation={orientation}
-            highlight={current ? [current.from, current.to] : []}
+            highlight={
+              variationSquare
+                ? [variationSquare.from, variationSquare.to]
+                : current
+                  ? [current.from, current.to]
+                  : []
+            }
           />
 
           <div className="flex items-center gap-1.5">
-            <NavButton onClick={() => setShown(-1)} disabled={cursor < 0} title="Start">
+            <NavButton
+              onClick={() => (variation ? setVariation(null) : setShown(-1))}
+              disabled={!variation && cursor < 0}
+              title={variation ? 'Back to the game' : 'Start'}
+            >
               ⏮
             </NavButton>
-            <NavButton onClick={() => step(-1)} disabled={cursor < 0} title="Previous move" wide>
+            <NavButton
+              onClick={() => step(-1)}
+              disabled={!variation && cursor < 0}
+              title="Previous move"
+              wide
+            >
               ‹
             </NavButton>
 
             <span className="flex-[2.4] text-center text-xs font-mono text-zinc-300 tabular-nums truncate">
-              {current ? (
+              {variation ? (
+                <span className="text-sky-300">
+                  {variation.line[variation.index]}
+                  <span className="text-zinc-600">
+                    {' '}
+                    {variation.index + 1}/{variation.line.length}
+                  </span>
+                </span>
+              ) : current ? (
                 <>
                   {current.moveNumber}
                   {current.color === 'white' ? '.' : '…'} {current.san}
@@ -559,15 +620,27 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
             <NavButton
               onClick={() => step(1)}
-              disabled={cursor >= replay.plies.length - 1}
+              disabled={
+                variation
+                  ? variation.index >= variation.fens.length - 1
+                  : cursor >= replay.plies.length - 1
+              }
               title="Next move"
               wide
             >
               ›
             </NavButton>
             <NavButton
-              onClick={() => setShown(replay.plies.length - 1)}
-              disabled={cursor >= replay.plies.length - 1}
+              onClick={() =>
+                variation
+                  ? setVariation({ ...variation, index: variation.fens.length - 1 })
+                  : setShown(replay.plies.length - 1)
+              }
+              disabled={
+                variation
+                  ? variation.index >= variation.fens.length - 1
+                  : cursor >= replay.plies.length - 1
+              }
               title="End"
             >
               ⏭
@@ -577,8 +650,61 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             </NavButton>
           </div>
 
+          {(linesHere.length > 0 || variation) && (
+            <div className="flex flex-col gap-1.5">
+              {variation ? (
+                <div className="flex items-start gap-2 text-xs">
+                  <span className="font-mono text-sky-300 flex-1 min-w-0">
+                    {formatLine(variation.ply, variation.line)}
+                    {variation.why && (
+                      <span className="block text-zinc-500 font-sans mt-0.5">{variation.why}</span>
+                    )}
+                  </span>
+                  <button
+                    onClick={() => setVariation(null)}
+                    className="text-zinc-500 hover:text-zinc-200 transition-colors shrink-0"
+                  >
+                    back to the game
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <span className="text-xs uppercase tracking-wide text-zinc-600">
+                    What you said you would play
+                  </span>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {linesHere.map((move, index) => {
+                      const played = playLine(replay.fens[cursor], move.line)
+                      if (played.line.length === 0) return null
+
+                      return (
+                        <button
+                          key={index}
+                          onClick={() =>
+                            setVariation({
+                              ply: cursor,
+                              line: played.line,
+                              fens: played.fens,
+                              squares: played.squares,
+                              index: 0,
+                              why: move.why,
+                            })
+                          }
+                          title={move.why || 'Play this line out on the board'}
+                          className="px-2.5 py-1 text-xs rounded-full border border-sky-500/40 text-sky-300 hover:bg-sky-500/10 transition-colors font-mono"
+                        >
+                          ▶ {formatLine(cursor, played.line)}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="text-xs text-zinc-600 flex gap-3 flex-wrap items-center">
-            {shownMove && (
+            {!variation && shownMove && (
               <span
                 className="font-mono text-zinc-400"
                 title="From White's side, the way a board shows it"
@@ -596,7 +722,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
               yours. Unattributed numbers side by side read as being about the move
               you are looking for next.
             */}
-            {current && spentByPly.has(current.index) && (
+            {!variation && current && spentByPly.has(current.index) && (
               <span>
                 {current.color === game.color ? 'You' : 'Your opponent'} took{' '}
                 {duration((spentByPly.get(current.index) as number) * 1000)} here
@@ -615,7 +741,10 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           <MoveList
             plies={replay.plies}
             current={cursor}
-            onPick={setShown}
+            onPick={index => {
+              setVariation(null)
+              setShown(index)
+            }}
             tags={engineTags}
             reviewed={reviewedPlies}
             secondsByPly={spentByPly}

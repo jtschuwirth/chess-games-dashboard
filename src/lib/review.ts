@@ -105,15 +105,27 @@ export function tagGroup(tag: string): string {
 }
 
 /**
- * The proposed moves of an entry, whichever shape they were stored in. Reviews written
- * before a move could carry its reasoning hold plain SAN strings, and Firestore keeps
- * what it was given — so the old shape is converted on read rather than migrated, the
- * same way pre-game ratings and the variation tree are derived rather than stored.
+ * The proposed lines of an entry, whichever shape they were stored in. This field has
+ * had three: a plain SAN string, then `{ san, why }`, now `{ line, why }`. Firestore
+ * keeps what it was given, so each older shape is converted on read rather than
+ * migrated, the same way pre-game ratings and the variation tree are derived.
  */
 export function betterMovesOf(mistake: ReviewedMistake): ProposedMove[] {
-  return (mistake.betterMoves ?? []).map(move =>
-    typeof move === 'string' ? { san: move, why: '' } : move,
-  )
+  return (mistake.betterMoves ?? []).map(move => {
+    if (typeof move === 'string') return { line: [move], why: '' }
+
+    const legacy = move as ProposedMove & { san?: string }
+    if (Array.isArray(legacy.line)) return { line: legacy.line, why: legacy.why ?? '' }
+    return { line: legacy.san ? [legacy.san] : [], why: legacy.why ?? '' }
+  })
+}
+
+/**
+ * The move a line actually commits you to. Everything after it depends on the opponent
+ * playing along, so this is the only part that can be judged, or asked for in a drill.
+ */
+export function firstMoveOf(move: ProposedMove): string | null {
+  return move.line[0] ?? null
 }
 
 /**
