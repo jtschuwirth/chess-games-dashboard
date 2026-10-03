@@ -71,10 +71,11 @@ export interface ReviewedMistake {
   /** What was visible in the position that should have redirected you. */
   signal: string
   /**
-   * Moves you would play instead, in SAN, validated against the position. Not
-   * necessarily the engine's first choice — anything that holds the game counts.
+   * Moves you would play instead, each with your reasoning. Read them through
+   * `betterMovesOf`: reviews written before the reasoning existed stored plain SAN
+   * strings here, and that shape is still in Firestore.
    */
-  betterMoves: string[]
+  betterMoves: ProposedMove[]
   /** From the shared vocabulary in lib/review.ts, or your own additions. */
   tags: string[]
   /**
@@ -85,6 +86,17 @@ export interface ReviewedMistake {
   /** The engine's numbers when you reviewed it, so the entry survives a re-analysis. */
   cpBefore: number | null
   cpAfter: number | null
+}
+
+/**
+ * A move you would play instead of the one you played. The reason is the point: a bare
+ * move is a line to memorise, while the reason is what you can apply in the next game.
+ */
+export interface ProposedMove {
+  /** SAN, validated against the position before the mistake. */
+  san: string
+  /** Why it holds the game. Optional — sometimes the move really does speak for itself. */
+  why: string
 }
 
 export interface GameReview {

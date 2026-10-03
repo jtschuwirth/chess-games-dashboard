@@ -2,32 +2,40 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import Chip from '@/components/Chip'
-import { parseProposedMoves, plyLabel, sanFromUci, type Ply } from '@/lib/board'
+import { normalizeSan, plyLabel, sanFromUci, type Ply } from '@/lib/board'
 import { REVIEW_DEPTH } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
   MAX_REVIEW_MISTAKES,
   TAG_GROUPS,
+  betterMovesOf,
   candidateMoves,
   formatEval,
   missingFrom,
 } from '@/lib/review'
-import type { GameRecord, GameReview, ReviewedMistake } from '@/types/chess'
+import type { GameRecord, GameReview, ProposedMove, ReviewedMistake } from '@/types/chess'
 
 const TAG_COLOR: Record<string, string> = {
   '??': 'text-red-400',
   '?': 'text-amber-400',
 }
 
-/** An entry being written. `better` stays raw text until it is parsed on save. */
+/** A move being proposed. `input` is what you typed; its SAN is resolved as you type. */
+interface ProposedRow {
+  input: string
+  why: string
+}
+
+const EMPTY_ROW: ProposedRow = { input: '', why: '' }
+
 interface Draft {
   ply: number
   san: string
   moveNumber: number
   cause: string
   signal: string
-  better: string
+  better: ProposedRow[]
   tags: string[]
   unreasonable: boolean
   cpBefore: number | null
@@ -41,7 +49,7 @@ function draftFrom(mistake: ReviewedMistake): Draft {
     moveNumber: mistake.moveNumber,
     cause: mistake.cause,
     signal: mistake.signal,
-    better: mistake.betterMoves.join(', '),
+    better: betterMovesOf(mistake).map(move => ({ input: move.san, why: move.why })),
     tags: mistake.tags,
     unreasonable: mistake.unreasonable,
     cpBefore: mistake.cpBefore,
@@ -93,6 +101,15 @@ export default function ReviewEditor({
   const [engine, setEngine] = useState<Record<number, string>>({})
   const [asking, setAsking] = useState<number | null>(null)
 
+  /**
+   * Whether each entry's tag picker is open, held per entry rather than derived from
+   * whether it has tags yet: derived, picking the first tag closed the picker under
+   * you, and tagging a move usually takes more than one.
+   */
+  const [tagsOpen, setTagsOpen] = useState<Record<number, boolean>>(() =>
+    Object.fromEntries((game.review?.mistakes ?? []).map(entry => [entry.ply, entry.tags.length === 0])),
+  )
+
   /** The worker holds a few megabytes of wasm; nothing needs it once you leave. */
   useEffect(() => () => terminateEngine(), [])
 
@@ -120,7 +137,7 @@ export default function ReviewEditor({
           moveNumber: move.moveNumber,
           cause: '',
           signal: '',
-          better: '',
+          better: [EMPTY_ROW],
           tags: [],
           unreasonable: false,
           cpBefore,
@@ -128,12 +145,19 @@ export default function ReviewEditor({
         },
       ].sort((a, b) => a.ply - b.ply),
     )
+    setTagsOpen(prev => ({ ...prev, [ply]: true }))
     onShowPly(ply)
   }
 
   function patch(ply: number, changes: Partial<Draft>) {
     setSaved(null)
     setDrafts(prev => prev.map(draft => (draft.ply === ply ? { ...draft, ...changes } : draft)))
+  }
+
+  function setRow(draft: Draft, index: number, changes: Partial<ProposedRow>) {
+    patch(draft.ply, {
+      better: draft.better.map((row, at) => (at === index ? { ...row, ...changes } : row)),
+    })
   }
 
   /** The engine's own answer, on demand — after you have committed to yours. */
@@ -167,7 +191,13 @@ export default function ReviewEditor({
 
   function toMistake(draft: Draft): ReviewedMistake {
     const move = plyByIndex.get(draft.ply)
-    const proposed = move ? parseProposedMoves(move.fenBefore, draft.better) : []
+
+    // only legal moves are stored; the illegal ones are flagged in the form instead
+    const betterMoves: ProposedMove[] = []
+    for (const row of draft.better) {
+      const san = move ? normalizeSan(move.fenBefore, row.input) : null
+      if (san) betterMoves.push({ san, why: row.why.trim() })
+    }
 
     return {
       ply: draft.ply,
@@ -175,10 +205,7 @@ export default function ReviewEditor({
       moveNumber: draft.moveNumber,
       cause: draft.cause.trim(),
       signal: draft.signal.trim(),
-      // only legal moves are stored; the illegal ones are flagged in the form instead
-      betterMoves: proposed
-        .map(entry => entry.san)
-        .filter((san): san is string => san !== null),
+      betterMoves,
       tags: draft.tags,
       unreasonable: draft.unreasonable,
       cpBefore: draft.cpBefore,
@@ -284,8 +311,6 @@ export default function ReviewEditor({
 
       {drafts.map(draft => {
         const move = plyByIndex.get(draft.ply)
-        const proposed = move ? parseProposedMoves(move.fenBefore, draft.better) : []
-        const illegal = proposed.filter(entry => entry.san === null)
 
         return (
           <div
@@ -344,7 +369,7 @@ export default function ReviewEditor({
                   <textarea
                     value={draft.cause}
                     onChange={event => patch(draft.ply, { cause: event.target.value })}
-                    rows={2}
+                    rows={4}
                     placeholder="It drops the h-pawn and opens a file at my king…"
                     className={`${FIELD} resize-y`}
                   />
@@ -357,7 +382,7 @@ export default function ReviewEditor({
                   <textarea
                     value={draft.signal}
                     onChange={event => patch(draft.ply, { signal: event.target.value })}
-                    rows={2}
+                    rows={4}
                     placeholder="Their rook was already on the open file, so any pawn move there needed a check…"
                     className={`${FIELD} resize-y`}
                   />
@@ -365,29 +390,63 @@ export default function ReviewEditor({
               </>
             )}
 
-            <div className="flex flex-col gap-1.5">
-              <Label hint="Not the engine's best — anything that holds the game. Separate with commas.">
+            <div className="flex flex-col gap-2">
+              <Label hint="Not the engine's best — anything that holds the game, and what makes it hold.">
                 What would you play instead?
               </Label>
-              <input
-                value={draft.better}
-                onChange={event => patch(draft.ply, { better: event.target.value })}
-                placeholder="Kb7, Rc8"
-                className={`${FIELD} font-mono`}
-              />
-              <div className="flex items-center gap-2 flex-wrap text-xs">
-                {proposed
-                  .filter(entry => entry.san !== null)
-                  .map((entry, index) => (
-                    <span key={index} className="text-emerald-400 font-mono">
-                      ✓ {entry.san}
-                    </span>
-                  ))}
-                {illegal.length > 0 && (
-                  <span className="text-red-400">
-                    not legal here: {illegal.map(entry => entry.input).join(', ')}
-                  </span>
-                )}
+
+              {draft.better.map((row, index) => {
+                const san = move ? normalizeSan(move.fenBefore, row.input) : null
+                const illegal = row.input.trim().length > 0 && san === null
+
+                return (
+                  <div key={index} className="flex flex-col sm:flex-row gap-2 items-start">
+                    <div className="flex flex-col gap-1 w-full sm:w-32 shrink-0">
+                      <input
+                        value={row.input}
+                        onChange={event => setRow(draft, index, { input: event.target.value })}
+                        placeholder="Nd5"
+                        aria-label="Move"
+                        className={`${FIELD} font-mono ${illegal ? 'border-red-500/60' : ''}`}
+                      />
+                      {san && <span className="text-xs text-emerald-400 font-mono">✓ {san}</span>}
+                      {illegal && <span className="text-xs text-red-400">not legal here</span>}
+                    </div>
+
+                    <textarea
+                      value={row.why}
+                      onChange={event => setRow(draft, index, { why: event.target.value })}
+                      rows={2}
+                      aria-label="Why this move"
+                      placeholder="Holds f6 and keeps the h-file shut, so the queen has nothing to come to."
+                      className={`${FIELD} flex-1 w-full resize-y`}
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        patch(draft.ply, {
+                          better: draft.better.filter((entry, at) => at !== index),
+                        })
+                      }
+                      title="Remove this move"
+                      aria-label="Remove this move"
+                      className="text-xs text-zinc-600 hover:text-red-400 transition-colors px-1 py-2 shrink-0"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )
+              })}
+
+              <div className="flex items-center gap-3 flex-wrap text-xs">
+                <button
+                  type="button"
+                  onClick={() => patch(draft.ply, { better: [...draft.better, EMPTY_ROW] })}
+                  className="text-zinc-400 hover:text-zinc-100 transition-colors"
+                >
+                  + another move
+                </button>
                 <button
                   type="button"
                   onClick={() => ask(draft.ply)}
@@ -424,12 +483,22 @@ export default function ReviewEditor({
                 ))}
               </div>
 
-              <details open={draft.tags.length === 0} className="group">
-                <summary className="text-xs text-zinc-500 hover:text-zinc-300 cursor-pointer transition-colors">
-                  Pick tags
-                </summary>
+              {/*
+                A plain button rather than <details>: React nulls `currentTarget` on a
+                toggle event, and reading it there crashed the page.
+              */}
+              <button
+                type="button"
+                onClick={() =>
+                  setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? true) }))
+                }
+                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors self-start"
+              >
+                {(tagsOpen[draft.ply] ?? true) ? '▾ Hide tags' : '▸ Pick tags'}
+              </button>
 
-                <div className="mt-3 grid sm:grid-cols-2 gap-3">
+              {(tagsOpen[draft.ply] ?? true) && (
+                <div className="grid sm:grid-cols-2 gap-3">
                   {TAG_GROUPS.map(group => (
                     <div key={group.name} className="flex flex-col gap-1.5">
                       <span className="text-xs uppercase tracking-wide text-zinc-500">
@@ -494,7 +563,7 @@ export default function ReviewEditor({
                     />
                   </div>
                 </div>
-              </details>
+              )}
             </div>
           </div>
         )
@@ -515,7 +584,7 @@ export default function ReviewEditor({
             setSaved(null)
             setNotes(event.target.value)
           }}
-          rows={2}
+          rows={3}
           placeholder="Comfortable until the time scramble, then I stopped looking at their threats."
           className={`${FIELD} resize-y`}
         />

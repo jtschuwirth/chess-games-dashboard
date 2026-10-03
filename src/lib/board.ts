@@ -120,22 +120,6 @@ export function sanFromUci(fen: string, uci: string): string | null {
   }
 }
 
-export interface ProposedMove {
-  /** What you typed. */
-  input: string
-  /** Its SAN if the move is legal here, otherwise null. */
-  san: string | null
-}
-
-/** Parses the "better moves" field — moves separated by commas or spaces. */
-export function parseProposedMoves(fen: string, raw: string): ProposedMove[] {
-  return raw
-    .split(/[,\s]+/)
-    .map(part => part.trim())
-    .filter(part => part.length > 0 && !/^\d+\.+$/.test(part))
-    .map(input => ({ input, san: normalizeSan(fen, input) }))
-}
-
 /** "e4" -> "1. e4", "c6" -> "1... c6", by ply index. */
 export function plyLabel(index: number, san: string): string {
   const number = Math.floor(index / 2) + 1

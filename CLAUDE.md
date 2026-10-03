@@ -137,7 +137,10 @@ src/
   so the cap forces a choice. Each entry asks why the move is a mistake, what was visible in the
   position that should have redirected you, and what you would play instead; proposed moves are
   validated against the position with chess.js and only the legal ones are stored, since the
-  point is a move you could actually have played.
+  point is a move you could actually have played. Each proposed move is a row of its own with
+  its own reasoning: a bare move is a line to memorise, while the reason is the part that
+  transfers to the next game. Reviews saved before that existed hold plain SAN strings in
+  `betterMoves`, so `betterMovesOf` converts on read rather than migrating the documents.
 - **"Beyond what I could be expected to find" is the escape hatch, and it is not a shrug.** The
   engine's objection stands, but no pattern is trainable from it, so the entry is stored and then
   left out of everything that counts: `trainableMistakes` drops it, so it reaches neither the tag
@@ -151,6 +154,10 @@ src/
 - **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
   already holds every game, so filtering by review state, counting tags and finding the next game
   to review cost no extra reads. `saveGames` merges, so a re-sync never clears a review.
+- **The tag picker holds its own open state per entry.** Deriving it from "has no tags yet" read
+  well and behaved badly: picking the first tag closed the picker under you, and tagging a move
+  usually takes more than one. It is a button and a conditional, not `<details>` — React nulls
+  `currentTarget` on a toggle event, and reading it there crashed the page.
 - **Evaluations are stored from your side and shown from White's.** The two frames exist for
   different jobs: `cpLoss` has to mean what *you* gave away and `classifyMove`'s guards ask
   whether *you* were already lost, so everything stored and every rule is in your frame. Boards

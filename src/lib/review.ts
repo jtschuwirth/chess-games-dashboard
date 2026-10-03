@@ -1,4 +1,11 @@
-import type { Color, GameRecord, GameReview, ReviewedMistake, StoredAnalysis } from '@/types/chess'
+import type {
+  Color,
+  GameRecord,
+  GameReview,
+  ProposedMove,
+  ReviewedMistake,
+  StoredAnalysis,
+} from '@/types/chess'
 
 /**
  * A review names one to three moves. The cap is the whole method: a post-mortem that
@@ -95,6 +102,18 @@ const GROUP_BY_TAG = new Map<string, string>(
 /** Which group a tag belongs to; tags you invented land in "Your own". */
 export function tagGroup(tag: string): string {
   return GROUP_BY_TAG.get(tag) ?? 'Your own'
+}
+
+/**
+ * The proposed moves of an entry, whichever shape they were stored in. Reviews written
+ * before a move could carry its reasoning hold plain SAN strings, and Firestore keeps
+ * what it was given — so the old shape is converted on read rather than migrated, the
+ * same way pre-game ratings and the variation tree are derived rather than stored.
+ */
+export function betterMovesOf(mistake: ReviewedMistake): ProposedMove[] {
+  return (mistake.betterMoves ?? []).map(move =>
+    typeof move === 'string' ? { san: move, why: '' } : move,
+  )
 }
 
 export function hasReview(game: GameRecord): boolean {
