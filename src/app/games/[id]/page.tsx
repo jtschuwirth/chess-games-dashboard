@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import Board from '@/components/Board'
 import MoveList from '@/components/MoveList'
+import EngineModeToggle from '@/components/EngineMode'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
 import { playLine as playLineMoves, replayGame } from '@/lib/board'
@@ -588,6 +589,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
         <div className="flex items-center gap-3 flex-wrap">
           <AnalyseGame userId={userId} game={game} onDone={applyAnalysed} />
+          <EngineModeToggle />
           {game.annotatedPgn && (
             <button
               onClick={() => {

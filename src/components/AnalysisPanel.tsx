@@ -2,6 +2,7 @@
 
 import { useRef, useState } from 'react'
 import Chip from '@/components/Chip'
+import EngineModeToggle from '@/components/EngineMode'
 import { Spinner } from '@/components/PageShell'
 import { AnalysisStopped, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
 import { cachedPositions, terminateEngine } from '@/lib/engine'
@@ -110,9 +111,12 @@ export default function AnalysisPanel({
         <h2 className="font-semibold text-sm">Engine analysis</h2>
         <p className="text-xs text-zinc-500 mt-0.5">
           Runs Stockfish over the {games.length} game{games.length === 1 ? '' : 's'} currently
-          filtered and writes the annotations onto each game. Runs in this tab, so leave it open.
+          filtered and writes the annotations onto each game. Either way it is driven from this
+          tab, so leave it open — and a run this size belongs on a real machine, not a phone.
         </p>
       </div>
+
+      <EngineModeToggle />
 
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs uppercase tracking-wide text-zinc-500 mr-1">Depth</span>

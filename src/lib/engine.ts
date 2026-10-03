@@ -6,25 +6,41 @@
  *
  * Requests are queued rather than rejected when the engine is busy, because
  * analysing a set of games means thousands of sequential positions.
+ *
+ * The same positions can be sent to `/api/engine` instead — see `setEngineMode`. That
+ * exists for phones, where doing the work locally is slow and the browser suspends the
+ * tab the moment you look away.
  */
+import { MATE_SCORE, type Evaluation } from './engine-protocol'
 
 const WORKER_PATH = '/stockfish-19-lite-single.js'
 
-/** A forced mate is worth more than any material count; clamp it so arithmetic still works. */
-export const MATE_SCORE = 10000
+export { MATE_SCORE }
+export type { Evaluation }
 
-export interface Evaluation {
-  /** Centipawns from the perspective of the side to move. */
-  cp: number
-  depth: number
-  bestMoveUci: string
-}
+/** Where the work happens. */
+export type EngineMode = 'browser' | 'server'
+
+const MODE_KEY = 'engine-mode'
 
 interface Job {
   fen: string
   depth: number
   resolve: (value: Evaluation) => void
   reject: (error: Error) => void
+}
+
+/**
+ * The signed-in user's token, so the service can tell it is us. Imported lazily to keep
+ * the auth bundle out of anything that only wants an evaluation.
+ */
+async function idToken(): Promise<string | null> {
+  try {
+    const { auth } = await import('./firebase')
+    return (await auth.currentUser?.getIdToken()) ?? null
+  } catch {
+    return null
+  }
 }
 
 let worker: Worker | null = null
@@ -140,10 +156,77 @@ export function initEngine(): Promise<void> {
   return ready
 }
 
-/** Queued, so callers can request thousands of positions without coordinating. */
+/**
+ * Which engine answers. The browser's is free and private; the server's exists for
+ * phones, where the local one is slow and the tab gets suspended the moment you switch
+ * app. It is remembered per device, since that is what the choice is really about.
+ */
+let mode: EngineMode = 'browser'
+const modeListeners = new Set<() => void>()
+
+/** Lets a control follow the choice without owning it — see `useSyncExternalStore`. */
+export function subscribeEngineMode(listener: () => void): () => void {
+  modeListeners.add(listener)
+  return () => modeListeners.delete(listener)
+}
+
+export function setEngineMode(next: EngineMode): void {
+  mode = next
+  try {
+    window.localStorage.setItem(MODE_KEY, next)
+  } catch {
+    // private window, or storage blocked: the choice just will not outlive the tab
+  }
+  if (next === 'server') terminateEngine()
+  for (const listener of modeListeners) listener()
+}
+
+export function getEngineMode(): EngineMode {
+  if (typeof window === 'undefined') return 'browser'
+
+  try {
+    const stored = window.localStorage.getItem(MODE_KEY)
+    if (stored === 'server' || stored === 'browser') mode = stored
+  } catch {
+    // fall through to whatever is in memory
+  }
+  return mode
+}
+
+/** Asks `/api/engine`, which runs the same build with the same contract. */
+async function analyzeOnServer(fen: string, depth: number): Promise<Evaluation> {
+  const token = await idToken()
+  const response = await fetch('/api/engine', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ fen, depth }),
+  })
+
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}))
+    throw new Error(body.error ?? `The engine service answered ${response.status}.`)
+  }
+
+  return (await response.json()) as Evaluation
+}
+
+/**
+ * Queued, so callers can request thousands of positions without coordinating, and
+ * cached by position so the two engines share one answer for the same question.
+ */
 export async function analyzePosition(fen: string, depth: number): Promise<Evaluation> {
-  const cached = cache.get(`${fen}@${depth}`)
+  const key = `${fen}@${depth}`
+  const cached = cache.get(key)
   if (cached) return cached
+
+  if (getEngineMode() === 'server') {
+    const result = await analyzeOnServer(fen, depth)
+    cache.set(key, result)
+    return result
+  }
 
   await initEngine()
 

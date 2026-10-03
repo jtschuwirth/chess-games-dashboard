@@ -48,6 +48,7 @@ src/
 │   └── api/
 │       ├── chesscom/games/route.ts
 │       ├── lichess/games/route.ts
+│       ├── engine/route.ts     # server-side Stockfish, Firebase token gated
 │       └── export/route.ts     # read-only JSON export, API-key gated
 ├── components/                 # PageShell, SyncPanel, PatternForm, StatBlockCard,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
@@ -66,6 +67,8 @@ src/
 │   ├── ratings.ts              # reconstructs pre-game ratings, Elo expectation
 │   ├── clocks.ts               # per-move time, timeout KPI, phases, mistakes by phase
 │   ├── engine.ts               # Stockfish 19 lite in a worker, queued, FEN-cached
+│   ├── engine-protocol.ts      # what an evaluation is, shared by both engines
+│   ├── server-engine.ts        # the same engine under Node, behind /api/engine
 │   ├── analysis.ts             # move classification and the annotated PGN
 │   ├── termination.ts          # one ending vocabulary across the two providers
 │   ├── auth.ts                 # signInWithGoogle / signOut
@@ -101,6 +104,24 @@ src/
   context excused — +12.4 to +9.8 earns one — so putting it on screen or offering it up for
   review would argue against the rule that produced it. `FAULT_TAGS` in `lib/review.ts` is the
   one list of marks that reach a screen or a PGN: `??` and `?`.
+- **The engine runs in the browser by default, and on the server on request.** `setEngineMode`
+  picks, per device, and `analyzePosition` hides which one answered — the four callers never know.
+  Browser is the default because it is free: a batch run is thousands of positions, and sending
+  those to a serverless function would be absurd. The server exists for phones, where the local
+  engine is slow and the tab is suspended as soon as you switch app.
+- **`/api/engine` has three deployment traps, all of which only appear in production.** They are
+  worth knowing because each cost a build-and-run to find:
+  1. `firebase-admin/auth` cannot be loaded at all — jwks-rsa 4.1.0 declares jose 6 and then
+     `require`s it from CommonJS. So the token is checked against Google's `accounts:lookup`
+     with the public web API key, which is what that key is for, and verified tokens are cached
+     for five minutes so a game's eighty requests cost one round trip.
+  2. `require.resolve` does not survive the bundler. Anything derived from `createRequire` has
+     `.resolve` rewritten to return a module id, so the wasm path came back as the number 4626
+     and the engine died with `4626.replace is not a function`. `findWasm` probes real paths
+     instead and names what it tried when it fails.
+  3. The package ships two 99 MB builds, and tracing them took one function to 306 MB against
+     Vercel's 250 MB ceiling — the deploy would have failed on upload. `outputFileTracingExcludes`
+     keeps only the lite single-threaded build, at 3.5 MB.
 - **The engine runs in the browser**, Stockfish 19 lite single-threaded in a worker, copied to
   `/public` on postinstall and gitignored. Single-threaded is deliberate: the multi-threaded build
   needs cross-origin isolation headers. Lite is equally deliberate: the full build ships a 99 MB
@@ -351,6 +372,9 @@ yarn lint
   `ignored` field is no longer read or written. Old documents may still carry it; it is inert.
 
 ## Known limitations
+- The phase and variation tables scroll sideways on a phone rather than reflowing — they are
+  wide by nature, and both sit in an `overflow-x-auto` with a visible scrollbar. Nothing else
+  needs horizontal scrolling at 375px; the board and the move list stack.
 - `Failed to obtain primary lease for action '…'` in the console is expected, not a fault — the
   action is `Collect garbage` or `Backfill Indexes`, and more may appear. Both are the cache's own
   housekeeping, run as `readwrite-primary` transactions, and with `persistentMultipleTabManager`

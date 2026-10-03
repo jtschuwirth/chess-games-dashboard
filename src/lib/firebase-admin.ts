@@ -1,9 +1,9 @@
 import {
   applicationDefault,
   cert,
-  getApp,
   getApps,
   initializeApp,
+  type App,
   type Credential,
   type ServiceAccount,
 } from 'firebase-admin/app'
@@ -52,15 +52,14 @@ function readCredential(): Credential {
 }
 
 /**
- * Server-side Firestore, used only by the export route. The client SDK cannot read
- * here: security rules tie every document to the signed-in user, and this runs with
- * no session.
+ * The admin app, shared by the routes that need to act without a signed-in session:
+ * the export reads Firestore with it, the engine service verifies ID tokens with it.
  */
-export function getAdminDb(): Firestore {
+export function getAdminApp(): App {
   const existing = getApps().find(app => app.name === APP_NAME)
-  if (existing) return getFirestore(existing)
+  if (existing) return existing
 
-  initializeApp(
+  return initializeApp(
     {
       credential: readCredential(),
       // ADC user credentials carry no project, so take it from the web config
@@ -68,6 +67,13 @@ export function getAdminDb(): Firestore {
     },
     APP_NAME,
   )
+}
 
-  return getFirestore(getApp(APP_NAME))
+/**
+ * Server-side Firestore, used only by the export route. The client SDK cannot read
+ * here: security rules tie every document to the signed-in user, and this runs with
+ * no session.
+ */
+export function getAdminDb(): Firestore {
+  return getFirestore(getAdminApp())
 }

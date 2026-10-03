@@ -114,6 +114,43 @@ position and not just the centipawn loss: a slip while already lost is not marke
 made while still clearly winning is only `?!`, and letting a winning position slip back to level
 gets the full `??`.
 
+## Deploying to Vercel
+
+Import the repo, keep the defaults, and set the environment variables below. The build
+needs none of them to succeed, so a first deploy will not fail on a missing key — it
+will just show the setup notice until the Firebase ones are in.
+
+| Variable | Needed for |
+| --- | --- |
+| `NEXT_PUBLIC_FIREBASE_*` (six) | signing in and reading your games; also what the engine service checks a sign-in against |
+| `EXPORT_API_KEY` | only `GET /api/export`; leave it out and the endpoint stays off |
+| `FIREBASE_ADMIN_CREDENTIALS` | only `GET /api/export` |
+
+Two things to do in the Firebase console afterwards:
+
+- **Authentication → Settings → Authorized domains**: add the `*.vercel.app` domain (and
+  any custom one), or Google sign-in is refused on the deployment.
+- Nothing else — Firestore rules already scope every document to its owner.
+
+The Stockfish binaries are copied into `public/` by `postinstall`, which Vercel runs,
+and are gitignored rather than committed.
+
+## Running the engine on the server
+
+Stockfish normally runs in your browser. On a phone that is slow, and the tab gets
+suspended the moment you switch app, so each analysis surface has an **Engine runs on**
+switch: *this device* or *the server*. The choice is remembered per device.
+
+On *the server*, each position is posted to `/api/engine`, which runs the same engine
+under Node and answers in about two seconds at depth 21. The endpoint requires a signed-in
+Firebase ID token — it is the one route that burns real CPU on request, and an open one
+is an invitation to spend the deployment's compute. It needs no extra configuration
+beyond the `NEXT_PUBLIC_FIREBASE_*` variables.
+
+Analysing one game is roughly eighty requests, which is fine. A batch run over a whole
+branch of the repertoire is thousands, and belongs on a real machine with the browser
+engine — that is why *this device* stays the default.
+
 ## Data model
 
 ```

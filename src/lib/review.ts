@@ -53,6 +53,9 @@ export const TAG_GROUPS: TagGroup[] = [
       'skipped checks and captures',
       'miscounted material',
       'lost track of the position',
+      // both directions: answering a threat that was never real, or making one and
+      // believing in it yourself
+      'empty threat',
     ],
   },
   {

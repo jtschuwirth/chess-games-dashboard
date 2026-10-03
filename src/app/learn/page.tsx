@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import Chip from '@/components/Chip'
 import DrillCardView from '@/components/DrillCard'
+import EngineModeToggle from '@/components/EngineMode'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { terminateEngine } from '@/lib/engine'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
@@ -145,12 +146,15 @@ function LearnBody({ userId }: { userId: string }) {
             ))}
           </div>
 
-          <Link
-            href={`/dashboard${writeFilters(filters)}`}
-            className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-          >
-            Change the filters on the dashboard →
-          </Link>
+          <div className="flex items-center gap-3 flex-wrap">
+            <EngineModeToggle />
+            <Link
+              href={`/dashboard${writeFilters(filters)}`}
+              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              Change the filters →
+            </Link>
+          </div>
         </div>
 
         <p className="text-xs text-zinc-500">
