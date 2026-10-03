@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Board from '@/components/Board'
 import { Spinner } from '@/components/PageShell'
 import { playMove, plyLabel, sanFromUci } from '@/lib/board'
-import { REVIEW_DEPTH, classifyMove } from '@/lib/analysis'
+import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
 import { analyzePosition } from '@/lib/engine'
 import { formatEval, isFault } from '@/lib/review'
 import { isPass, judgeAttempt, recordAttempt, type DrillCard, type DrillVerdict } from '@/lib/drill'
@@ -71,7 +71,7 @@ export default function DrillCardView({
   useEffect(() => {
     let cancelled = false
 
-    analyzePosition(card.fen, REVIEW_DEPTH)
+    analyzePosition(card.fen, ENGINE_DEPTH)
       .then(evaluation => {
         if (cancelled) return
         setBest({ san: sanFromUci(card.fen, evaluation.bestMoveUci), cp: evaluation.cp })
@@ -94,7 +94,7 @@ export default function DrillCardView({
     setChecking(true)
     setError(null)
     try {
-      const after = await analyzePosition(played.fen, REVIEW_DEPTH)
+      const after = await analyzePosition(played.fen, ENGINE_DEPTH)
       // scored for your opponent, who is to move after yours
       const cpAfter = -after.cp
       const tag = classifyMove(best.cp, cpAfter, false)

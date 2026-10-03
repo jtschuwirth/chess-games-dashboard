@@ -9,12 +9,7 @@ import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell
 import ReviewEditor from '@/components/ReviewEditor'
 import { replayGame } from '@/lib/board'
 import { alignClocks, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
-import {
-  AnalysisStopped,
-  GAME_ANALYSIS_DEPTH,
-  analyzeGame,
-  buildAnnotatedPgn,
-} from '@/lib/analysis'
+import { AnalysisStopped, ENGINE_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
 import { terminateEngine } from '@/lib/engine'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
@@ -117,7 +112,7 @@ function AnalyseGame({
 
     try {
       const analysis = await analyzeGame(game, {
-        depth: GAME_ANALYSIS_DEPTH,
+        depth: ENGINE_DEPTH,
         onPosition: () => {
           done++
           setProgress({ done, elapsedMs: Date.now() - startedAt })
@@ -148,14 +143,14 @@ function AnalyseGame({
       <button
         onClick={run}
         disabled={running}
-        title={`Depth ${GAME_ANALYSIS_DEPTH}. Thorough and slow — a long game can take several minutes.`}
+        title={`Depth ${ENGINE_DEPTH}. Thorough and slow — a long game can take several minutes.`}
         className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40"
       >
         {running
           ? `Analysing… ${progress?.done ?? 0}/${total}`
           : game.analysis
-            ? `Re-analyse at depth ${GAME_ANALYSIS_DEPTH}`
-            : `Analyse at depth ${GAME_ANALYSIS_DEPTH}`}
+            ? `Re-analyse at depth ${ENGINE_DEPTH}`
+            : `Analyse at depth ${ENGINE_DEPTH}`}
       </button>
       {running && <Spinner size="w-3.5 h-3.5" />}
       {running && progress && (

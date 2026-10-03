@@ -315,8 +315,10 @@ export function formatCp(cp: number | null): string {
   if (Math.abs(cp) >= 9000) return cp > 0 ? '+M' : '−M'
 
   const pawns = cp / 100
-  const sign = pawns > 0 ? '+' : pawns < 0 ? '−' : ''
-  return `${sign}${Math.abs(pawns).toFixed(1)}`
+  const shown = Math.abs(pawns).toFixed(1)
+  // a couple of centipawns either way rounds to nothing, and "−0.0" reads as a bug
+  const sign = shown === '0.0' ? '' : pawns > 0 ? '+' : '−'
+  return `${sign}${shown}`
 }
 
 /**

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Chip from '@/components/Chip'
 import { playMove, plyLabel, sanFromUci, type Ply } from '@/lib/board'
-import { REVIEW_DEPTH, classifyMove, type MoveTag } from '@/lib/analysis'
+import { ENGINE_DEPTH, classifyMove, type MoveTag } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
@@ -129,14 +129,19 @@ export default function ReviewEditor({
     [plies, game.color],
   )
 
-  /** Each legal alternative on screen, with the two positions needed to judge it. */
+  /**
+   * Each legal alternative on screen, plus the move you actually played, with the two
+   * positions needed to judge each. The move you played is in here so its evaluation
+   * comes from the same depth as everything beside it: the stored one was written by
+   * whatever depth the batch run used, and two depths in one card cannot be compared.
+   */
   const alternatives = useMemo(
     () =>
       drafts.flatMap(draft => {
         const move = plyByIndex.get(draft.ply)
         if (!move) return []
 
-        return draft.better.flatMap(row => {
+        const rows = draft.better.flatMap(row => {
           const played = playMove(move.fenBefore, row.input)
           if (!played) return []
           return [
@@ -147,6 +152,12 @@ export default function ReviewEditor({
             },
           ]
         })
+
+        // the before position is shared with every alternative, so this costs one lookup
+        return [
+          { key: `${draft.ply}:${move.san}`, fenBefore: move.fenBefore, fenAfter: move.fenAfter },
+          ...rows,
+        ]
       }),
     [drafts, plyByIndex],
   )
@@ -171,8 +182,8 @@ export default function ReviewEditor({
         requested.current.add(entry.key)
 
         try {
-          const before = await analyzePosition(entry.fenBefore, REVIEW_DEPTH)
-          const after = await analyzePosition(entry.fenAfter, REVIEW_DEPTH)
+          const before = await analyzePosition(entry.fenBefore, ENGINE_DEPTH)
+          const after = await analyzePosition(entry.fenAfter, ENGINE_DEPTH)
           // superseded by a later keystroke: hand the move back so the next run takes it,
           // or it sits on "checking…" forever having been marked as already requested
           if (cancelled) {
@@ -253,7 +264,7 @@ export default function ReviewEditor({
     setAsking(ply)
     setError(null)
     try {
-      const evaluation = await analyzePosition(move.fenBefore, REVIEW_DEPTH)
+      const evaluation = await analyzePosition(move.fenBefore, ENGINE_DEPTH)
       const san = sanFromUci(move.fenBefore, evaluation.bestMoveUci)
       setEngine(prev => ({
         ...prev,
@@ -400,6 +411,13 @@ export default function ReviewEditor({
       {drafts.map(draft => {
         const move = plyByIndex.get(draft.ply)
 
+        // once the engine has looked at the move you played, show that rather than
+        // whatever the stored analysis said, so the card is internally comparable
+        const judged = verdicts[`${draft.ply}:${draft.san}`]
+        const live = judged && judged !== 'failed' ? judged : null
+        const shownBefore = live ? live.cpBefore : draft.cpBefore
+        const shownAfter = live ? live.cpAfter : draft.cpAfter
+
         return (
           <div
             key={draft.ply}
@@ -414,13 +432,16 @@ export default function ReviewEditor({
               >
                 {plyLabel(draft.ply, draft.san)}
               </button>
-              {draft.cpBefore !== null && (
+              {shownBefore !== null && (
                 <span
                   className="text-xs text-zinc-500 font-mono"
-                  title="From White's side, the way a board shows it"
+                  title={
+                    live
+                      ? `Depth ${ENGINE_DEPTH}, from White's side — the same depth as everything below`
+                      : "From White's side, the way a board shows it"
+                  }
                 >
-                  {formatEval(draft.cpBefore, game.color)} →{' '}
-                  {formatEval(draft.cpAfter, game.color)}
+                  {formatEval(shownBefore, game.color)} → {formatEval(shownAfter, game.color)}
                 </span>
               )}
               <button

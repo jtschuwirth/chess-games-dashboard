@@ -16,21 +16,17 @@ export interface Thresholds {
 export const DEFAULT_THRESHOLDS: Thresholds = { blunder: 300, mistake: 100 }
 
 /**
- * Depth for the one game you are looking at. Nothing here is on a critical path — you
- * press the button and come back — so it buys the most reliable verdict available from
- * a browser engine before you write down why a move was wrong. It is slow: every ply
- * roughly doubles the work, so 21 is well over an order of magnitude past 16, and a
- * long game can take many minutes.
+ * One depth for everything the app evaluates itself: a single game's analysis, the
+ * engine's choice on a move, the verdict on an alternative you typed, and the drill.
+ *
+ * It is one number rather than a fast one and a careful one because these results are
+ * read side by side — your alternative against the move you played, the drill's verdict
+ * against both — and two depths in one view make the comparison meaningless. A quiet
+ * middlegame position costs about 1.3s here, which is affordable even for the ones you
+ * wait on. The batch panel still picks its own, lower depth: it pays that cost once per
+ * game across a whole branch and only has to find the blunders.
  */
-export const GAME_ANALYSIS_DEPTH = 21
-
-/**
- * Depth for everything you wait on: the engine's choice on one move, the verdict on an
- * alternative you typed, and reading a drill position before you can answer. Deliberately
- * *not* the deeper number — a drill card that took a minute to appear would not get used,
- * and at this depth the difference almost never changes whether a move is a blunder.
- */
-export const REVIEW_DEPTH = 16
+export const ENGINE_DEPTH = 21
 
 /**
  * Beyond this the position is already decided, so a further slip is not the move

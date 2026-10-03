@@ -206,15 +206,19 @@ src/
   `−2.2` reads "I am winning" when it means the opposite. `formatEval(cp, color)` in
   `lib/review.ts` flips the sign at the point of display and is the only place that does; the
   export keeps the stored frame, which is what its field comments say.
-- **Three depths, chosen by what is waiting on them.** `GAME_ANALYSIS_DEPTH` (21) is the single
-  game you analyse from its own page: you press the button and come back, so it buys the most
-  reliable verdict a browser engine offers. `REVIEW_DEPTH` (16) is everything you sit and wait
-  for — the engine's choice on one move, the verdict on an alternative you typed, reading a drill
-  position before you can answer — because a card that took a minute to appear would not get
-  used. The batch panel defaults to 12, since it pays its depth once per game across a whole
-  branch and only has to find the blunders. Measured on this machine, one quiet middlegame
-  position costs 364ms at depth 16 and 1333ms at 21, so a 40-move game runs about a minute and a
-  half at the deeper setting.
+- **One depth, `ENGINE_DEPTH` (21), for everything the app evaluates itself** — a single game's
+  analysis, the engine's choice on a move, the verdict on an alternative you typed, and the
+  drill. Splitting it into a careful depth and a fast one was tried and was wrong: these numbers
+  are read side by side, your alternative against the move you played, and two depths in one card
+  make the comparison meaningless. A quiet middlegame position costs about 1.3s at 21 against
+  364ms at 16, so a 40-move game runs about a minute and a half — affordable even for the results
+  you sit and wait for. The batch panel still picks its own, lower depth, because it pays that
+  cost once per game across a whole branch and only has to find the blunders.
+- **The move you played is re-evaluated in the review form**, alongside your alternatives, and the
+  entry header shows that rather than the stored numbers once it lands. The stored pair was
+  written by whatever depth the batch run used — often 12 — so leaving it on screen next to a
+  depth-21 alternative invites exactly the comparison that cannot be made. The before position is
+  shared with every alternative, so this costs one extra lookup per entry.
 - **The engine says where to look; the review says why.** `reviewQueue` is analysed games with a
   blunder or mistake and no review yet, blunders first, which is what the "Review next game"
   button follows. The engine's own best move is available per entry but only on demand — after
