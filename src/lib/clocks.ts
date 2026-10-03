@@ -51,6 +51,16 @@ export function timeControlKey(raw: string): string | null {
 }
 
 /**
+ * How long something took, as opposed to what a clock reads: 93 -> "1m 33s". The two
+ * are different quantities and are written differently on purpose.
+ */
+export function formatDuration(seconds: number): string {
+  const whole = Math.max(0, Math.round(seconds))
+  if (whole < 60) return `${whole}s`
+  return `${Math.floor(whole / 60)}m ${String(whole % 60).padStart(2, '0')}s`
+}
+
+/**
  * Seconds on a clock as a clock shows them: 546 -> "9:06". A bare "546s left" is a
  * number you have to convert in your head before it means anything.
  */

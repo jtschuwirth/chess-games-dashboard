@@ -5,15 +5,19 @@ import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import Board from '@/components/Board'
 import MoveList from '@/components/MoveList'
-import EngineModeToggle from '@/components/EngineMode'
+import EnginePanel from '@/components/EnginePanel'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
 import { playLine as playLineMoves, replayGame } from '@/lib/board'
-import { alignClocks, formatClock, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
-import { AnalysisStopped, ENGINE_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
-import { terminateEngine } from '@/lib/engine'
+import {
+  alignClocks,
+  formatClock,
+  formatDuration,
+  parseTimeControl,
+  timeSpentPerPly,
+} from '@/lib/clocks'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
-import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
+import { getGames, getPatterns } from '@/lib/firestore'
 import { buildPatternTree, matchingPath, patternLabel } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import { betterMovesOf, formatEval, hasReview, isFault, knownTags } from '@/lib/review'
@@ -37,12 +41,6 @@ const RESULT_COLOR: Record<GameResult, string> = {
 const RESULT_LABEL: Record<GameResult, string> = { win: 'Win', loss: 'Loss', draw: 'Draw' }
 
 /** How long something took, as opposed to what a clock reads. */
-function duration(ms: number): string {
-  const seconds = Math.round(ms / 1000)
-  if (seconds < 60) return `${seconds}s`
-  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
-}
-
 interface Variation {
   /** The ply it branches at — the move you played instead. */
   ply: number
@@ -104,87 +102,6 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
   )
 }
 
-/**
- * Runs the engine over this one game. The batch panel on the dashboard covers a whole
- * branch of the repertoire; here you are looking at a single game and want its marks
- * before you start explaining them.
- */
-function AnalyseGame({
-  userId,
-  game,
-  onDone,
-}: {
-  userId: string
-  game: GameRecord
-  onDone: (game: GameRecord) => void
-}) {
-  const [running, setRunning] = useState(false)
-  const [progress, setProgress] = useState<{ done: number; elapsedMs: number } | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  async function run() {
-    setRunning(true)
-    setError(null)
-    setProgress({ done: 0, elapsedMs: 0 })
-
-    // measured here rather than during render, where reading the clock is not allowed
-    const startedAt = Date.now()
-    let done = 0
-
-    try {
-      const analysis = await analyzeGame(game, {
-        depth: ENGINE_DEPTH,
-        onPosition: () => {
-          done++
-          setProgress({ done, elapsedMs: Date.now() - startedAt })
-        },
-      })
-      const pgn = buildAnnotatedPgn(game, analysis)
-      await saveAnalysis(userId, game.id, analysis, pgn)
-      onDone({ ...game, analysis, annotatedPgn: pgn })
-    } catch (caught) {
-      if (!(caught instanceof AnalysisStopped)) {
-        setError(caught instanceof Error ? caught.message : 'Analysis failed.')
-      }
-    } finally {
-      terminateEngine()
-      setRunning(false)
-    }
-  }
-
-  // two evaluations per move of yours, which is what the progress counts against
-  const total = game.moves.length
-  const left =
-    progress && progress.done > 0
-      ? ((total - progress.done) * progress.elapsedMs) / progress.done
-      : 0
-
-  return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <button
-        onClick={run}
-        disabled={running}
-        title={`Depth ${ENGINE_DEPTH}. Thorough and slow — a long game can take several minutes.`}
-        className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40"
-      >
-        {running
-          ? `Analysing… ${progress?.done ?? 0}/${total}`
-          : game.analysis
-            ? `Re-analyse at depth ${ENGINE_DEPTH}`
-            : `Analyse at depth ${ENGINE_DEPTH}`}
-      </button>
-      {running && <Spinner size="w-3.5 h-3.5" />}
-      {running && progress && (
-        <span className="text-xs text-zinc-500">
-          {duration(progress.elapsedMs)} elapsed
-          {left > 0 && ` · ~${duration(left)} left`}
-        </span>
-      )}
-      {error && <span className="text-xs text-red-400">{error}</span>}
-    </div>
-  )
-}
-
 function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const searchParams = useSearchParams()
   const [games, setGames] = useState<GameRecord[] | null>(null)
@@ -198,7 +115,6 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
    */
   const [shown, setShown] = useState<number | null>(null)
   const [flipped, setFlipped] = useState(false)
-  const [copied, setCopied] = useState(false)
   /**
    * A line from your review, played out on the board instead of the game's own
    * continuation. Null when the board is following what actually happened.
@@ -527,7 +443,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                 game.color === 'white' ? 'bg-white' : 'bg-black ring-1 ring-zinc-500'
               }`}
             />
-            as {game.color === 'white' ? 'White' : 'Black'}
+            {game.color === 'white' ? 'White' : 'Black'}
           </span>
           <span className="text-sm text-zinc-100">
             vs {game.opponent}
@@ -561,20 +477,6 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           <Fact label="Played" value={new Date(game.playedAt).toLocaleDateString()} />
           <Fact label="Control" value={`${game.timeControl} · ${game.timeClass}`} />
           <Fact label="Ended by" value={endingOf(game)} />
-          {/* the depth is a status, and lives in the tag above; this is only the findings */}
-          <Fact
-            label="Engine found"
-            value={
-              analysed ? (
-                <span className="font-mono text-xs flex items-center gap-2">
-                  <span className="text-red-400">{analysed.blunders}??</span>
-                  <span className="text-amber-400">{analysed.mistakes}?</span>
-                </span>
-              ) : (
-                <span className="text-zinc-600 text-sm">no engine</span>
-              )
-            }
-          />
         </div>
 
         <div className="text-xs">
@@ -587,22 +489,9 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           )}
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <AnalyseGame userId={userId} game={game} onDone={applyAnalysed} />
-          <EngineModeToggle />
-          {game.annotatedPgn && (
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(game.annotatedPgn as string)
-                setCopied(true)
-              }}
-              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-            >
-              {copied ? 'PGN copied' : 'Copy annotated PGN'}
-            </button>
-          )}
-        </div>
       </section>
+
+      <EnginePanel userId={userId} game={game} onDone={applyAnalysed} />
 
       {/*
         Fixed tracks, not content-sized ones. With `minmax(0,28rem)` the column took
@@ -717,7 +606,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             {!variation && current && spentByPly.has(current.index) && (
               <span>
                 {current.color === game.color ? 'You' : 'Your opponent'} took{' '}
-                {duration((spentByPly.get(current.index) as number) * 1000)} here
+                {formatDuration(spentByPly.get(current.index) as number)} here
                 {remainingByPly.has(current.index) &&
                   `, ${formatClock(remainingByPly.get(current.index) as number)} left`}
               </span>

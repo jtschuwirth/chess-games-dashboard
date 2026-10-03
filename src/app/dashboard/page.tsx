@@ -6,7 +6,6 @@ import { useSearchParams } from 'next/navigation'
 import Chip from '@/components/Chip'
 import GameRow from '@/components/GameRow'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
-import AnalysisPanel from '@/components/AnalysisPanel'
 import ClockPanel from '@/components/ClockPanel'
 import ReviewPanel from '@/components/ReviewPanel'
 import StatBlockCard from '@/components/StatBlockCard'
@@ -35,7 +34,7 @@ import { SINCE_OPTIONS } from '@/lib/game-filters'
 import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL } from '@/types/chess'
-import type { Color, GameRecord, PatternRecord, Source, StoredAnalysis } from '@/types/chess'
+import type { Color, GameRecord, PatternRecord, Source } from '@/types/chess'
 
 const PAGE_SIZE = 50
 
@@ -136,15 +135,6 @@ function DashboardBody({ userId }: { userId: string }) {
     } finally {
       setRefreshing(false)
     }
-  }
-
-  /** Keeps the freshly analysed game in view without a re-read. */
-  function applyAnalysis(gameId: string, analysis: StoredAnalysis, annotatedPgn: string) {
-    setGames(prev =>
-      (prev ?? []).map(game =>
-        game.id === gameId ? { ...game, analysis, annotatedPgn } : game,
-      ),
-    )
   }
 
   /** Every position each game passed through, so switching variations is instant. */
@@ -527,8 +517,6 @@ function DashboardBody({ userId }: { userId: string }) {
       </section>
 
       <ClockPanel stats={clock} totalGames={scoped.length} />
-
-      <AnalysisPanel userId={userId} games={scoped} onAnalyzed={applyAnalysis} />
 
       <ReviewPanel
         games={scoped}

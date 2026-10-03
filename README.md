@@ -147,9 +147,8 @@ Firebase ID token — it is the one route that burns real CPU on request, and an
 is an invitation to spend the deployment's compute. It needs no extra configuration
 beyond the `NEXT_PUBLIC_FIREBASE_*` variables.
 
-Analysing one game is roughly eighty requests, which is fine. A batch run over a whole
-branch of the repertoire is thousands, and belongs on a real machine with the browser
-engine — that is why *this device* stays the default.
+Analysing one game is roughly eighty requests, which is fine on either setting. *This
+device* stays the default because it costs nothing and keeps your games off the wire.
 
 ## Data model
 

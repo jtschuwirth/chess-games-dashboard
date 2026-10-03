@@ -52,7 +52,8 @@ src/
 │       └── export/route.ts     # read-only JSON export, API-key gated
 ├── components/                 # PageShell, SyncPanel, PatternForm, StatBlockCard,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
-│                               # MoveList, ReviewEditor, ReviewPanel, DrillCard
+│                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
+│                               # EnginePanel, EngineMode
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -106,9 +107,8 @@ src/
   one list of marks that reach a screen or a PGN: `??` and `?`.
 - **The engine runs in the browser by default, and on the server on request.** `setEngineMode`
   picks, per device, and `analyzePosition` hides which one answered — the four callers never know.
-  Browser is the default because it is free: a batch run is thousands of positions, and sending
-  those to a serverless function would be absurd. The server exists for phones, where the local
-  engine is slow and the tab is suspended as soon as you switch app.
+  Browser is the default because it is free; the server exists for phones, where the local engine
+  is slow and the tab is suspended as soon as you switch app.
 - **`/api/engine` has three deployment traps, all of which only appear in production.** They are
   worth knowing because each cost a build-and-run to find:
   1. `firebase-admin/auth` cannot be loaded at all — jwks-rsa 4.1.0 declares jose 6 and then
@@ -255,14 +255,18 @@ src/
   `−2.2` reads "I am winning" when it means the opposite. `formatEval(cp, color)` in
   `lib/review.ts` flips the sign at the point of display and is the only place that does; the
   export keeps the stored frame, which is what its field comments say.
-- **One depth, `ENGINE_DEPTH` (21), for everything the app evaluates itself** — a single game's
-  analysis, the engine's choice on a move, the verdict on an alternative you typed, and the
-  drill. Splitting it into a careful depth and a fast one was tried and was wrong: these numbers
-  are read side by side, your alternative against the move you played, and two depths in one card
-  make the comparison meaningless. A quiet middlegame position costs about 1.3s at 21 against
-  364ms at 16, so a 40-move game runs about a minute and a half — affordable even for the results
-  you sit and wait for. The batch panel still picks its own, lower depth, because it pays that
-  cost once per game across a whole branch and only has to find the blunders.
+- **One depth, `ENGINE_DEPTH` (21), and no picker.** It covers a game's analysis, the engine's
+  choice on a move, the verdict on an alternative you typed, and the drill. Splitting it into a
+  careful depth and a fast one was tried and was wrong: these numbers are read side by side, your
+  alternative against the move you played, and two depths in one card make the comparison
+  meaningless. A quiet middlegame position costs about 1.3s at 21, so a 40-move game runs about a
+  minute and a half.
+- **Analysis is one game at a time, from that game's own page.** A batch panel over the filtered
+  slice used to sit on the dashboard, and the trouble with it was how easy it was to point at two
+  hundred games — hours of compute for games you were never going to read. `EnginePanel` gathers
+  everything the engine does to one game in one box: what it found, where it runs, the button,
+  and the annotated PGN. The depth tag stays up in the title, because that is a status of the
+  game rather than part of the engine's controls.
 - **A clock reading says whose it is.** The readout under the board carries two numbers that
   both belong to the move highlighted on it — already played — and on an opponent's move they are
   *their* think and *their* clock. Left unattributed they read as being about the move you are
@@ -276,8 +280,9 @@ src/
   header, each alternative and the drill.
 - **The move you played is re-evaluated in the review form**, alongside your alternatives, and the
   entry header shows that rather than the stored numbers once it lands. The stored pair was
-  written by whatever depth the batch run used — often 12 — so leaving it on screen next to a
-  depth-21 alternative invites exactly the comparison that cannot be made. The before position is
+  written by whatever depth analysed it at the time — games analysed before the depth settled at
+  21 still carry 12 — so leaving it on screen next to a depth-21 alternative invites exactly the
+  comparison that cannot be made. The before position is
   shared with every alternative, so this costs one extra lookup per entry.
 - **The engine says where to look; the review says why.** `reviewQueue` is analysed games with a
   blunder or mistake and no review yet, blunders first, which is what the "Review next game"
