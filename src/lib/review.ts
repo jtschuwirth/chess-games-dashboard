@@ -1,4 +1,4 @@
-import type { GameRecord, GameReview, ReviewedMistake, StoredAnalysis } from '@/types/chess'
+import type { Color, GameRecord, GameReview, ReviewedMistake, StoredAnalysis } from '@/types/chess'
 
 /**
  * A review names one to three moves. The cap is the whole method: a post-mortem that
@@ -279,12 +279,32 @@ export function missingFrom(mistake: ReviewedMistake): string | null {
   return null
 }
 
-/** Centipawns as a board shows them: +1.8, −0.4, mate. */
+/**
+ * Formats a number already in White's frame: +1.8, −0.4, +M. Stored evaluations are
+ * *not* in that frame, so reach for `formatEval` instead — this one is the plain
+ * formatter underneath it.
+ */
 export function formatCp(cp: number | null): string {
   if (cp === null) return '—'
-  if (Math.abs(cp) >= 9000) return cp > 0 ? 'mate' : '−mate'
+  if (Math.abs(cp) >= 9000) return cp > 0 ? '+M' : '−M'
 
   const pawns = cp / 100
   const sign = pawns > 0 ? '+' : pawns < 0 ? '−' : ''
   return `${sign}${Math.abs(pawns).toFixed(1)}`
+}
+
+/**
+ * An evaluation as a board shows it: positive favours White, negative favours Black,
+ * whichever side you played.
+ *
+ * Everything stored is from *your* point of view, because that is what the classifier
+ * reasons about — `cpLoss` has to mean what you gave away, and the guards in
+ * `classifyMove` ask whether *you* were already lost. But a Black player reading −2.2
+ * on a board reads "I am winning", so showing a stored number raw inverts its meaning
+ * for half of your games. The sign is flipped here, at the point of display, and
+ * nowhere else.
+ */
+export function formatEval(cp: number | null, color: Color): string {
+  if (cp === null) return '—'
+  return formatCp(color === 'white' ? cp : -cp)
 }

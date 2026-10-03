@@ -15,7 +15,7 @@ import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
 import { buildPatternTree, matchingPath, patternLabel } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
-import { formatCp, hasReview, isFault, knownTags } from '@/lib/review'
+import { formatEval, hasReview, isFault, knownTags } from '@/lib/review'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
 import type { Color, GameRecord, GameResult, GameReview, PatternRecord } from '@/types/chess'
@@ -523,8 +523,12 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
           <div className="text-xs text-zinc-600 flex gap-3 flex-wrap items-center">
             {shownMove && (
-              <span className="font-mono text-zinc-400">
-                {formatCp(shownMove.cpBefore)} → {formatCp(shownMove.cpAfter)}
+              <span
+                className="font-mono text-zinc-400"
+                title="From White's side, the way a board shows it"
+              >
+                {formatEval(shownMove.cpBefore, game.color)} →{' '}
+                {formatEval(shownMove.cpAfter, game.color)}
                 {isFault(shownMove.tag) && (
                   <span className="text-amber-400"> {shownMove.tag}</span>
                 )}

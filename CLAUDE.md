@@ -151,6 +151,13 @@ src/
 - **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
   already holds every game, so filtering by review state, counting tags and finding the next game
   to review cost no extra reads. `saveGames` merges, so a re-sync never clears a review.
+- **Evaluations are stored from your side and shown from White's.** The two frames exist for
+  different jobs: `cpLoss` has to mean what *you* gave away and `classifyMove`'s guards ask
+  whether *you* were already lost, so everything stored and every rule is in your frame. Boards
+  are not — positive favours White whoever is reading — and a Black player shown a raw stored
+  `−2.2` reads "I am winning" when it means the opposite. `formatEval(cp, color)` in
+  `lib/review.ts` flips the sign at the point of display and is the only place that does; the
+  export keeps the stored frame, which is what its field comments say.
 - **The review path runs at `REVIEW_DEPTH` (16), the batch at 12 by default.** A batch pays its
   depth once per game across a whole branch and only needs to find the blunders; analysing the
   single game in front of you, or asking what the engine wanted on one move, is about to become

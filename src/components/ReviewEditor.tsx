@@ -10,7 +10,7 @@ import {
   MAX_REVIEW_MISTAKES,
   TAG_GROUPS,
   candidateMoves,
-  formatCp,
+  formatEval,
   missingFrom,
 } from '@/lib/review'
 import type { GameRecord, GameReview, ReviewedMistake } from '@/types/chess'
@@ -148,7 +148,8 @@ export default function ReviewEditor({
       const san = sanFromUci(move.fenBefore, evaluation.bestMoveUci)
       setEngine(prev => ({
         ...prev,
-        [ply]: `${san ?? evaluation.bestMoveUci} (${formatCp(evaluation.cp)})`,
+        // scored for the side to move, which at a position before your move is you
+        [ply]: `${san ?? evaluation.bestMoveUci} (${formatEval(evaluation.cp, game.color)})`,
       }))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The engine did not answer.')
@@ -243,12 +244,15 @@ export default function ReviewEditor({
               type="button"
               disabled={full}
               onClick={() => add(move.ply, move.cpBefore, move.cpAfter)}
-              title={`${formatCp(move.cpBefore)} → ${formatCp(move.cpAfter)}`}
+              title={`${formatEval(move.cpBefore, game.color)} → ${formatEval(
+                move.cpAfter,
+                game.color,
+              )}`}
               className="px-3 py-1 text-xs rounded-full border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-mono"
             >
               {plyLabel(move.ply, move.san)}
               <span className={TAG_COLOR[move.tag] ?? 'text-zinc-500'}> {move.tag}</span>
-              <span className="text-zinc-500"> {formatCp(move.cpAfter)}</span>
+              <span className="text-zinc-500"> {formatEval(move.cpAfter, game.color)}</span>
             </button>
           ))}
 
@@ -298,8 +302,12 @@ export default function ReviewEditor({
                 {plyLabel(draft.ply, draft.san)}
               </button>
               {draft.cpBefore !== null && (
-                <span className="text-xs text-zinc-500 font-mono">
-                  {formatCp(draft.cpBefore)} → {formatCp(draft.cpAfter)}
+                <span
+                  className="text-xs text-zinc-500 font-mono"
+                  title="From White's side, the way a board shows it"
+                >
+                  {formatEval(draft.cpBefore, game.color)} →{' '}
+                  {formatEval(draft.cpAfter, game.color)}
                 </span>
               )}
               <button
