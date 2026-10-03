@@ -500,7 +500,16 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           </span>
           {hasReview(game) && (
             <span className="px-2 py-0.5 text-xs rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
-              reviewed
+              ◆ reviewed
+            </span>
+          )}
+          {/* same icon and colour as the game list, so the two views read alike */}
+          {analysed && (
+            <span
+              className="px-2 py-0.5 text-xs font-mono rounded-full bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"
+              title={`The engine has been over this game at depth ${analysed.depth}`}
+            >
+              ⚙ d{analysed.depth}
             </span>
           )}
           <a
@@ -517,12 +526,12 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           <Fact label="Played" value={new Date(game.playedAt).toLocaleDateString()} />
           <Fact label="Control" value={`${game.timeControl} · ${game.timeClass}`} />
           <Fact label="Ended by" value={endingOf(game)} />
+          {/* the depth is a status, and lives in the tag above; this is only the findings */}
           <Fact
-            label="Engine"
+            label="Engine found"
             value={
               analysed ? (
                 <span className="font-mono text-xs flex items-center gap-2">
-                  <span className="text-yellow-400">⚙ d{analysed.depth}</span>
                   <span className="text-red-400">{analysed.blunders}??</span>
                   <span className="text-amber-400">{analysed.mistakes}?</span>
                 </span>

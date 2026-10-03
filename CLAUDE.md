@@ -146,9 +146,13 @@ src/
   `minmax(0,28rem)` took its width from the readout *under* the board, so the board shrank on
   moves with no clock reading to show. The track is a fixed `28rem` for the same reason.
 - **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
-  engine depth as a yellow `⚙ d21`, and the blunder count when there is one. The game view's own
-  header repeats the engine badge in the same colours, since the depth a game was analysed at
-  changes how much its marks are worth and that is worth knowing while reading it. The depth badge shows on every
+  engine depth as a yellow `⚙ d21`, and the blunder count when there is one.
+- **Status is a tag, findings are a figure.** Both views use the same two markers — `◆ reviewed`
+  in blue, `⚙ d21` in yellow — and in the game view they are bordered pills in the title beside
+  the result, because "the engine has been over this at depth 21" is a state the game is in, not
+  a measurement. What the engine actually *found* is a separate figure below, `2?? 1?`, with no
+  depth in it. Keeping the depth in both places made the header read as though the number of
+  blunders were somehow 21-ish. The depth badge shows on every
   analysed game, including a clean one: without it a game the engine found nothing in looks
   exactly like a game the engine has never seen, which is the one thing the badge is for. The
   Engine filter has a matching `Not analysed yet` to list what is still missing.
