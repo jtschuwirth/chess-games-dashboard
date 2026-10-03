@@ -230,9 +230,11 @@ src/
   then the ones you keep missing, then the longest ago. A session's answers are layered over the
   queue rather than written back into it, because re-sorting after every answer would move the
   next card while you were looking at it.
-- **"Beyond what I could be expected to find" is the escape hatch, and it is not a shrug.** The
-  engine's objection stands, but no pattern is trainable from it, so the entry is stored and then
-  left out of everything that counts: `trainableMistakes` drops it, so it reaches neither the tag
+- **"Hard to find — no clear way I could have seen it" is the escape hatch, and it is not a
+  shrug.** It sits last in an entry, after the tags, because it is the conclusion you reach once
+  you have tried to name the pattern and found there isn't one. The wording deliberately says
+  nothing about the engine being right: the question is whether *you* had a way in. The entry is
+  stored and then left out of everything that counts: `trainableMistakes` drops it, so it reaches neither the tag
   table nor the tag filter, and `buildDrillCards` subtracts it in *both* modes — the engine still
   flags the move, so drilling `all` would otherwise hand it straight back. Those two using the same rule is what makes a row in the table and
   the games behind it the same set. A move marked this way needs no answers; everything else
@@ -244,6 +246,15 @@ src/
 - **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
   already holds every game, so filtering by review state, counting tags and finding the next game
   to review cost no extra reads. `saveGames` merges, so a re-sync never clears a review.
+- **Entries fold.** Three moves of questions, lines and tags is a long form, so each entry has a
+  `+`/`−` and collapses to its move, its evaluation and either its tags or "Hard to find". Ones
+  loaded from a saved review start folded, since they are already written; a new one never does.
+- **The board sits in a full-width row.** It takes whatever is left beside the move list rather
+  than a fixed track, so the section is as wide as every other box instead of a narrow island
+  between them, and the board is bigger for it. The track is still `minmax(0,1fr)` rather than
+  content-sized — a content-sized one took its width from the readout *under* the board and
+  resized the board from move to move. The move list stretches to the row's height so the two
+  share a bottom edge.
 - **The tag picker holds its own open state per entry.** Deriving it from "has no tags yet" read
   well and behaved badly: picking the first tag closed the picker under you, and tagging a move
   usually takes more than one. It is a button and a conditional, not `<details>` — React nulls

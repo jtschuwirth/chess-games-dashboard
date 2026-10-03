@@ -494,12 +494,13 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
       <EnginePanel userId={userId} game={game} onDone={applyAnalysed} />
 
       {/*
-        Fixed tracks, not content-sized ones. With `minmax(0,28rem)` the column took
-        its width from whatever sat under the board, so the readout growing by a
-        clock reading resized the board itself from move to move.
+        The board takes whatever is left beside the move list, so this section is as wide
+        as every other box on the page rather than a narrow island between them.
+        `minmax(0,1fr)` matters: a content-sized track took its width from the readout
+        *under* the board, which resized the board itself from move to move.
       */}
-      <section className="grid grid-cols-1 md:grid-cols-[28rem_19rem] gap-4 items-start justify-center">
-        <div className="flex flex-col gap-2 w-full max-w-[28rem] mx-auto">
+      <section className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_20rem] gap-4">
+        <div className="flex flex-col gap-2 w-full max-w-[28rem] md:max-w-none mx-auto">
           <Board
             fen={fen}
             orientation={orientation}
@@ -615,7 +616,8 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           </div>
         </div>
 
-        <div className="flex flex-col w-full max-w-[28rem] md:max-w-none mx-auto border border-zinc-800 rounded-xl overflow-hidden max-h-[28rem] bg-zinc-900">
+        {/* matches the board's height on a wide screen, so the row has one bottom edge */}
+        <div className="flex flex-col w-full max-w-[28rem] md:max-w-none mx-auto border border-zinc-800 rounded-xl overflow-hidden max-h-[28rem] md:max-h-none md:h-full bg-zinc-900">
           <div className="px-3 py-2 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500 shrink-0 flex items-center justify-between gap-2">
             <span>Moves</span>
             {variation && (

@@ -120,6 +120,16 @@ export default function ReviewEditor({
     Object.fromEntries((game.review?.mistakes ?? []).map(entry => [entry.ply, entry.tags.length === 0])),
   )
 
+  /**
+   * Which entries are folded away. Three moves of questions, lines and tags is a long
+   * form; collapsing the ones you have finished keeps the one you are working on in
+   * view. Entries loaded from a saved review start folded, since they are already
+   * written — a new one never does.
+   */
+  const [folded, setFolded] = useState<Record<number, boolean>>(() =>
+    Object.fromEntries((game.review?.mistakes ?? []).map(entry => [entry.ply, true])),
+  )
+
   /** The worker holds a few megabytes of wasm; nothing needs it once you leave. */
   useEffect(() => () => terminateEngine(), [])
 
@@ -244,6 +254,7 @@ export default function ReviewEditor({
       ].sort((a, b) => a.ply - b.ply),
     )
     setTagsOpen(prev => ({ ...prev, [ply]: true }))
+    setFolded(prev => ({ ...prev, [ply]: false }))
     onShowPly(ply)
   }
 
@@ -425,6 +436,7 @@ export default function ReviewEditor({
         const live = judged && judged !== 'failed' ? judged : null
         const shownBefore = live ? live.cpBefore : draft.cpBefore
         const shownAfter = live ? live.cpAfter : draft.cpAfter
+        const isFolded = folded[draft.ply] ?? false
 
         return (
           <div
@@ -432,6 +444,16 @@ export default function ReviewEditor({
             className="border border-zinc-800 rounded-lg p-4 flex flex-col gap-3 bg-zinc-950/40"
           >
             <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => setFolded(prev => ({ ...prev, [draft.ply]: !isFolded }))}
+                title={isFolded ? 'Open this move' : 'Fold this move away'}
+                aria-label={isFolded ? 'Open this move' : 'Fold this move away'}
+                aria-expanded={!isFolded}
+                className="w-5 h-5 shrink-0 flex items-center justify-center rounded border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 transition-colors leading-none"
+              >
+                {isFolded ? '+' : '−'}
+              </button>
               <button
                 type="button"
                 onClick={() => onShowPly(draft.ply)}
@@ -461,22 +483,16 @@ export default function ReviewEditor({
               </button>
             </div>
 
-            <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={draft.unreasonable}
-                onChange={event => patch(draft.ply, { unreasonable: event.target.checked })}
-                className="mt-0.5 accent-zinc-400"
-              />
-              <span>
-                Beyond what I could be expected to find
-                <span className="block text-zinc-600">
-                  The engine is right and there was no realistic way to see it. Kept on record,
-                  left out of the tag counts — there is no pattern to train.
-                </span>
-              </span>
-            </label>
-
+            {isFolded ? (
+              <p className="text-xs text-zinc-500">
+                {draft.unreasonable
+                  ? 'Hard to find — left out of the tag counts.'
+                  : draft.tags.length > 0
+                    ? draft.tags.join(' · ')
+                    : 'Nothing written down yet.'}
+              </p>
+            ) : (
+              <>
             {!draft.unreasonable && (
               <>
                 <div className="flex flex-col gap-1.5">
@@ -728,6 +744,25 @@ export default function ReviewEditor({
                 </div>
               )}
             </div>
+
+            <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer border-t border-zinc-800 pt-3">
+              <input
+                type="checkbox"
+                checked={draft.unreasonable}
+                onChange={event => patch(draft.ply, { unreasonable: event.target.checked })}
+                className="mt-0.5 accent-zinc-400"
+              />
+              <span>
+                Hard to find — no clear way I could have seen it
+                <span className="block text-zinc-600">
+                  Still recorded, but left out of the tag counts: there is no pattern to train
+                  from a move you had no way of finding.
+                </span>
+              </span>
+            </label>
+
+              </>
+            )}
           </div>
         )
       })}
