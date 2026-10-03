@@ -173,7 +173,12 @@ export default function ReviewEditor({
         try {
           const before = await analyzePosition(entry.fenBefore, REVIEW_DEPTH)
           const after = await analyzePosition(entry.fenAfter, REVIEW_DEPTH)
-          if (cancelled) return
+          // superseded by a later keystroke: hand the move back so the next run takes it,
+          // or it sits on "checking…" forever having been marked as already requested
+          if (cancelled) {
+            requested.current.delete(entry.key)
+            return
+          }
 
           const cpBefore = before.cp
           // scored for your opponent, who is to move after your alternative
@@ -183,9 +188,12 @@ export default function ReviewEditor({
             [entry.key]: { cpBefore, cpAfter, tag: classifyMove(cpBefore, cpAfter, false) },
           }))
         } catch {
-          // the engine was stopped, or the tab is going away — allow a later retry
-          requested.current.delete(entry.key)
-          if (!cancelled) setVerdicts(prev => ({ ...prev, [entry.key]: 'failed' }))
+          if (cancelled) {
+            requested.current.delete(entry.key)
+            return
+          }
+          // recorded rather than retried: a failing engine must not be asked again
+          setVerdicts(prev => ({ ...prev, [entry.key]: 'failed' }))
         }
       }
     }, CHECK_DELAY)

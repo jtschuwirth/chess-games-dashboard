@@ -202,7 +202,16 @@ src/
   server. Note that `persistentLocalCache` alone changes nothing: `getDocs` still queries the
   server and bills for every document, so the explicit cache read is the part that saves quota.
   Syncs write through the cache, so it is only stale if another device synced; the dashboard's
-  Refresh button and the `fresh` option force a server read.
+  Refresh button and the `fresh` option force a server read. The cache is built with
+  `cacheSizeBytes: CACHE_SIZE_UNLIMITED`, which turns the LRU collector off outright: every
+  eviction is a billed read later, the whole collection is a few hundred small documents, and the
+  SDK never starts its `Collect garbage` scheduler when the threshold is -1, so a tab that is not
+  primary has one fewer background job to fail at.
+- **A failed read shows itself instead of spinning.** Every page load went through a bare
+  `.then`, so a Firestore failure — the daily quota, a dropped connection, rules — left the page
+  on its spinner forever with nothing but an unhandled rejection in the console. Each page now
+  catches, renders `LoadError` with a Try again, and clears the error inside the promise callback
+  rather than synchronously in the effect, which would cascade renders.
 - **Stats are never stored.** `computeSplit` runs over the loaded games on every render.
 - **Pattern matching is position-based**: `positionKey` is FEN fields 1–3 (placement, side to move,
   castling) after the pattern's last move, and a game matches if it ever reaches that key within

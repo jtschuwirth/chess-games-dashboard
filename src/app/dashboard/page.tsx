@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import Chip from '@/components/Chip'
 import GameRow from '@/components/GameRow'
-import PageShell, { Spinner } from '@/components/PageShell'
+import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import AnalysisPanel from '@/components/AnalysisPanel'
 import ClockPanel from '@/components/ClockPanel'
 import ReviewPanel from '@/components/ReviewPanel'
@@ -83,6 +83,7 @@ function DashboardBody({ userId }: { userId: string }) {
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
   const [limit, setLimit] = useState(PAGE_SIZE)
   const [refreshing, setRefreshing] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const {
     opening,
@@ -108,21 +109,30 @@ function DashboardBody({ userId }: { userId: string }) {
     setLimit(PAGE_SIZE)
   }, [])
 
+  /** State only moves in the callbacks: setting it synchronously here would cascade. */
+  const load = useCallback(
+    (options?: { fresh: true }) =>
+      Promise.all([getGames(userId, options), getPatterns(userId, options)])
+        .then(([loadedGames, loadedPatterns]) => {
+          setGames(loadedGames)
+          setPatterns(loadedPatterns)
+          setLoadError(null)
+        })
+        .catch(caught => {
+          setLoadError(errorText(caught, 'Could not load your games from Firestore.'))
+        }),
+    [userId],
+  )
+
   useEffect(() => {
-    getGames(userId).then(setGames)
-    getPatterns(userId).then(setPatterns)
-  }, [userId])
+    load()
+  }, [load])
 
   /** Reads come from the local cache; this bills a server read to pick up other devices. */
   async function refresh() {
     setRefreshing(true)
     try {
-      const [freshGames, freshPatterns] = await Promise.all([
-        getGames(userId, { fresh: true }),
-        getPatterns(userId, { fresh: true }),
-      ])
-      setGames(freshGames)
-      setPatterns(freshPatterns)
+      await load({ fresh: true })
     } finally {
       setRefreshing(false)
     }
@@ -232,6 +242,18 @@ function DashboardBody({ userId }: { userId: string }) {
 
     return rows
   }, [scoped, current, tree, positionKeys, patch, unclassifiedView])
+
+  if (loadError) {
+    return (
+      <LoadError
+        message={loadError}
+        onRetry={() => {
+          setLoadError(null)
+          load({ fresh: true })
+        }}
+      />
+    )
+  }
 
   if (games === null) {
     return (

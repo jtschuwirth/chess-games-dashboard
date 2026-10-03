@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useParams, useSearchParams } from 'next/navigation'
 import Board from '@/components/Board'
 import MoveList from '@/components/MoveList'
-import PageShell, { Spinner } from '@/components/PageShell'
+import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
 import { replayGame } from '@/lib/board'
 import { alignClocks, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
@@ -145,6 +145,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const [games, setGames] = useState<GameRecord[] | null>(null)
   const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const [missing, setMissing] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
   /**
    * Index of the last move played on the board, -1 for the starting position, or null
    * until you move it yourself — which is what lets the board open on the move worth
@@ -158,10 +159,24 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const search = useMemo(() => writeFilters(readFilters(searchParams)), [searchParams])
   const filters = useMemo(() => readFilters(searchParams), [searchParams])
 
+  /** State only moves in the callbacks: setting it synchronously here would cascade. */
+  const load = useCallback(
+    (options?: { fresh: true }) =>
+      Promise.all([getGames(userId, options), getPatterns(userId, options)])
+        .then(([loadedGames, loadedPatterns]) => {
+          setGames(loadedGames)
+          setPatterns(loadedPatterns)
+          setLoadError(null)
+        })
+        .catch(caught => {
+          setLoadError(errorText(caught, 'Could not load this game from Firestore.'))
+        }),
+    [userId],
+  )
+
   useEffect(() => {
-    getGames(userId).then(setGames)
-    getPatterns(userId).then(setPatterns)
-  }, [userId])
+    load()
+  }, [load])
 
   const game = games?.find(entry => entry.id === gameId) ?? null
 
@@ -170,11 +185,15 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     if (games === null || game || missing) return
 
     let cancelled = false
-    getGames(userId, { fresh: true }).then(fresh => {
-      if (cancelled) return
-      setGames(fresh)
-      if (!fresh.some(entry => entry.id === gameId)) setMissing(true)
-    })
+    getGames(userId, { fresh: true })
+      .then(fresh => {
+        if (cancelled) return
+        setGames(fresh)
+        if (!fresh.some(entry => entry.id === gameId)) setMissing(true)
+      })
+      .catch(caught => {
+        if (!cancelled) setLoadError(errorText(caught, 'Could not re-read your games.'))
+      })
 
     return () => {
       cancelled = true
@@ -315,6 +334,18 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
   function applyAnalysed(updated: GameRecord) {
     setGames(prev => (prev ?? []).map(entry => (entry.id === updated.id ? updated : entry)))
+  }
+
+  if (loadError) {
+    return (
+      <LoadError
+        message={loadError}
+        onRetry={() => {
+          setLoadError(null)
+          load({ fresh: true })
+        }}
+      />
+    )
   }
 
   if (games === null || (!game && !missing)) {

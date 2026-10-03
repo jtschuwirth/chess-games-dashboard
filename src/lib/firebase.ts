@@ -1,6 +1,7 @@
 import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'
 import { getAuth } from 'firebase/auth'
 import {
+  CACHE_SIZE_UNLIMITED,
   getFirestore,
   initializeFirestore,
   persistentLocalCache,
@@ -44,7 +45,15 @@ function createDb(instance: FirebaseApp): Firestore {
 
   try {
     return initializeFirestore(instance, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      localCache: persistentLocalCache({
+        // Unlimited disables the LRU collector outright. Evicting cached games is the
+        // one thing this cache must never do — every eviction is a billed read later —
+        // and the collection is a few hundred small documents. It also silences the
+        // 'Collect garbage' lease errors: the scheduler is never started when the
+        // threshold is -1, so a tab that is not primary has nothing to fail at.
+        cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+        tabManager: persistentMultipleTabManager(),
+      }),
     })
   } catch {
     return getFirestore(instance)

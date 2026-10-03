@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
-import PageShell, { Spinner } from '@/components/PageShell'
+import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import SyncPanel from '@/components/SyncPanel'
 import { getProfile, saveProfile } from '@/lib/firestore'
 import type { UserProfile } from '@/types/chess'
@@ -14,31 +14,50 @@ function ProfileBody({ userId }: { userId: string }) {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [addedCount, setAddedCount] = useState<number | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(
+    () =>
+      getProfile(userId)
+        .then(loaded => {
+          setProfile(loaded)
+          setChesscom(loaded.chesscomUsername ?? '')
+          setLichess(loaded.lichessUsername ?? '')
+          setError(null)
+        })
+        .catch(caught => setError(errorText(caught, 'Could not load your profile.'))),
+    [userId],
+  )
 
   useEffect(() => {
-    getProfile(userId).then(loaded => {
-      setProfile(loaded)
-      setChesscom(loaded.chesscomUsername ?? '')
-      setLichess(loaded.lichessUsername ?? '')
-    })
-  }, [userId])
+    load()
+  }, [load])
 
   async function handleSaveUsernames() {
     setSaving(true)
     setSaved(false)
+    setError(null)
     const next: UserProfile = {
       chesscomUsername: chesscom.trim() || null,
       lichessUsername: lichess.trim() || null,
       lastSyncAt: profile?.lastSyncAt ?? null,
     }
-    await saveProfile(userId, {
-      chesscomUsername: next.chesscomUsername,
-      lichessUsername: next.lichessUsername,
-    })
-    setProfile(next)
-    setSaving(false)
-    setSaved(true)
+
+    try {
+      await saveProfile(userId, {
+        chesscomUsername: next.chesscomUsername,
+        lichessUsername: next.lichessUsername,
+      })
+      setProfile(next)
+      setSaved(true)
+    } catch (caught) {
+      setError(errorText(caught, 'Could not save your usernames.'))
+    } finally {
+      setSaving(false)
+    }
   }
+
+  if (error && !profile) return <LoadError message={error} onRetry={load} />
 
   if (!profile) {
     return (
@@ -93,6 +112,7 @@ function ProfileBody({ userId }: { userId: string }) {
             {saving ? 'Saving…' : 'Save usernames'}
           </button>
           {saved && <span className="text-xs text-emerald-400">Saved</span>}
+          {error && <span className="text-xs text-red-400">{error}</span>}
           {profile.lastSyncAt && (
             <span className="text-xs text-zinc-500 ml-auto">
               Last sync {new Date(profile.lastSyncAt).toLocaleString()}

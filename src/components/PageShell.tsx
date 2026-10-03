@@ -11,6 +11,33 @@ export function Spinner({ size = 'w-8 h-8' }: { size?: string }) {
   return <div className={`${size} border-2 border-zinc-600 border-t-zinc-200 rounded-full animate-spin`} />
 }
 
+/** Turns whatever was thrown into something a person can read. */
+export function errorText(caught: unknown, fallback: string): string {
+  return caught instanceof Error && caught.message ? caught.message : fallback
+}
+
+/**
+ * A load that failed, rather than a spinner that never stops. Firestore reads can fail
+ * for reasons that have nothing to do with the code — the daily quota, a dropped
+ * connection, rules — and an uncaught one leaves the page spinning forever while the
+ * only trace is an unhandled rejection in the console.
+ */
+export function LoadError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  return (
+    <div className="py-16 flex flex-col items-center gap-3 text-center">
+      <p className="text-sm text-red-400">{message}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 rounded-lg hover:bg-zinc-700 transition-colors"
+        >
+          Try again
+        </button>
+      )}
+    </div>
+  )
+}
+
 /**
  * Handles the auth loading / signed-out states once, then hands the signed-in
  * user to the page body.

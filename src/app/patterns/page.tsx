@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import PageShell, { Spinner } from '@/components/PageShell'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import PatternForm from '@/components/PatternForm'
 import { deletePattern, getPatterns, savePattern, updatePattern } from '@/lib/firestore'
 import { buildPatternTree, flattenTree, formatMoves } from '@/lib/pattern'
@@ -16,15 +16,28 @@ const COLOR_BADGE: Record<PatternColor, string> = {
 function PatternsBody({ userId }: { userId: string }) {
   const [patterns, setPatterns] = useState<PatternRecord[] | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = useCallback(
+    () =>
+      getPatterns(userId)
+        .then(loaded => {
+          setPatterns(loaded)
+          setError(null)
+        })
+        .catch(caught => setError(errorText(caught, 'Could not load your saved openings.'))),
+    [userId],
+  )
 
   useEffect(() => {
-    getPatterns(userId).then(setPatterns)
-  }, [userId])
+    load()
+  }, [load])
 
   const rows = useMemo(() => flattenTree(buildPatternTree(patterns ?? [])), [patterns])
   const editing = patterns?.find(pattern => pattern.id === editingId) ?? null
 
   async function handleSubmit(pattern: NewPattern) {
+    setError(null)
     if (editingId) {
       await updatePattern(userId, editingId, pattern)
       setPatterns(prev =>
@@ -39,7 +52,13 @@ function PatternsBody({ userId }: { userId: string }) {
   }
 
   async function handleDelete(patternId: string) {
-    await deletePattern(userId, patternId)
+    setError(null)
+    try {
+      await deletePattern(userId, patternId)
+    } catch (caught) {
+      setError(errorText(caught, 'Could not delete that opening.'))
+      return
+    }
     setPatterns(prev => (prev ?? []).filter(pattern => pattern.id !== patternId))
     if (editingId === patternId) setEditingId(null)
   }
@@ -53,6 +72,8 @@ function PatternsBody({ userId }: { userId: string }) {
         onSubmit={handleSubmit}
         onCancel={editingId ? () => setEditingId(null) : undefined}
       />
+
+      {error && <LoadError message={error} onRetry={load} />}
 
       {patterns === null ? (
         <div className="py-16 flex justify-center">
