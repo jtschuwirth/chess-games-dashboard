@@ -171,11 +171,14 @@ src/
   opponent playing along; the continuation is still worth recording, since it is the plan you
   were actually counting on. An illegal move ends the line there, and the legal prefix is kept
   rather than the whole row being thrown away.
-- **Saved lines play out on the board.** At a reviewed move the game view offers each line under
-  the board; clicking one puts the board on it, and the controls walk the variation instead of
-  the game. Stepping back past its first move returns you to the branch point, which is also what
-  `⏮` and "back to the game" do. The clock and evaluation readouts hide while a variation is
-  open, because neither belongs to a position that was never reached.
+- **Saved lines are nested in the move list**, under the move they replace, the way a board's
+  analysis panel shows a variation — not under the board, where they were only visible while you
+  happened to be standing on the branch ply, and easy to miss entirely. Every move of a line is
+  its own button, so a line can be joined part way rather than only played from its start, and
+  the reason you wrote sits under it as the commentary. Clicking one hands the controls to the
+  variation; stepping back past its first move returns to the branch point, as do `⏮` and
+  "leave the line" in the list's header. The clock and evaluation readouts hide while a variation
+  is open, because neither belongs to a position that was never reached.
 - **`betterMoves` has had three stored shapes** — a plain SAN string, `{ san, why }`, and now
   `{ line, why }` — and `betterMovesOf` converts the older two on read rather than migrating the
   documents, the same habit as the pre-game ratings and the variation tree.

@@ -203,15 +203,28 @@ export function parseLine(
   return playLine(fen, tokens, maxPlies)
 }
 
+/**
+ * A line split into its moves, each with the numbering that belongs in front of it, so
+ * a move list can make every move of a variation separately clickable.
+ */
+export function lineTokens(
+  startPly: number,
+  moves: string[],
+): { san: string; prefix: string }[] {
+  return moves.map((san, offset) => {
+    const ply = startPly + offset
+    const number = Math.floor(ply / 2) + 1
+
+    if (ply % 2 === 0) return { san, prefix: `${number}.` }
+    // only a line that opens on black's move needs the ellipsis
+    return { san, prefix: offset === 0 ? `${number}...` : '' }
+  })
+}
+
 /** "14... h6 15. Bxh6 gxh6" — a line written from the ply it branches at. */
 export function formatLine(startPly: number, moves: string[]): string {
-  return moves
-    .map((san, offset) => {
-      const ply = startPly + offset
-      const number = Math.floor(ply / 2) + 1
-      if (ply % 2 === 0) return `${number}. ${san}`
-      return offset === 0 ? `${number}... ${san}` : san
-    })
+  return lineTokens(startPly, moves)
+    .map(token => (token.prefix ? `${token.prefix} ${token.san}` : token.san))
     .join(' ')
 }
 
