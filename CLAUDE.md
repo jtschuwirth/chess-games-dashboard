@@ -46,8 +46,8 @@ src/
 │       ├── lichess/games/route.ts
 │       └── export/route.ts     # read-only JSON export, API-key gated
 ├── components/                 # PageShell, SyncPanel, PatternForm, StatBlockCard,
-│                               # VariationTable, GameRow, Chip, Board, MoveList,
-│                               # ReviewEditor, ReviewPanel
+│                               # VariationTable, GameRow, Chip, Board, PieceSprites,
+│                               # MoveList, ReviewEditor, ReviewPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -98,8 +98,9 @@ src/
   cached by FEN — games in one opening share most of their early positions.
 - **Analysis is written per game as it finishes**, both as a `StoredAnalysis` for filtering and as
   an `annotatedPgn` carrying the symbols on your own moves. Stopping a run therefore loses at most
-  one game. Only your moves are annotated; a plain `!` is never written, since it would mark
-  nearly every move.
+  one game. Only your moves are annotated, and only their faults: `!` and `!!` both mean the
+  move matched the engine's first choice, which is true of most book moves, so neither is written
+  or displayed — `isFault` in `lib/review.ts` is the one list of marks that reach the screen.
 - **The providers do not share a termination vocabulary.** chess.com says `timeout` for running
   out of clock; lichess says `outoftime` and reuses `timeout` for a player who walked away.
   Matching the raw string silently undercounted the flag KPI. `normalizeEnding` in
@@ -116,6 +117,17 @@ src/
   they are indistinguishable there. Matching on the opponent's *name* would be wrong — a real
   chess.com human in this data is called `anonymous1177`. Bot games are still stored and flagged
   rather than skipped at sync, so a re-sync backfills the flag on games saved before it existed.
+- **The board uses the Cburnett piece set** (via lichess-org/lila, CC BY-SA 3.0), vendored in
+  `components/PieceSprites.tsx` as twelve SVG symbols that each square references with `<use>`.
+  Unicode glyphs were tried first and are not good enough: the hollow white pieces render
+  differently per font and vanish on a light square. The sprite sheet is a raw string rather than
+  JSX, since hand-converting every `fill-rule` to `fillRule` would only invite transcription
+  slips. Board colours are deliberately off the zinc palette — a board has to read as a board.
+- **Every square is pinned to a grid fraction and the pieces are absolutely placed**, because a
+  board that resizes as you step through it is unusable. Both failure modes were real: rows that
+  sized to their contents grew around a tall piece, and a board column sized with
+  `minmax(0,28rem)` took its width from the readout *under* the board, so the board shrank on
+  moves with no clock reading to show. The track is a fixed `28rem` for the same reason.
 - **A review is three questions about at most three moves.** The method is borrowed from
   incident root-cause analysis: name what failed, why it failed, and what would have caught it.
   `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every move explains nothing,

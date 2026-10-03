@@ -3,12 +3,11 @@
 import { useEffect, useRef } from 'react'
 import type { Ply } from '@/lib/board'
 
-/** Engine marks, coloured by how much they cost. */
+/** Engine marks, coloured by how much they cost. Faults only — see `isFault`. */
 const TAG_COLOR: Record<string, string> = {
   '??': 'text-red-400',
   '?': 'text-amber-400',
   '?!': 'text-yellow-600',
-  '!!': 'text-emerald-400',
 }
 
 /**

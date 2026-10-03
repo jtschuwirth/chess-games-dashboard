@@ -225,6 +225,17 @@ function engineFindings(game: GameRecord): number {
   return analysis.blunders * 10 + analysis.mistakes
 }
 
+/**
+ * The marks worth putting on screen. The classifier also reports `!!` when a move was
+ * the engine's first choice, which is most book moves and nearly every recapture — as
+ * praise it is meaningless, so nothing displays it.
+ */
+export const FAULT_TAGS = ['??', '?', '?!']
+
+export function isFault(tag: string): boolean {
+  return FAULT_TAGS.includes(tag)
+}
+
 export interface MistakeCandidate {
   ply: number
   san: string
@@ -238,7 +249,7 @@ export interface MistakeCandidate {
 /** The engine's own objections, worst first — the moves offered up for review. */
 export function candidateMoves(analysis: StoredAnalysis | undefined): MistakeCandidate[] {
   return (analysis?.moves ?? [])
-    .filter(move => move.tag === '??' || move.tag === '?' || move.tag === '?!')
+    .filter(move => isFault(move.tag))
     .sort((a, b) => b.cpLoss - a.cpLoss)
     .map(move => ({
       ply: move.ply,

@@ -86,8 +86,12 @@ export class AnalysisStopped extends Error {
   }
 }
 
-/** Tags that are worth writing into a PGN; a plain `!` would mark almost every move. */
-const WORTH_ANNOTATING: MoveTag[] = ['??', '?', '?!', '!!']
+/**
+ * Tags worth writing into a PGN. Only the faults: `!` and `!!` both say the move was
+ * the engine's choice, which is true of most book moves, so writing them would put a
+ * brilliancy on 1. e4.
+ */
+const WORTH_ANNOTATING: MoveTag[] = ['??', '?', '?!']
 
 /**
  * Evaluates every position the game passed through and classifies your own moves.

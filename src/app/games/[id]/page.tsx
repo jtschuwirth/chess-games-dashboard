@@ -15,10 +15,10 @@ import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
 import { buildPatternTree, matchingPath, patternLabel } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
-import { formatCp, hasReview, knownTags } from '@/lib/review'
+import { formatCp, hasReview, isFault, knownTags } from '@/lib/review'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
-import type { GameRecord, GameResult, GameReview, PatternRecord } from '@/types/chess'
+import type { Color, GameRecord, GameResult, GameReview, PatternRecord } from '@/types/chess'
 
 /** Deep enough to trust a single game's marks, since you are about to explain them. */
 const SINGLE_GAME_DEPTH = 14
@@ -39,6 +39,36 @@ interface Neighbours {
   /** This game's place in the slice, 1-based. Null when the filters exclude it. */
   position: number | null
   total: number
+}
+
+/** One control in the row under the board; they share the board's width. */
+function NavButton({
+  onClick,
+  disabled,
+  title,
+  wide = false,
+  children,
+}: {
+  onClick: () => void
+  disabled?: boolean
+  title: string
+  /** The stepping buttons carry the row; first, last and flip stay narrow. */
+  wide?: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={title}
+      className={`${
+        wide ? 'flex-[1.6]' : 'flex-1'
+      } py-1.5 rounded-md border border-zinc-800 bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100 transition-colors disabled:opacity-30 disabled:hover:bg-zinc-900 text-sm leading-none`}
+    >
+      {children}
+    </button>
+  )
 }
 
 function Fact({ label, value }: { label: string; value: React.ReactNode }) {
@@ -124,6 +154,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
    * looking at without jumping back there every time the game is saved.
    */
   const [shown, setShown] = useState<number | null>(null)
+  const [flipped, setFlipped] = useState(false)
   const [copied, setCopied] = useState(false)
 
   /** The dashboard's filters ride along in the URL, so Back lands where you left. */
@@ -224,7 +255,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const engineTags = useMemo(() => {
     const map = new Map<number, string>()
     for (const move of game?.analysis?.moves ?? []) {
-      if (move.tag !== '!') map.set(move.ply, move.tag)
+      if (isFault(move.tag)) map.set(move.ply, move.tag)
     }
     return map
   }, [game])
@@ -309,6 +340,8 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     )
   }
 
+  const other: Color = game.color === 'white' ? 'black' : 'white'
+  const orientation = flipped ? other : game.color
   const current = cursor >= 0 ? replay.plies[cursor] : null
   const fen = replay.fens[Math.min(cursor + 1, replay.fens.length - 1)]
   const analysed = game.analysis
@@ -436,52 +469,67 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
         </div>
       </section>
 
-      <section className="grid md:grid-cols-[minmax(0,28rem)_minmax(0,17rem)] gap-4 items-start justify-center">
-        <div className="flex flex-col gap-2">
+      {/*
+        Fixed tracks, not content-sized ones. With `minmax(0,28rem)` the column took
+        its width from whatever sat under the board, so the readout growing by a
+        clock reading resized the board itself from move to move.
+      */}
+      <section className="grid grid-cols-1 md:grid-cols-[28rem_17rem] gap-4 items-start justify-center">
+        <div className="flex flex-col gap-2 w-full max-w-[28rem] mx-auto">
           <Board
             fen={fen}
-            orientation={game.color}
+            orientation={orientation}
             highlight={current ? [current.from, current.to] : []}
           />
 
           <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => setShown(-1)}
-              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
-            >
+            <NavButton onClick={() => setShown(-1)} disabled={cursor < 0} title="Start">
               ⏮
-            </button>
-            <button
-              onClick={() => step(-1)}
-              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
-            >
+            </NavButton>
+            <NavButton onClick={() => step(-1)} disabled={cursor < 0} title="Previous move" wide>
               ‹
-            </button>
-            <button
+            </NavButton>
+
+            <span className="flex-[2.4] text-center text-xs font-mono text-zinc-300 tabular-nums truncate">
+              {current ? (
+                <>
+                  {current.moveNumber}
+                  {current.color === 'white' ? '.' : '…'} {current.san}
+                  <span className="text-zinc-600">
+                    {' '}
+                    {cursor + 1}/{replay.plies.length}
+                  </span>
+                </>
+              ) : (
+                <span className="text-zinc-600">start</span>
+              )}
+            </span>
+
+            <NavButton
               onClick={() => step(1)}
-              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
+              disabled={cursor >= replay.plies.length - 1}
+              title="Next move"
+              wide
             >
               ›
-            </button>
-            <button
+            </NavButton>
+            <NavButton
               onClick={() => setShown(replay.plies.length - 1)}
-              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
+              disabled={cursor >= replay.plies.length - 1}
+              title="End"
             >
               ⏭
-            </button>
-
-            <span className="ml-2 text-xs text-zinc-500 font-mono">
-              {current
-                ? `${current.moveNumber}${current.color === 'white' ? '.' : '...'} ${current.san}`
-                : 'start'}
-            </span>
+            </NavButton>
+            <NavButton onClick={() => setFlipped(value => !value)} title="Flip the board">
+              ⇅
+            </NavButton>
           </div>
 
-          <div className="text-xs text-zinc-600 flex gap-3 flex-wrap">
+          <div className="text-xs text-zinc-600 flex gap-3 flex-wrap items-center">
             {shownMove && (
-              <span className="font-mono">
+              <span className="font-mono text-zinc-400">
                 {formatCp(shownMove.cpBefore)} → {formatCp(shownMove.cpAfter)}
-                {shownMove.tag !== '!' && shownMove.tag !== '!!' && (
+                {isFault(shownMove.tag) && (
                   <span className="text-amber-400"> {shownMove.tag}</span>
                 )}
               </span>
@@ -492,11 +540,11 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             {current && remainingByPly.has(current.index) && (
               <span>{remainingByPly.get(current.index)}s left</span>
             )}
-            <span className="text-zinc-700">arrow keys to step</span>
+            <span className="text-zinc-700 ml-auto">← → to step</span>
           </div>
         </div>
 
-        <div className="flex flex-col border border-zinc-800 rounded-xl overflow-hidden max-h-[28rem] bg-zinc-900">
+        <div className="flex flex-col w-full max-w-[28rem] md:max-w-none mx-auto border border-zinc-800 rounded-xl overflow-hidden max-h-[28rem] bg-zinc-900">
           <div className="px-3 py-2 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500 shrink-0">
             Moves
           </div>
