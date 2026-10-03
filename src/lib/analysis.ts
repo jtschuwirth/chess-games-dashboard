@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js'
 import { analyzePosition, MATE_SCORE } from './engine'
+import { isFault } from './review'
 import type { GameRecord } from '@/types/chess'
 
 /** Annotation symbols, as used in the chess-courses annotator. */
@@ -13,6 +14,15 @@ export interface Thresholds {
 }
 
 export const DEFAULT_THRESHOLDS: Thresholds = { blunder: 300, mistake: 100 }
+
+/**
+ * Depth for the review path: analysing the single game in front of you, and asking what
+ * the engine wanted on one move. Deeper than a batch run, where the cost is multiplied by
+ * every game in a branch and 12 is enough to find the blunders — here you are about to
+ * write down why one move was wrong, so the evaluation it rests on should be the better
+ * one, and it is one game's worth of work.
+ */
+export const REVIEW_DEPTH = 16
 
 /**
  * Beyond this the position is already decided, so a further slip is not the move
@@ -85,13 +95,6 @@ export class AnalysisStopped extends Error {
     super('Analysis stopped')
   }
 }
-
-/**
- * Tags worth writing into a PGN. Only the faults: `!` and `!!` both say the move was
- * the engine's choice, which is true of most book moves, so writing them would put a
- * brilliancy on 1. e4.
- */
-const WORTH_ANNOTATING: MoveTag[] = ['??', '?', '?!']
 
 /**
  * Evaluates every position the game passed through and classifies your own moves.
@@ -194,8 +197,9 @@ export function buildAnnotatedPgn(game: GameRecord, analysis: GameAnalysis): str
   game.moves.forEach((san, ply) => {
     if (ply % 2 === 0) body.push(`${ply / 2 + 1}.`)
 
+    // the PGN carries exactly the marks the app shows — see FAULT_TAGS
     const tag = tags.get(ply)
-    body.push(tag && WORTH_ANNOTATING.includes(tag) ? san + tag : san)
+    body.push(tag && isFault(tag) ? san + tag : san)
   })
   body.push(pgnResult(game))
 

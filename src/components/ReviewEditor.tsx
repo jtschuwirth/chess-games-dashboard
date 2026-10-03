@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Chip from '@/components/Chip'
 import { parseProposedMoves, plyLabel, sanFromUci, type Ply } from '@/lib/board'
+import { REVIEW_DEPTH } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
@@ -14,13 +15,9 @@ import {
 } from '@/lib/review'
 import type { GameRecord, GameReview, ReviewedMistake } from '@/types/chess'
 
-/** Depth for the one-off "what did the engine want" lookup, higher than a batch run. */
-const ENGINE_DEPTH = 16
-
 const TAG_COLOR: Record<string, string> = {
   '??': 'text-red-400',
   '?': 'text-amber-400',
-  '?!': 'text-yellow-600',
 }
 
 /** An entry being written. `better` stays raw text until it is parsed on save. */
@@ -147,7 +144,7 @@ export default function ReviewEditor({
     setAsking(ply)
     setError(null)
     try {
-      const evaluation = await analyzePosition(move.fenBefore, ENGINE_DEPTH)
+      const evaluation = await analyzePosition(move.fenBefore, REVIEW_DEPTH)
       const san = sanFromUci(move.fenBefore, evaluation.bestMoveUci)
       setEngine(prev => ({
         ...prev,

@@ -7,7 +7,6 @@ import type { Ply } from '@/lib/board'
 const TAG_COLOR: Record<string, string> = {
   '??': 'text-red-400',
   '?': 'text-amber-400',
-  '?!': 'text-yellow-600',
 }
 
 /**

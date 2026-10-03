@@ -9,7 +9,7 @@ import PageShell, { Spinner } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
 import { replayGame } from '@/lib/board'
 import { alignClocks, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
-import { AnalysisStopped, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
+import { AnalysisStopped, REVIEW_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
 import { terminateEngine } from '@/lib/engine'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
@@ -19,9 +19,6 @@ import { formatCp, hasReview, isFault, knownTags } from '@/lib/review'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
 import type { Color, GameRecord, GameResult, GameReview, PatternRecord } from '@/types/chess'
-
-/** Deep enough to trust a single game's marks, since you are about to explain them. */
-const SINGLE_GAME_DEPTH = 14
 
 const RESULT_COLOR: Record<GameResult, string> = {
   win: 'text-emerald-400',
@@ -105,7 +102,7 @@ function AnalyseGame({
 
     try {
       const analysis = await analyzeGame(game, {
-        depth: SINGLE_GAME_DEPTH,
+        depth: REVIEW_DEPTH,
         onPosition: () => setPositions(count => count + 1),
       })
       const pgn = buildAnnotatedPgn(game, analysis)
@@ -134,8 +131,8 @@ function AnalyseGame({
         {running
           ? `Analysing… ${positions}/${total}`
           : game.analysis
-            ? `Re-analyse at depth ${SINGLE_GAME_DEPTH}`
-            : `Analyse at depth ${SINGLE_GAME_DEPTH}`}
+            ? `Re-analyse at depth ${REVIEW_DEPTH}`
+            : `Analyse at depth ${REVIEW_DEPTH}`}
       </button>
       {running && <Spinner size="w-3.5 h-3.5" />}
       {error && <span className="text-xs text-red-400">{error}</span>}
@@ -433,7 +430,6 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                 <span className="font-mono text-xs">
                   <span className="text-red-400">{analysed.blunders}??</span>{' '}
                   <span className="text-amber-400">{analysed.mistakes}?</span>{' '}
-                  <span className="text-yellow-600">{analysed.inaccuracies}?!</span>{' '}
                   <span className="text-zinc-600">d{analysed.depth}</span>
                 </span>
               ) : (

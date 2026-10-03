@@ -226,11 +226,16 @@ function engineFindings(game: GameRecord): number {
 }
 
 /**
- * The marks worth putting on screen. The classifier also reports `!!` when a move was
- * the engine's first choice, which is most book moves and nearly every recapture — as
- * praise it is meaningless, so nothing displays it.
+ * The marks worth putting on screen, and the only moves offered up for review.
+ *
+ * `!` and `!!` are out because they only mean the move matched the engine's first
+ * choice, which is true of most book moves. `?!` is out for a sharper reason: it is
+ * precisely the tag `classifyMove` gives a costly move whose *context* says it did not
+ * matter — you were still winning easily afterwards, or already lost. +12.4 to +9.8 is
+ * a `?!`, and there is nothing in it to study. What is left is what the thresholds
+ * judged to have actually cost something.
  */
-export const FAULT_TAGS = ['??', '?', '?!']
+export const FAULT_TAGS = ['??', '?']
 
 export function isFault(tag: string): boolean {
   return FAULT_TAGS.includes(tag)

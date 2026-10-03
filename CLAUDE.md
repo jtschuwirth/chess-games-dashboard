@@ -92,15 +92,18 @@ src/
   while already lost is not a blunder — there was nothing left to lose — and one while still
   clearly winning is only careless. Going from winning back to level *does* get the full mark,
   because `cpAfter` has fallen inside the decided band. Defaults are 300 / 100 centipawns.
+  **`?!` is recorded but never shown.** It is by definition the mark for a costly move the
+  context excused — +12.4 to +9.8 earns one — so putting it on screen or offering it up for
+  review would argue against the rule that produced it. `FAULT_TAGS` in `lib/review.ts` is the
+  one list of marks that reach a screen or a PGN: `??` and `?`.
 - **The engine runs in the browser**, Stockfish 18 lite single-threaded in a worker, copied to
   `/public` on postinstall and gitignored. Single-threaded is deliberate: the multi-threaded build
   needs cross-origin isolation headers. Requests are queued rather than rejected when busy, and
   cached by FEN — games in one opening share most of their early positions.
 - **Analysis is written per game as it finishes**, both as a `StoredAnalysis` for filtering and as
   an `annotatedPgn` carrying the symbols on your own moves. Stopping a run therefore loses at most
-  one game. Only your moves are annotated, and only their faults: `!` and `!!` both mean the
-  move matched the engine's first choice, which is true of most book moves, so neither is written
-  or displayed — `isFault` in `lib/review.ts` is the one list of marks that reach the screen.
+  one game. Only your moves are annotated, and only the two marks `isFault` allows, so the PGN
+  you copy out carries exactly what the app shows.
 - **The providers do not share a termination vocabulary.** chess.com says `timeout` for running
   out of clock; lichess says `outoftime` and reuses `timeout` for a player who walked away.
   Matching the raw string silently undercounted the flag KPI. `normalizeEnding` in
@@ -148,6 +151,10 @@ src/
 - **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
   already holds every game, so filtering by review state, counting tags and finding the next game
   to review cost no extra reads. `saveGames` merges, so a re-sync never clears a review.
+- **The review path runs at `REVIEW_DEPTH` (16), the batch at 12 by default.** A batch pays its
+  depth once per game across a whole branch and only needs to find the blunders; analysing the
+  single game in front of you, or asking what the engine wanted on one move, is about to become
+  something you write down, so it rests on the better evaluation.
 - **The engine says where to look; the review says why.** `reviewQueue` is analysed games with a
   blunder or mistake and no review yet, blunders first, which is what the "Review next game"
   button follows. The engine's own best move is available per entry but only on demand — after
@@ -231,6 +238,12 @@ yarn lint
   `ignored` field is no longer read or written. Old documents may still carry it; it is inert.
 
 ## Known limitations
+- `Failed to obtain primary lease for action 'Collect garbage'` in the console is expected, not a
+  fault. With `persistentMultipleTabManager` exactly one tab holds the primary lease and runs the
+  cache's housekeeping; a second tab that tries logs this and stands down. The SDK logs it through
+  `logError` and handles it on its own retry queue, which is why it looks alarming and changes
+  nothing — reads and writes keep working in every tab. Opening a game view beside the dashboard
+  is enough to produce it.
 - Lichess arena *berserk* games halve the starting clock while still reporting the full
   `clock.initial`, so the first move's time is overstated for them. Nothing else is affected.
 - `clocks` is null on games synced before clock capture existed; a re-sync backfills them.
