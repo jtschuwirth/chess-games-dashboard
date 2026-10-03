@@ -92,13 +92,21 @@ export function timeControlsIn(games: GameRecord[]): { key: string; label: strin
 }
 
 /**
- * Lichess prepends the starting clock, so its array runs one longer than the move
- * list. The last reading always belongs to the last ply, so trim from the front.
- * Null when there are fewer readings than plies, where alignment is unknowable.
+ * Readings are in move order, so reading `i` belongs to ply `i`, and anything past the
+ * move list is dropped from the END.
+ *
+ * This used to trim from the front, on the belief that lichess prepends the starting
+ * clock. It does not. Lichess sometimes returns one reading more than there are moves —
+ * the clock as the game ended, after the last move was played — and trimming the front
+ * shifted every reading onto the next ply, which handed each player's think to their
+ * opponent. Checked against one game's own PGN, `clocks[i]` agreed with ply `i` on
+ * 107 plies out of 107, and the shifted reading on 1.
+ *
+ * Null when there are fewer readings than plies, where the alignment is unknowable.
  */
 export function alignClocks(clocks: number[], plies: number): number[] | null {
   if (plies === 0 || clocks.length < plies) return null
-  return clocks.slice(clocks.length - plies)
+  return clocks.slice(0, plies)
 }
 
 function median(values: number[]): number {

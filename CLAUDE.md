@@ -117,11 +117,17 @@ src/
   Matching the raw string silently undercounted the flag KPI. `normalizeEnding` in
   `lib/termination.ts` maps both onto one `Ending` union, derived at read time so no re-sync is
   needed, and everything counting endings goes through `isFlagged` / `endingOf`.
-- **Clock readings arrive differently per provider.** chess.com puts `{[%clk h:mm:ss]}` on every
-  move in the PGN; lichess returns a `clocks` array that is one entry longer than the move list
-  because it prepends the starting clock. `alignClocks` trims from the front, since the last
-  reading always belongs to the last ply. `timeSpentPerPly` then diffs each ply against two plies
-  back and adds the increment, because a reading already includes it.
+- **Clock readings are in move order on both providers**: reading `i` belongs to ply `i`.
+  chess.com puts `{[%clk h:mm:ss]}` on every move in the PGN; lichess returns a `clocks` array
+  that is *sometimes* one longer than the move list, carrying the clock as the game ended after
+  the last move. `alignClocks` therefore drops anything past the move list from the END.
+  It trimmed the front for a long time, on the stated belief that lichess prepends the starting
+  clock — it does not, and the shift handed every player's think to their opponent on any lichess
+  game that carried the extra reading. The check that settled it: against one game's own PGN,
+  `clocks[i]` agreed with ply `i` on 107 of 107 plies and the shifted reading on 1. Note that
+  games synced while the trim was wrong are stored shifted and cannot be repaired at read time —
+  the first reading was dropped at sync — so they need a re-sync. `timeSpentPerPly` diffs each
+  ply against two plies back and adds the increment, because a reading already includes it.
 - **Engine games are excluded unconditionally**, in `matchesCriteria`, since they say nothing
   about play against people. Lichess marks them with `aiLevel`, which is what `opponentIsBot`
   reads; chess.com's public archive carries no bot marker and its bots are ordinary accounts, so
