@@ -214,6 +214,13 @@ src/
   364ms at 16, so a 40-move game runs about a minute and a half — affordable even for the results
   you sit and wait for. The batch panel still picks its own, lower depth, because it pays that
   cost once per game across a whole branch and only has to find the blunders.
+- **A clock reading says whose it is.** The readout under the board carries two numbers that
+  both belong to the move highlighted on it — already played — and on an opponent's move they are
+  *their* think and *their* clock. Left unattributed they read as being about the move you are
+  looking for next, which is the opposite of what they mean, so they are written as a sentence:
+  "Your opponent took 33s here, 10:01 left". Time left is formatted as a clock (`formatClock`,
+  10:01) rather than raw seconds; time taken is a duration, which is a different thing and reads
+  differently.
 - **Every evaluation on screen shows both ends.** Where a move left you says nothing without
   where it started: `+7.4` reads as a disaster until you see it was `+6.0 → +7.4` in a game
   already gone, and worth no part of a review. That holds for the candidate chips, the entry

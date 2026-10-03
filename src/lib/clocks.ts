@@ -50,6 +50,19 @@ export function timeControlKey(raw: string): string | null {
   return control ? `${control.base}+${control.increment}` : null
 }
 
+/**
+ * Seconds on a clock as a clock shows them: 546 -> "9:06". A bare "546s left" is a
+ * number you have to convert in your head before it means anything.
+ */
+export function formatClock(seconds: number): string {
+  const whole = Math.max(0, Math.round(seconds))
+  const minutes = Math.floor(whole / 60)
+  const rest = String(whole % 60).padStart(2, '0')
+
+  if (minutes < 60) return `${minutes}:${rest}`
+  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${rest}`
+}
+
 /** "180+2" -> "3+2", the way players say it. Falls back to the raw string. */
 export function formatTimeControl(raw: string): string {
   const control = parseTimeControl(raw)

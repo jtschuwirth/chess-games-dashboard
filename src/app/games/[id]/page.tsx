@@ -8,7 +8,7 @@ import MoveList from '@/components/MoveList'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
 import { replayGame } from '@/lib/board'
-import { alignClocks, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
+import { alignClocks, formatClock, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
 import { AnalysisStopped, ENGINE_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
 import { terminateEngine } from '@/lib/engine'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
@@ -28,6 +28,7 @@ const RESULT_COLOR: Record<GameResult, string> = {
 
 const RESULT_LABEL: Record<GameResult, string> = { win: 'Win', loss: 'Loss', draw: 'Draw' }
 
+/** How long something took, as opposed to what a clock reads. */
 function duration(ms: number): string {
   const seconds = Math.round(ms / 1000)
   if (seconds < 60) return `${seconds}s`
@@ -589,11 +590,19 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                 )}
               </span>
             )}
+            {/*
+              Both readings belong to the move highlighted on the board, which has
+              already been played — and on an opponent's move it is their clock, not
+              yours. Unattributed numbers side by side read as being about the move
+              you are looking for next.
+            */}
             {current && spentByPly.has(current.index) && (
-              <span>{spentByPly.get(current.index)}s spent</span>
-            )}
-            {current && remainingByPly.has(current.index) && (
-              <span>{remainingByPly.get(current.index)}s left</span>
+              <span>
+                {current.color === game.color ? 'You' : 'Your opponent'} took{' '}
+                {duration((spentByPly.get(current.index) as number) * 1000)} here
+                {remainingByPly.has(current.index) &&
+                  `, ${formatClock(remainingByPly.get(current.index) as number)} left`}
+              </span>
             )}
             <span className="text-zinc-700 ml-auto">← → to step</span>
           </div>
@@ -610,6 +619,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             tags={engineTags}
             reviewed={reviewedPlies}
             secondsByPly={spentByPly}
+            yourColor={game.color}
           />
           {replay.truncated && (
             <p className="px-3 py-2 text-xs text-amber-400 border-t border-zinc-800">

@@ -73,12 +73,12 @@ export default function GameRow({
                 for one the engine has never seen */}
             {game.analysis ? (
               <span
-                className="text-xs text-zinc-500 font-mono shrink-0"
+                className="text-xs text-yellow-400 font-mono shrink-0"
                 title={`Analysed at depth ${game.analysis.depth} — ${game.analysis.blunders} blunder${
                   game.analysis.blunders === 1 ? '' : 's'
                 }, ${game.analysis.mistakes} mistake${game.analysis.mistakes === 1 ? '' : 's'}`}
               >
-                d{game.analysis.depth}
+                ⚙ d{game.analysis.depth}
               </span>
             ) : (
               <span

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from 'react'
 import type { Ply } from '@/lib/board'
+import type { Color } from '@/types/chess'
 
 /** Engine marks, coloured by how much they cost. Faults only — see `isFault`. */
 const TAG_COLOR: Record<string, string> = {
@@ -20,6 +21,7 @@ export default function MoveList({
   tags,
   reviewed,
   secondsByPly,
+  yourColor,
 }: {
   plies: Ply[]
   /** Ply index on the board, or -1 for the starting position. */
@@ -29,8 +31,10 @@ export default function MoveList({
   tags: Map<number, string>
   /** Plies that appear in your review. */
   reviewed: Set<number>
-  /** Seconds you spent, per ply, where the game carries clock readings. */
+  /** Seconds spent per ply, both sides, where the game carries clock readings. */
   secondsByPly: Map<number, number>
+  /** The side you played, so a hover can say whose think a number is. */
+  yourColor: Color
 }) {
   const activeRef = useRef<HTMLButtonElement | null>(null)
 
@@ -57,7 +61,11 @@ export default function MoveList({
                   ref={ply.index === current ? activeRef : undefined}
                   onClick={() => onPick(ply.index)}
                   title={
-                    secondsByPly.has(ply.index) ? `${secondsByPly.get(ply.index)}s spent` : undefined
+                    secondsByPly.has(ply.index)
+                      ? `${ply.color === yourColor ? 'You' : 'Your opponent'} took ${secondsByPly.get(
+                          ply.index,
+                        )}s on this move`
+                      : undefined
                   }
                   className={`px-2 py-1 text-left transition-colors ${
                     ply.index === current
