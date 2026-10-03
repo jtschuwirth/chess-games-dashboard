@@ -27,6 +27,12 @@ const NAV_ITEMS = [
     description: 'Win / draw / loss splits, overall or per saved line',
     href: '/dashboard',
   },
+  {
+    icon: '🎯',
+    title: 'Learn from your mistakes',
+    description: 'Find the move again in the positions you got wrong',
+    href: '/learn',
+  },
 ]
 
 export default function Home() {

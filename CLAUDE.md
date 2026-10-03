@@ -22,6 +22,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
+6. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
+   answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
+   under the same dashboard filters, and read what is sticking by tag.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
@@ -41,13 +44,14 @@ src/
 │   ├── patterns/page.tsx       # Saved opening lines
 │   ├── dashboard/page.tsx      # Stats + pattern filter + game list
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
+│   ├── learn/page.tsx          # Drill over the reviewed positions
 │   └── api/
 │       ├── chesscom/games/route.ts
 │       ├── lichess/games/route.ts
 │       └── export/route.ts     # read-only JSON export, API-key gated
 ├── components/                 # PageShell, SyncPanel, PatternForm, StatBlockCard,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
-│                               # MoveList, ReviewEditor, ReviewPanel
+│                               # MoveList, ReviewEditor, ReviewPanel, DrillCard
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -57,6 +61,7 @@ src/
 │   ├── game-filters.ts         # date / rating / format scope rule, shared with the export
 │   ├── scope.ts                # criteria + opening together, shared with the game view
 │   ├── review.ts               # review vocabulary, tag counts, review queue
+│   ├── drill.ts                # drill cards, the pass rule, what is sticking
 │   ├── board.ts                # replay, board squares, SAN parsing for the game view
 │   ├── ratings.ts              # reconstructs pre-game ratings, Elo expectation
 │   ├── clocks.ts               # per-move time, timeout KPI, phases, mistakes by phase
@@ -151,10 +156,28 @@ src/
   be marked as looked at, or it keeps coming back as unfinished business. `hasReview` therefore
   asks whether anything was written at all, entries *or* a note, and the form refuses to save a
   document that is empty of both.
+- **The drill passes any move that holds, not the engine's first choice.** It would be easy to
+  mark only the stored answer correct, and wrong: the whole method is about finding something
+  that keeps the game alive rather than reciting a line, which is why the review form says the
+  same thing. `judgeAttempt` labels which it was — your own alternative, the engine's move, or
+  something else that gives nothing away — and all three count. Only a move `classifyMove` calls
+  a fault is a miss, judged by the rule that judged the original mistake.
+- **A drilled position opens with nothing given away.** The move you played, your alternatives,
+  your notes and the tags are all withheld until you answer, since any of them would hand you
+  the answer. The engine's evaluation is fetched while you think, so committing is instant.
+- **Drill records live in `drills` on the game, keyed by ply**, not inside the review. A position
+  the engine flagged and you never wrote up can still be drilled, and it needs somewhere to keep
+  score; keying by ply also survives a re-analysis. `merge` on a map field merges keys, so two
+  positions from one game never overwrite each other.
+- **Hardest first, and the queue never re-sorts under you.** Positions you have never seen lead,
+  then the ones you keep missing, then the longest ago. A session's answers are layered over the
+  queue rather than written back into it, because re-sorting after every answer would move the
+  next card while you were looking at it.
 - **"Beyond what I could be expected to find" is the escape hatch, and it is not a shrug.** The
   engine's objection stands, but no pattern is trainable from it, so the entry is stored and then
   left out of everything that counts: `trainableMistakes` drops it, so it reaches neither the tag
-  table nor the tag filter. Those two using the same rule is what makes a row in the table and
+  table nor the tag filter, and `buildDrillCards` subtracts it in *both* modes — the engine still
+  flags the move, so drilling `all` would otherwise hand it straight back. Those two using the same rule is what makes a row in the table and
   the games behind it the same set. A move marked this way needs no answers; everything else
   needs a cause and at least one tag, or it adds a row that says nothing.
 - **Tags are a fixed vocabulary you can extend.** `TAG_GROUPS` in `lib/review.ts` groups them by

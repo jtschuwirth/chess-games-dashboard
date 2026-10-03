@@ -534,6 +534,7 @@ function DashboardBody({ userId }: { userId: string }) {
         activeTag={tag}
         onPickTag={value => patch({ tag: value })}
         hrefFor={hrefFor}
+        drillHref={`/learn${search}`}
       />
 
       <ThinkPanel

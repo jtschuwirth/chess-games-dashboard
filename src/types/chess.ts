@@ -52,6 +52,22 @@ export interface GameRecord extends SyncedGame {
   annotatedPgn?: string
   /** Your own root-cause analysis of the moves that went wrong. */
   review?: GameReview
+  /**
+   * How you have done when the drill put these positions back in front of you,
+   * keyed by ply. Kept beside the review rather than inside it so a position the
+   * engine flagged but you never wrote up can still be drilled.
+   */
+  drills?: Record<string, DrillStat>
+}
+
+/** Your record on one position in the drill. */
+export interface DrillStat {
+  attempts: number
+  /** Attempts where you found a move that holds. */
+  correct: number
+  lastAt: number
+  /** Whether the most recent attempt was right — what "sticking" is read from. */
+  lastCorrect: boolean
 }
 
 /**

@@ -26,12 +26,15 @@ export default function ReviewPanel({
   activeTag,
   onPickTag,
   hrefFor,
+  drillHref,
 }: {
   games: GameRecord[]
   activeTag: string | null
   onPickTag: (tag: string | null) => void
   /** The game view for one game, with the current filters carried along. */
   hrefFor: (game: GameRecord) => string
+  /** The drill over these same games, filters attached. */
+  drillHref: string
 }) {
   const summary = reviewSummary(games)
   const tags = aggregateTags(games)
@@ -51,14 +54,24 @@ export default function ReviewPanel({
           </p>
         </div>
 
-        {queue.length > 0 && (
-          <Link
-            href={hrefFor(queue[0])}
-            className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors shrink-0"
-          >
-            Review next game →
-          </Link>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {summary.reviewed > 0 && (
+            <Link
+              href={drillHref}
+              className="px-3 py-1.5 text-xs font-medium border border-zinc-700 text-zinc-200 rounded-lg hover:border-zinc-500 transition-colors"
+            >
+              Drill these positions
+            </Link>
+          )}
+          {queue.length > 0 && (
+            <Link
+              href={hrefFor(queue[0])}
+              className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors"
+            >
+              Review next game →
+            </Link>
+          )}
+        </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">

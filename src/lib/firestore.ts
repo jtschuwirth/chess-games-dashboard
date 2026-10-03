@@ -18,6 +18,7 @@ import {
 import { db } from './firebase'
 import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
+  DrillStat,
   GameRecord,
   GameReview,
   StoredAnalysis,
@@ -186,6 +187,25 @@ export async function saveReview(
 
 export async function deleteReview(userId: string, gameId: string): Promise<void> {
   await updateDoc(doc(db, 'users', userId, 'games', gameId), { review: deleteField() })
+}
+
+/**
+ * One attempt at a drilled position, keyed by ply under the game.
+ *
+ * `merge` on a map field merges keys rather than replacing the map, so two positions
+ * from the same game never overwrite each other's record.
+ */
+export async function saveDrillResult(
+  userId: string,
+  gameId: string,
+  ply: number,
+  stat: DrillStat,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, 'games', gameId),
+    { drills: { [String(ply)]: stat } },
+    { merge: true },
+  )
 }
 
 /* --------------------------------------------------------------- patterns */
