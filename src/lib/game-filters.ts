@@ -44,9 +44,10 @@ export interface GameCriteria {
   /**
    * Narrow to what the engine found. 'blunder' / 'mistake' keep games containing at
    * least one; 'clean' keeps analysed games with neither; 'analysed' keeps anything
-   * already analysed. Null leaves the set alone.
+   * already analysed, and 'unanalysed' exactly the ones it has never seen. Null leaves
+   * the set alone.
    */
-  mistakes: 'blunder' | 'mistake' | 'clean' | 'analysed' | null
+  mistakes: 'blunder' | 'mistake' | 'clean' | 'analysed' | 'unanalysed' | null
   /**
    * Your own review: 'yes' for games you have taken apart, 'no' for the ones still
    * waiting. Null leaves the set alone.
@@ -101,10 +102,14 @@ export function matchesCriteria(
 
   if (criteria.mistakes !== null) {
     const analysis = game.analysis
-    if (!analysis) return false
-    if (criteria.mistakes === 'blunder' && analysis.blunders === 0) return false
-    if (criteria.mistakes === 'mistake' && analysis.mistakes === 0) return false
-    if (criteria.mistakes === 'clean' && analysis.blunders + analysis.mistakes > 0) return false
+    if (criteria.mistakes === 'unanalysed') {
+      if (analysis) return false
+    } else {
+      if (!analysis) return false
+      if (criteria.mistakes === 'blunder' && analysis.blunders === 0) return false
+      if (criteria.mistakes === 'mistake' && analysis.mistakes === 0) return false
+      if (criteria.mistakes === 'clean' && analysis.blunders + analysis.mistakes > 0) return false
+    }
   }
 
   if (criteria.reviewed === 'yes' && !hasReview(game)) return false

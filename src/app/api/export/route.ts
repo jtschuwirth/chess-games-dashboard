@@ -67,7 +67,7 @@ export async function GET(request: Request) {
   const criteria: GameCriteria = {
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
     endedIn: params.get('phase') || null,
-    mistakes: (['blunder', 'mistake', 'clean', 'analysed'] as const).includes(
+    mistakes: (['blunder', 'mistake', 'clean', 'analysed', 'unanalysed'] as const).includes(
       params.get('mistakes') as 'blunder',
     )
       ? (params.get('mistakes') as 'blunder')

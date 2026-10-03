@@ -69,6 +69,26 @@ export default function GameRow({
                 ◆ reviewed
               </span>
             )}
+            {/* depth always, so an analysed game with nothing wrong is not mistaken
+                for one the engine has never seen */}
+            {game.analysis ? (
+              <span
+                className="text-xs text-zinc-500 font-mono shrink-0"
+                title={`Analysed at depth ${game.analysis.depth} — ${game.analysis.blunders} blunder${
+                  game.analysis.blunders === 1 ? '' : 's'
+                }, ${game.analysis.mistakes} mistake${game.analysis.mistakes === 1 ? '' : 's'}`}
+              >
+                d{game.analysis.depth}
+              </span>
+            ) : (
+              <span
+                className="text-xs text-zinc-600 shrink-0"
+                title="The engine has never looked at this game"
+              >
+                no engine
+              </span>
+            )}
+
             {game.analysis && game.analysis.blunders > 0 && (
               <span
                 className="text-xs text-red-400 font-mono shrink-0"

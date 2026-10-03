@@ -136,6 +136,11 @@ src/
   sized to their contents grew around a tall piece, and a board column sized with
   `minmax(0,28rem)` took its width from the readout *under* the board, so the board shrank on
   moves with no clock reading to show. The track is a fixed `28rem` for the same reason.
+- **Each row in the game list says what has been done to that game** — `◆ reviewed`, the engine
+  depth as `d16`, and the blunder count when there is one. The depth badge shows on every
+  analysed game, including a clean one: without it a game the engine found nothing in looks
+  exactly like a game the engine has never seen, which is the one thing the badge is for. The
+  Engine filter has a matching `Not analysed yet` to list what is still missing.
 - **A review is three questions about at most three moves.** The method is borrowed from
   incident root-cause analysis: name what failed, why it failed, and what would have caught it.
   `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every move explains nothing,

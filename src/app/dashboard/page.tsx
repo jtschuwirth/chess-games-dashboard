@@ -421,6 +421,7 @@ function DashboardBody({ userId }: { userId: string }) {
           >
             <option value="">Any game</option>
             <option value="analysed">Analysed</option>
+            <option value="unanalysed">Not analysed yet</option>
             <option value="blunder">Contains a blunder</option>
             <option value="mistake">Contains a mistake</option>
             <option value="clean">No blunder or mistake</option>
