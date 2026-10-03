@@ -249,12 +249,17 @@ src/
 - **Entries fold.** Three moves of questions, lines and tags is a long form, so each entry has a
   `+`/`−` and collapses to its move, its evaluation and either its tags or "Hard to find". Ones
   loaded from a saved review start folded, since they are already written; a new one never does.
-- **The board sits in a full-width row.** It takes whatever is left beside the move list rather
-  than a fixed track, so the section is as wide as every other box instead of a narrow island
-  between them, and the board is bigger for it. The track is still `minmax(0,1fr)` rather than
-  content-sized — a content-sized one took its width from the readout *under* the board and
-  resized the board from move to move. The move list stretches to the row's height so the two
-  share a bottom edge.
+- **The board sits in a full-width row**, taking whatever is left beside the move list, so the
+  section is as wide as every other box instead of a narrow island between them. The track is
+  `minmax(0,1fr)` rather than content-sized: a content-sized one took its width from the readout
+  *under* the board and resized the board from move to move.
+- **The move list is the board's height, and absolutely positioned to stay that way.** Three grid
+  cells, not two — board, controls under it, list beside both in the board's row alone, so the
+  controls' height does not push it past the board. `h-full` was not enough on its own: the row
+  is auto-sized, so a long game made the list define the row and then fill it, and forty moves
+  ran hundreds of pixels below the board. Out of the flow, the board alone sets the row height
+  and the moves scroll inside it. On a phone none of this applies: everything stacks and the list
+  is capped at 28rem.
 - **The tag picker holds its own open state per entry.** Deriving it from "has no tags yet" read
   well and behaved badly: picking the first tag closed the picker under you, and tagging a move
   usually takes more than one. It is a button and a conditional, not `<details>` — React nulls

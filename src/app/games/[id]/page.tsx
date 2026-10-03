@@ -494,13 +494,18 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
       <EnginePanel userId={userId} game={game} onDone={applyAnalysed} />
 
       {/*
-        The board takes whatever is left beside the move list, so this section is as wide
-        as every other box on the page rather than a narrow island between them.
-        `minmax(0,1fr)` matters: a content-sized track took its width from the readout
-        *under* the board, which resized the board itself from move to move.
+        Three cells, not two: the board, the controls under it, and the move list beside
+        both. The list sits in the board's row alone, so it is exactly as tall as the
+        board and scrolls inside — sharing a row with the controls made it overhang the
+        board's bottom edge by their height.
+
+        Source order is board, controls, list, which is what a single column should read
+        like; the explicit placement only applies from `md` up. `minmax(0,1fr)` matters
+        too: a content-sized track took its width from the readout under the board, which
+        resized the board itself from move to move.
       */}
-      <section className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_20rem] gap-4">
-        <div className="flex flex-col gap-2 w-full max-w-[28rem] md:max-w-none mx-auto">
+      <section className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_20rem] md:grid-rows-[auto_auto] gap-4 md:gap-y-2">
+        <div className="w-full max-w-[28rem] md:max-w-none mx-auto md:col-start-1 md:row-start-1">
           <Board
             fen={fen}
             orientation={orientation}
@@ -512,7 +517,9 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                   : []
             }
           />
+        </div>
 
+        <div className="flex flex-col gap-2 w-full max-w-[28rem] md:max-w-none mx-auto md:col-start-1 md:row-start-2">
           <div className="flex items-center gap-1.5">
             <NavButton
               onClick={() => (variation ? setVariation(null) : setShown(-1))}
@@ -616,8 +623,15 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           </div>
         </div>
 
-        {/* matches the board's height on a wide screen, so the row has one bottom edge */}
-        <div className="flex flex-col w-full max-w-[28rem] md:max-w-none mx-auto border border-zinc-800 rounded-xl overflow-hidden max-h-[28rem] md:max-h-none md:h-full bg-zinc-900">
+        {/*
+          The list is taken out of the flow from `md` up, inside a cell that has no
+          height of its own. `h-full` was not enough: the row is auto-sized, so a long
+          game made the list define the row and then fill it — 40 moves pushed it
+          hundreds of pixels past the bottom of the board. With the list absolute, the
+          board alone sets the row height and the moves scroll inside it.
+        */}
+        <div className="relative w-full max-w-[28rem] md:max-w-none mx-auto md:col-start-2 md:row-start-1">
+          <div className="flex flex-col md:absolute md:inset-0 border border-zinc-800 rounded-xl overflow-hidden max-h-[28rem] md:max-h-none bg-zinc-900">
           <div className="px-3 py-2 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500 shrink-0 flex items-center justify-between gap-2">
             <span>Moves</span>
             {variation && (
@@ -652,11 +666,12 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                 : null
             }
           />
-          {replay.truncated && (
-            <p className="px-3 py-2 text-xs text-amber-400 border-t border-zinc-800">
-              The stored move list stopped parsing part way through.
-            </p>
-          )}
+            {replay.truncated && (
+              <p className="px-3 py-2 text-xs text-amber-400 border-t border-zinc-800">
+                The stored move list stopped parsing part way through.
+              </p>
+            )}
+          </div>
         </div>
       </section>
 
