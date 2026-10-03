@@ -20,6 +20,8 @@ export const DEFAULT_FILTERS: Filters = {
   source: 'both',
   endedIn: null,
   mistakes: null,
+  reviewed: null,
+  tag: null,
 }
 
 function readRating(raw: string | null): number | null {
@@ -34,6 +36,10 @@ function readMistakes(raw: string | null): GameCriteria['mistakes'] {
   return MISTAKE_VALUES.includes(raw as (typeof MISTAKE_VALUES)[number])
     ? (raw as GameCriteria['mistakes'])
     : null
+}
+
+function readReviewed(raw: string | null): GameCriteria['reviewed'] {
+  return raw === 'yes' || raw === 'no' ? raw : null
 }
 
 /** Anything unrecognised in the query string falls back to the default. */
@@ -57,6 +63,8 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
     endedIn: params.get('phase') || null,
     mistakes: readMistakes(params.get('mistakes')),
+    reviewed: readReviewed(params.get('review')),
+    tag: params.get('tag') || null,
   }
 }
 
@@ -72,6 +80,8 @@ export function writeFilters(filters: Filters): string {
   if (filters.source !== 'both') params.set('source', filters.source)
   if (filters.endedIn) params.set('phase', filters.endedIn)
   if (filters.mistakes) params.set('mistakes', filters.mistakes)
+  if (filters.reviewed) params.set('review', filters.reviewed)
+  if (filters.tag) params.set('tag', filters.tag)
 
   const query = params.toString()
   return query ? '?' + query : ''

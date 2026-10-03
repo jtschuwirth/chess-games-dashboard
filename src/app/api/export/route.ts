@@ -63,6 +63,7 @@ export async function GET(request: Request) {
   const since = params.get('since')
   const color = params.get('color')
   const source = params.get('source')
+  const review = params.get('review')
   const criteria: GameCriteria = {
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
     endedIn: params.get('phase') || null,
@@ -71,6 +72,8 @@ export async function GET(request: Request) {
     )
       ? (params.get('mistakes') as 'blunder')
       : null,
+    reviewed: review === 'yes' || review === 'no' ? review : null,
+    tag: params.get('tag') || null,
     color: color === 'white' || color === 'black' ? color : 'both',
     timeControls: (params.get('tc') ?? '')
       .split(',')

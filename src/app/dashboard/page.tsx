@@ -8,6 +8,7 @@ import GameRow from '@/components/GameRow'
 import PageShell, { Spinner } from '@/components/PageShell'
 import AnalysisPanel from '@/components/AnalysisPanel'
 import ClockPanel from '@/components/ClockPanel'
+import ReviewPanel from '@/components/ReviewPanel'
 import StatBlockCard from '@/components/StatBlockCard'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
@@ -18,10 +19,10 @@ import {
   flattenTree,
   formatMoves,
   gameMatchesNode,
-  gamePositionKeys,
   matchingPath,
   patternLabel,
 } from '@/lib/pattern'
+import { positionKeyMap, scopeGames } from '@/lib/scope'
 import {
   ALL_OPENINGS,
   DEFAULT_FILTERS,
@@ -30,7 +31,7 @@ import {
   writeFilters,
   type Filters,
 } from '@/lib/dashboard-filters'
-import { SINCE_OPTIONS, matchesCriteria } from '@/lib/game-filters'
+import { SINCE_OPTIONS } from '@/lib/game-filters'
 import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL } from '@/types/chess'
@@ -42,6 +43,12 @@ const SOURCE_OPTIONS: { value: Source | 'both'; label: string }[] = [
   { value: 'both', label: 'both' },
   { value: 'chesscom', label: SOURCE_LABEL.chesscom },
   { value: 'lichess', label: SOURCE_LABEL.lichess },
+]
+
+const REVIEW_OPTIONS: { value: Filters['reviewed']; label: string; title: string }[] = [
+  { value: null, label: 'any', title: 'Reviewed or not' },
+  { value: 'yes', label: 'reviewed', title: 'Games you have taken apart' },
+  { value: 'no', label: 'not reviewed', title: 'Games still waiting' },
 ]
 
 const COLOR_OPTIONS: { value: Color | 'both'; label: string }[] = [
@@ -87,6 +94,8 @@ function DashboardBody({ userId }: { userId: string }) {
     source,
     endedIn,
     mistakes,
+    reviewed,
+    tag,
   } = filters
 
   /** Mirror the filters into the address bar so a reload — or a shared link — restores the view. */
@@ -129,11 +138,7 @@ function DashboardBody({ userId }: { userId: string }) {
   }
 
   /** Every position each game passed through, so switching variations is instant. */
-  const positionKeys = useMemo(() => {
-    const map = new Map<string, Set<string>>()
-    for (const game of games ?? []) map.set(game.id, gamePositionKeys(game.moves))
-    return map
-  }, [games])
+  const positionKeys = useMemo(() => positionKeyMap(games ?? []), [games])
 
   /** Only offer controls the user has actually played. */
   const availableControls = useMemo(() => timeControlsIn(games ?? []), [games])
@@ -151,26 +156,21 @@ function DashboardBody({ userId }: { userId: string }) {
   const current = path.length > 0 ? path[path.length - 1] : null
   const parent = path.length > 1 ? path[path.length - 2] : null
 
-  /** Games that reached none of the lines at the level currently in view. */
-  const reachedNoLine = useCallback(
-    (game: GameRecord) => {
-      const lines = current ? current.children : tree
-      const keys = positionKeys.get(game.id) ?? new Set<string>()
-      return !lines.some(node => gameMatchesNode(game, keys, node))
-    },
-    [current, tree, positionKeys],
+  /**
+   * Every game passing the filters and the selected variation. `scopeGames` is shared
+   * with the game view, so walking from a game back to this list cannot drift.
+   */
+  const scoped = useMemo(
+    () => scopeGames(games ?? [], tree, positionKeys, filters),
+    [games, tree, positionKeys, filters],
   )
 
-  /** Every game passing the date / rating / format filters and the selected variation. */
-  const scoped = useMemo(() => {
-    const now = new Date()
-    return (games ?? []).filter(game => {
-      if (!matchesCriteria(game, filters, now)) return false
-      if (unclassifiedView) return reachedNoLine(game)
-      if (!current) return true
-      return gameMatchesNode(game, positionKeys.get(game.id) ?? new Set(), current)
-    })
-  }, [games, filters, current, positionKeys, unclassifiedView, reachedNoLine])
+  /** The game view, carrying the filters so its Back link restores this exact slice. */
+  const search = useMemo(() => writeFilters(filters), [filters])
+  const hrefFor = useCallback(
+    (game: GameRecord) => `/games/${game.id}${search}`,
+    [search],
+  )
 
   const split = useMemo(() => computeSplit(scoped), [scoped])
   const clock = useMemo(() => computeClockStats(scoped), [scoped])
@@ -404,6 +404,29 @@ function DashboardBody({ userId }: { userId: string }) {
             <option value="clean">No blunder or mistake</option>
           </select>
 
+          <FilterLabel>Review</FilterLabel>
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {REVIEW_OPTIONS.map(option => (
+              <Chip
+                key={option.label}
+                active={reviewed === option.value}
+                onClick={() => patch({ reviewed: option.value })}
+                title={option.title}
+              >
+                {option.label}
+              </Chip>
+            ))}
+            {tag && (
+              <button
+                onClick={() => patch({ tag: null })}
+                title="Clear the tag filter"
+                className="px-3 py-1 text-xs rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 transition-colors"
+              >
+                {tag} ✕
+              </button>
+            )}
+          </div>
+
           <FilterLabel>Colour</FilterLabel>
           <div className="flex gap-1.5 flex-wrap">
             {COLOR_OPTIONS.map(option => (
@@ -484,6 +507,13 @@ function DashboardBody({ userId }: { userId: string }) {
 
       <AnalysisPanel userId={userId} games={scoped} onAnalyzed={applyAnalysis} />
 
+      <ReviewPanel
+        games={scoped}
+        activeTag={tag}
+        onPickTag={value => patch({ tag: value })}
+        hrefFor={hrefFor}
+      />
+
       <ThinkPanel
         phases={phases}
         endedIn={endedIn}
@@ -534,7 +564,12 @@ function DashboardBody({ userId }: { userId: string }) {
           <>
             <div className="flex flex-col divide-y divide-zinc-800 border border-zinc-800 rounded-xl overflow-hidden">
               {scoped.slice(0, limit).map(game => (
-                <GameRow key={game.id} game={game} line={linesByGame.get(game.id) ?? []} />
+                <GameRow
+                  key={game.id}
+                  game={game}
+                  line={linesByGame.get(game.id) ?? []}
+                  href={hrefFor(game)}
+                />
               ))}
             </div>
             {scoped.length > limit && (

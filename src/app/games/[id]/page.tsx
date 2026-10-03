@@ -1,0 +1,550 @@
+'use client'
+
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { useParams, useSearchParams } from 'next/navigation'
+import Board from '@/components/Board'
+import MoveList from '@/components/MoveList'
+import PageShell, { Spinner } from '@/components/PageShell'
+import ReviewEditor from '@/components/ReviewEditor'
+import { replayGame } from '@/lib/board'
+import { alignClocks, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
+import { AnalysisStopped, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
+import { terminateEngine } from '@/lib/engine'
+import { readFilters, writeFilters } from '@/lib/dashboard-filters'
+import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
+import { buildPatternTree, matchingPath, patternLabel } from '@/lib/pattern'
+import { positionKeyMap, scopeGames } from '@/lib/scope'
+import { formatCp, hasReview, knownTags } from '@/lib/review'
+import { endingOf } from '@/lib/termination'
+import { SOURCE_LABEL } from '@/types/chess'
+import type { GameRecord, GameResult, GameReview, PatternRecord } from '@/types/chess'
+
+/** Deep enough to trust a single game's marks, since you are about to explain them. */
+const SINGLE_GAME_DEPTH = 14
+
+const RESULT_COLOR: Record<GameResult, string> = {
+  win: 'text-emerald-400',
+  loss: 'text-red-400',
+  draw: 'text-zinc-400',
+}
+
+const RESULT_LABEL: Record<GameResult, string> = { win: 'Win', loss: 'Loss', draw: 'Draw' }
+
+interface Neighbours {
+  previous: GameRecord | null
+  next: GameRecord | null
+  /** The next game in the slice you have not taken apart yet. */
+  nextUnreviewed: GameRecord | null
+  /** This game's place in the slice, 1-based. Null when the filters exclude it. */
+  position: number | null
+  total: number
+}
+
+function Fact({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex flex-col">
+      <span className="text-xs uppercase tracking-wide text-zinc-500">{label}</span>
+      <span className="text-sm text-zinc-200">{value}</span>
+    </div>
+  )
+}
+
+/**
+ * Runs the engine over this one game. The batch panel on the dashboard covers a whole
+ * branch of the repertoire; here you are looking at a single game and want its marks
+ * before you start explaining them.
+ */
+function AnalyseGame({
+  userId,
+  game,
+  onDone,
+}: {
+  userId: string
+  game: GameRecord
+  onDone: (game: GameRecord) => void
+}) {
+  const [running, setRunning] = useState(false)
+  const [positions, setPositions] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+
+  async function run() {
+    setRunning(true)
+    setError(null)
+    setPositions(0)
+
+    try {
+      const analysis = await analyzeGame(game, {
+        depth: SINGLE_GAME_DEPTH,
+        onPosition: () => setPositions(count => count + 1),
+      })
+      const pgn = buildAnnotatedPgn(game, analysis)
+      await saveAnalysis(userId, game.id, analysis, pgn)
+      onDone({ ...game, analysis, annotatedPgn: pgn })
+    } catch (caught) {
+      if (!(caught instanceof AnalysisStopped)) {
+        setError(caught instanceof Error ? caught.message : 'Analysis failed.')
+      }
+    } finally {
+      terminateEngine()
+      setRunning(false)
+    }
+  }
+
+  // two evaluations per move of yours, which is what the progress counts against
+  const total = game.moves.length
+
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <button
+        onClick={run}
+        disabled={running}
+        className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40"
+      >
+        {running
+          ? `Analysing… ${positions}/${total}`
+          : game.analysis
+            ? `Re-analyse at depth ${SINGLE_GAME_DEPTH}`
+            : `Analyse at depth ${SINGLE_GAME_DEPTH}`}
+      </button>
+      {running && <Spinner size="w-3.5 h-3.5" />}
+      {error && <span className="text-xs text-red-400">{error}</span>}
+    </div>
+  )
+}
+
+function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
+  const searchParams = useSearchParams()
+  const [games, setGames] = useState<GameRecord[] | null>(null)
+  const [patterns, setPatterns] = useState<PatternRecord[]>([])
+  const [missing, setMissing] = useState(false)
+  /**
+   * Index of the last move played on the board, -1 for the starting position, or null
+   * until you move it yourself — which is what lets the board open on the move worth
+   * looking at without jumping back there every time the game is saved.
+   */
+  const [shown, setShown] = useState<number | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  /** The dashboard's filters ride along in the URL, so Back lands where you left. */
+  const search = useMemo(() => writeFilters(readFilters(searchParams)), [searchParams])
+  const filters = useMemo(() => readFilters(searchParams), [searchParams])
+
+  useEffect(() => {
+    getGames(userId).then(setGames)
+    getPatterns(userId).then(setPatterns)
+  }, [userId])
+
+  const game = games?.find(entry => entry.id === gameId) ?? null
+
+  /** A game missing from the cached collection is worth one server read before giving up. */
+  useEffect(() => {
+    if (games === null || game || missing) return
+
+    let cancelled = false
+    getGames(userId, { fresh: true }).then(fresh => {
+      if (cancelled) return
+      setGames(fresh)
+      if (!fresh.some(entry => entry.id === gameId)) setMissing(true)
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [games, game, missing, userId, gameId])
+
+  const replay = useMemo(() => replayGame(game?.moves ?? []), [game])
+
+  /** Where the board opens: the first move the review names, else the engine's worst find. */
+  const openingPly = useMemo(() => {
+    const reviewed = game?.review?.mistakes.map(mistake => mistake.ply) ?? []
+    if (reviewed.length > 0) return Math.min(...reviewed)
+
+    const worst = [...(game?.analysis?.moves ?? [])]
+      .filter(move => move.tag === '??' || move.tag === '?')
+      .sort((a, b) => b.cpLoss - a.cpLoss)[0]
+
+    return worst?.ply ?? -1
+  }, [game])
+
+  const cursor = shown ?? openingPly
+
+  const step = useCallback(
+    (delta: number) => {
+      setShown(current =>
+        Math.max(-1, Math.min(replay.plies.length - 1, (current ?? openingPly) + delta)),
+      )
+    },
+    [replay.plies.length, openingPly],
+  )
+
+  /** Arrow keys step through the game, unless you are typing in the review. */
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return
+
+      if (event.key === 'ArrowLeft') step(-1)
+      else if (event.key === 'ArrowRight') step(1)
+      else if (event.key === 'Home') setShown(-1)
+      else if (event.key === 'End') setShown(replay.plies.length - 1)
+      else return
+
+      event.preventDefault()
+    }
+
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [step, replay.plies.length])
+
+  /** Seconds spent on each ply, both sides, where the game carries clock readings. */
+  const spentByPly = useMemo(() => {
+    const map = new Map<number, number>()
+    if (!game?.clocks) return map
+
+    const control = parseTimeControl(game.timeControl)
+    if (!control) return map
+
+    const clocks = alignClocks(game.clocks, game.moves.length)
+    if (!clocks) return map
+
+    timeSpentPerPly(clocks, control).forEach((seconds, index) => map.set(index, seconds))
+    return map
+  }, [game])
+
+  const remainingByPly = useMemo(() => {
+    const map = new Map<number, number>()
+    if (!game?.clocks) return map
+
+    const clocks = alignClocks(game.clocks, game.moves.length)
+    clocks?.forEach((seconds, index) => map.set(index, Math.round(seconds)))
+    return map
+  }, [game])
+
+  const engineTags = useMemo(() => {
+    const map = new Map<number, string>()
+    for (const move of game?.analysis?.moves ?? []) {
+      if (move.tag !== '!') map.set(move.ply, move.tag)
+    }
+    return map
+  }, [game])
+
+  const reviewedPlies = useMemo(
+    () => new Set((game?.review?.mistakes ?? []).map(mistake => mistake.ply)),
+    [game],
+  )
+
+  const tree = useMemo(() => buildPatternTree(patterns), [patterns])
+
+  /** One replay of every game, kept off the filter path so changing a filter is cheap. */
+  const keys = useMemo(() => positionKeyMap(games ?? []), [games])
+
+  const line = useMemo(() => {
+    if (!game) return []
+    return matchingPath(tree, game, keys.get(game.id) ?? new Set()).map(node =>
+      patternLabel(node.pattern),
+    )
+  }, [tree, game, keys])
+
+  /**
+   * Where this game sits in the slice the dashboard was showing, so a review session
+   * can walk the branch it filtered to without going back to the list each time.
+   */
+  const neighbours = useMemo<Neighbours>(() => {
+    const none: Neighbours = {
+      previous: null,
+      next: null,
+      nextUnreviewed: null,
+      position: null,
+      total: 0,
+    }
+    if (!games || !game) return none
+
+    const scoped = scopeGames(games, tree, keys, filters)
+    const index = scoped.findIndex(entry => entry.id === game.id)
+    if (index === -1) return { ...none, total: scoped.length }
+
+    return {
+      previous: index > 0 ? scoped[index - 1] : null,
+      next: index < scoped.length - 1 ? scoped[index + 1] : null,
+      nextUnreviewed: scoped.slice(index + 1).find(entry => !hasReview(entry)) ?? null,
+      position: index + 1,
+      total: scoped.length,
+    }
+  }, [games, game, tree, keys, filters])
+
+  const suggestedTags = useMemo(() => knownTags(games ?? []), [games])
+
+  function applyReview(review: GameReview | null) {
+    setGames(prev =>
+      (prev ?? []).map(entry =>
+        entry.id === gameId
+          ? ({ ...entry, review: review ?? undefined } as GameRecord)
+          : entry,
+      ),
+    )
+  }
+
+  function applyAnalysed(updated: GameRecord) {
+    setGames(prev => (prev ?? []).map(entry => (entry.id === updated.id ? updated : entry)))
+  }
+
+  if (games === null || (!game && !missing)) {
+    return (
+      <div className="py-16 flex justify-center">
+        <Spinner size="w-6 h-6" />
+      </div>
+    )
+  }
+
+  if (!game) {
+    return (
+      <div className="py-16 text-center text-zinc-500">
+        That game is not in your collection.{' '}
+        <Link href={`/dashboard${search}`} className="underline text-zinc-200">
+          Back to the dashboard
+        </Link>
+        .
+      </div>
+    )
+  }
+
+  const current = cursor >= 0 ? replay.plies[cursor] : null
+  const fen = replay.fens[Math.min(cursor + 1, replay.fens.length - 1)]
+  const analysed = game.analysis
+  const shownMove = analysed?.moves.find(move => move.ply === cursor)
+
+  return (
+    <>
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <Link
+          href={`/dashboard${search}`}
+          className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
+        >
+          ← Dashboard
+        </Link>
+
+        <div className="flex items-center gap-3 text-xs">
+          {neighbours.position && (
+            <span className="text-zinc-600">
+              {neighbours.position} of {neighbours.total} in this slice
+            </span>
+          )}
+          {neighbours.previous && (
+            <Link
+              href={`/games/${neighbours.previous.id}${search}`}
+              className="text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              ‹ Newer
+            </Link>
+          )}
+          {neighbours.next && (
+            <Link
+              href={`/games/${neighbours.next.id}${search}`}
+              className="text-zinc-400 hover:text-zinc-100 transition-colors"
+            >
+              Older ›
+            </Link>
+          )}
+          {neighbours.nextUnreviewed && (
+            <Link
+              href={`/games/${neighbours.nextUnreviewed.id}${search}`}
+              className="text-zinc-200 hover:text-white transition-colors"
+            >
+              Next unreviewed ›
+            </Link>
+          )}
+        </div>
+      </div>
+
+      <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
+        <div className="flex items-start gap-3 flex-wrap">
+          <span className={`text-lg font-bold ${RESULT_COLOR[game.result]}`}>
+            {RESULT_LABEL[game.result]}
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-sm text-zinc-300">
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${
+                game.color === 'white' ? 'bg-white' : 'bg-black ring-1 ring-zinc-500'
+              }`}
+            />
+            as {game.color === 'white' ? 'White' : 'Black'}
+          </span>
+          <span className="text-sm text-zinc-100">
+            vs {game.opponent}
+            {game.opponentRating ? ` (${game.opponentRating})` : ''}
+          </span>
+          {hasReview(game) && (
+            <span className="px-2 py-0.5 text-xs rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
+              reviewed
+            </span>
+          )}
+          <a
+            href={game.url}
+            target="_blank"
+            rel="noreferrer"
+            className="ml-auto text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            On {SOURCE_LABEL[game.source]} ↗
+          </a>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <Fact label="Played" value={new Date(game.playedAt).toLocaleDateString()} />
+          <Fact label="Control" value={`${game.timeControl} · ${game.timeClass}`} />
+          <Fact label="Ended by" value={endingOf(game)} />
+          <Fact
+            label="Engine"
+            value={
+              analysed ? (
+                <span className="font-mono text-xs">
+                  <span className="text-red-400">{analysed.blunders}??</span>{' '}
+                  <span className="text-amber-400">{analysed.mistakes}?</span>{' '}
+                  <span className="text-yellow-600">{analysed.inaccuracies}?!</span>{' '}
+                  <span className="text-zinc-600">d{analysed.depth}</span>
+                </span>
+              ) : (
+                <span className="text-zinc-600 text-sm">not analysed</span>
+              )
+            }
+          />
+        </div>
+
+        <div className="text-xs">
+          {line.length > 0 ? (
+            <span className="text-zinc-400">{line.join(' › ')}</span>
+          ) : (
+            <span className="text-zinc-600">
+              {game.openingName ?? 'Unknown opening'} — not in a saved line
+            </span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <AnalyseGame userId={userId} game={game} onDone={applyAnalysed} />
+          {game.annotatedPgn && (
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(game.annotatedPgn as string)
+                setCopied(true)
+              }}
+              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              {copied ? 'PGN copied' : 'Copy annotated PGN'}
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className="grid md:grid-cols-[minmax(0,28rem)_minmax(0,17rem)] gap-4 items-start justify-center">
+        <div className="flex flex-col gap-2">
+          <Board
+            fen={fen}
+            orientation={game.color}
+            highlight={current ? [current.from, current.to] : []}
+          />
+
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShown(-1)}
+              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
+            >
+              ⏮
+            </button>
+            <button
+              onClick={() => step(-1)}
+              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
+            >
+              ‹
+            </button>
+            <button
+              onClick={() => step(1)}
+              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
+            >
+              ›
+            </button>
+            <button
+              onClick={() => setShown(replay.plies.length - 1)}
+              className="px-2 py-1 text-xs rounded border border-zinc-800 text-zinc-400 hover:border-zinc-600 transition-colors"
+            >
+              ⏭
+            </button>
+
+            <span className="ml-2 text-xs text-zinc-500 font-mono">
+              {current
+                ? `${current.moveNumber}${current.color === 'white' ? '.' : '...'} ${current.san}`
+                : 'start'}
+            </span>
+          </div>
+
+          <div className="text-xs text-zinc-600 flex gap-3 flex-wrap">
+            {shownMove && (
+              <span className="font-mono">
+                {formatCp(shownMove.cpBefore)} → {formatCp(shownMove.cpAfter)}
+                {shownMove.tag !== '!' && shownMove.tag !== '!!' && (
+                  <span className="text-amber-400"> {shownMove.tag}</span>
+                )}
+              </span>
+            )}
+            {current && spentByPly.has(current.index) && (
+              <span>{spentByPly.get(current.index)}s spent</span>
+            )}
+            {current && remainingByPly.has(current.index) && (
+              <span>{remainingByPly.get(current.index)}s left</span>
+            )}
+            <span className="text-zinc-700">arrow keys to step</span>
+          </div>
+        </div>
+
+        <div className="flex flex-col border border-zinc-800 rounded-xl overflow-hidden max-h-[28rem] bg-zinc-900">
+          <div className="px-3 py-2 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-500 shrink-0">
+            Moves
+          </div>
+          <MoveList
+            plies={replay.plies}
+            current={cursor}
+            onPick={setShown}
+            tags={engineTags}
+            reviewed={reviewedPlies}
+            secondsByPly={spentByPly}
+          />
+          {replay.truncated && (
+            <p className="px-3 py-2 text-xs text-amber-400 border-t border-zinc-800">
+              The stored move list stopped parsing part way through.
+            </p>
+          )}
+        </div>
+      </section>
+
+      <ReviewEditor
+        userId={userId}
+        game={game}
+        plies={replay.plies}
+        suggestedTags={suggestedTags}
+        onShowPly={setShown}
+        onSaved={applyReview}
+      />
+    </>
+  )
+}
+
+export default function GamePage() {
+  const params = useParams<{ id: string }>()
+
+  return (
+    <PageShell title="Game review" wide>
+      {user => (
+        <Suspense
+          fallback={
+            <div className="py-16 flex justify-center">
+              <Spinner size="w-6 h-6" />
+            </div>
+          }
+        >
+          {/* keyed so moving to the next game resets the board and the review form */}
+          <GameBody key={params.id} userId={user.uid} gameId={params.id} />
+        </Suspense>
+      )}
+    </PageShell>
+  )
+}

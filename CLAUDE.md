@@ -17,6 +17,11 @@ win/draw/loss splits for all games or for the games that followed one of those l
    analysis, plus a table breaking the slice down by sub-variation. The "Ended in" dropdown scopes
    to games that finished in one phase (`?phase=11-15`); clicking a phase's *ended* count sets the
    same filter, the way clicking a variation row sets the opening.
+5. `/games/{id}` — one game: a board you can step through, the engine's marks on the move list,
+   and your own root-cause analysis of the one to three moves that decided it. Reached from any
+   row in the dashboard's game list, which carries the filters along so Back returns to the same
+   slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
+   reviews carry; clicking a tag filters the games down to it.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
@@ -35,12 +40,14 @@ src/
 │   ├── profile/page.tsx        # Linked accounts + sync
 │   ├── patterns/page.tsx       # Saved opening lines
 │   ├── dashboard/page.tsx      # Stats + pattern filter + game list
+│   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   └── api/
 │       ├── chesscom/games/route.ts
 │       ├── lichess/games/route.ts
 │       └── export/route.ts     # read-only JSON export, API-key gated
 ├── components/                 # PageShell, SyncPanel, PatternForm, StatBlockCard,
-│                               # VariationTable, GameRow, Chip
+│                               # VariationTable, GameRow, Chip, Board, MoveList,
+│                               # ReviewEditor, ReviewPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -48,6 +55,9 @@ src/
 │   ├── export.ts               # builds the /api/export payload
 │   ├── dashboard-filters.ts    # dashboard filters <-> query string
 │   ├── game-filters.ts         # date / rating / format scope rule, shared with the export
+│   ├── scope.ts                # criteria + opening together, shared with the game view
+│   ├── review.ts               # review vocabulary, tag counts, review queue
+│   ├── board.ts                # replay, board squares, SAN parsing for the game view
 │   ├── ratings.ts              # reconstructs pre-game ratings, Elo expectation
 │   ├── clocks.ts               # per-move time, timeout KPI, phases, mistakes by phase
 │   ├── engine.ts               # Stockfish 18 lite in a worker, queued, FEN-cached
@@ -106,8 +116,36 @@ src/
   they are indistinguishable there. Matching on the opponent's *name* would be wrong — a real
   chess.com human in this data is called `anonymous1177`. Bot games are still stored and flagged
   rather than skipped at sync, so a re-sync backfills the flag on games saved before it existed.
+- **A review is three questions about at most three moves.** The method is borrowed from
+  incident root-cause analysis: name what failed, why it failed, and what would have caught it.
+  `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every move explains nothing,
+  so the cap forces a choice. Each entry asks why the move is a mistake, what was visible in the
+  position that should have redirected you, and what you would play instead; proposed moves are
+  validated against the position with chess.js and only the legal ones are stored, since the
+  point is a move you could actually have played.
+- **"Beyond what I could be expected to find" is the escape hatch, and it is not a shrug.** The
+  engine's objection stands, but no pattern is trainable from it, so the entry is stored and then
+  left out of everything that counts: `trainableMistakes` drops it, so it reaches neither the tag
+  table nor the tag filter. Those two using the same rule is what makes a row in the table and
+  the games behind it the same set. A move marked this way needs no answers; everything else
+  needs a cause and at least one tag, or it adds a row that says nothing.
+- **Tags are a fixed vocabulary you can extend.** `TAG_GROUPS` in `lib/review.ts` groups them by
+  what actually broke — tactics, calculation, strategy, endgame, opening, mindset — because a
+  count is only comparable across months if the words stay the same. Free tags are still allowed
+  and are offered back as suggestions (`knownTags`), landing in a "Your own" group.
+- **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
+  already holds every game, so filtering by review state, counting tags and finding the next game
+  to review cost no extra reads. `saveGames` merges, so a re-sync never clears a review.
+- **The engine says where to look; the review says why.** `reviewQueue` is analysed games with a
+  blunder or mistake and no review yet, blunders first, which is what the "Review next game"
+  button follows. The engine's own best move is available per entry but only on demand — after
+  you have committed to your own answer, which is the point of writing it down first.
+- **`lib/scope.ts` joins the criteria to the opening filter**, so the dashboard's list and the
+  game view's Newer / Older / Next unreviewed walk exactly the same slice in the same order. The
+  game view takes the filters from the query string it was linked with.
 - **`matchesCriteria` in `lib/game-filters.ts` is the single scope rule** — site, colour, time
-  control, date window, rating band and the phase a game ended in.
+  control, date window, rating band, the phase a game ended in, whether you have reviewed it and
+  which tag that review carries.
 - **Analysis filters by time control, not time class.** 10+0 and 15+10 are both "rapid" and behave
   nothing alike on the clock, so `timeControls` holds canonical ids (`180+2`) and `timeControlKey`
   reconciles chess.com's `600` with lichess's `600+0`. The dashboard offers only the controls
@@ -187,5 +225,5 @@ yarn lint
 
 ## Not built yet
 - Transpositions *between* named openings (a line only nests by literal move prefix)
-- Engine / accuracy analysis
 - Background or scheduled syncing
+- Any training drill built from the tag counts — the database is read by eye for now

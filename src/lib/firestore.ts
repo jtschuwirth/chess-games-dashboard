@@ -8,6 +8,7 @@ import {
   setDoc,
   addDoc,
   deleteDoc,
+  deleteField,
   updateDoc,
   query,
   orderBy,
@@ -18,6 +19,7 @@ import { db } from './firebase'
 import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
   GameRecord,
+  GameReview,
   StoredAnalysis,
   NewPattern,
   PatternRecord,
@@ -164,6 +166,26 @@ export async function saveAnalysis(
     { analysis, annotatedPgn },
     { merge: true },
   )
+}
+
+/**
+ * Your own review of a game, written onto the game document. Keeping it there rather
+ * than in a subcollection is what lets the dashboard filter and count reviews without
+ * a single extra read: the games are already loaded.
+ */
+export async function saveReview(
+  userId: string,
+  gameId: string,
+  draft: Omit<GameReview, 'reviewedAt'>,
+): Promise<GameReview> {
+  // stamped here rather than in the form: reading the clock during a render is not allowed
+  const review: GameReview = { ...draft, reviewedAt: Date.now() }
+  await setDoc(doc(db, 'users', userId, 'games', gameId), { review }, { merge: true })
+  return review
+}
+
+export async function deleteReview(userId: string, gameId: string): Promise<void> {
+  await updateDoc(doc(db, 'users', userId, 'games', gameId), { review: deleteField() })
 }
 
 /* --------------------------------------------------------------- patterns */

@@ -1,4 +1,5 @@
 import { endingPhaseOf, timeControlKey } from '@/lib/clocks'
+import { hasReview, tagsOf } from '@/lib/review'
 import type { Color, GameRecord, Source } from '@/types/chess'
 
 export type SinceKey = 'all' | '1m' | '3m' | '6m' | '12m' | '24m' | '36m'
@@ -46,6 +47,16 @@ export interface GameCriteria {
    * already analysed. Null leaves the set alone.
    */
   mistakes: 'blunder' | 'mistake' | 'clean' | 'analysed' | null
+  /**
+   * Your own review: 'yes' for games you have taken apart, 'no' for the ones still
+   * waiting. Null leaves the set alone.
+   */
+  reviewed: 'yes' | 'no' | null
+  /**
+   * One tag from your review vocabulary. Only entries you did *not* mark as
+   * unreasonable count, so the tag filter and the tag counts always agree.
+   */
+  tag: string | null
   /** The side you played, or 'both'. */
   color: Color | 'both'
   since: SinceKey
@@ -59,6 +70,8 @@ export const ALL_GAMES: GameCriteria = {
   source: 'both',
   endedIn: null,
   mistakes: null,
+  reviewed: null,
+  tag: null,
   color: 'both',
   since: 'all',
   minRating: null,
@@ -93,6 +106,11 @@ export function matchesCriteria(
     if (criteria.mistakes === 'mistake' && analysis.mistakes === 0) return false
     if (criteria.mistakes === 'clean' && analysis.blunders + analysis.mistakes > 0) return false
   }
+
+  if (criteria.reviewed === 'yes' && !hasReview(game)) return false
+  if (criteria.reviewed === 'no' && hasReview(game)) return false
+  if (criteria.tag !== null && !tagsOf(game).includes(criteria.tag)) return false
+
   if (criteria.color !== 'both' && game.color !== criteria.color) return false
 
   const start = sinceTimestamp(criteria.since, now)

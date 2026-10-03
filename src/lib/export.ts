@@ -15,10 +15,18 @@ import {
   type PhaseBucket,
 } from './clocks'
 import { endingOf, type Ending } from './termination'
+import {
+  aggregateTags,
+  reviewSummary,
+  tagsOf,
+  type ReviewSummary,
+  type TagTally,
+} from './review'
 import { TIME_CLASSES } from '@/types/chess'
 import type {
   Color,
   GameRecord,
+  GameReview,
   StoredAnalysis,
   PatternColor,
   PatternRecord,
@@ -101,6 +109,10 @@ export interface CompactGame {
   inaccuracies: number | null
   /** Your own moves with their evaluations. Only with `moves=1`. */
   analysisMoves?: StoredAnalysis['moves']
+  /** Tags from your review that count as trainable patterns. */
+  reviewTags: string[]
+  /** Your own root-cause analysis, present only on games you have reviewed. */
+  review?: GameReview
   moves?: string[]
   /** Seconds left after each ply, index-aligned with `moves`. Only with `moves=1`. */
   clocks?: number[] | null
@@ -123,6 +135,8 @@ export interface ExportPayload {
   lossesBy: Partial<Record<Ending, number>>
   /** Thinking time by phase of the game, and where the slowest think lands. */
   phases: PhaseBucket[]
+  /** Your own reviews: how much has been taken apart, and which patterns recur. */
+  reviews: { summary: ReviewSummary; tags: TagTally[] }
   games?: CompactGame[]
 }
 
@@ -272,6 +286,7 @@ export function buildExport(
     byOpponentStrength,
     clock: computeClockStats(counted),
     phases: computePhases(counted),
+    reviews: { summary: reviewSummary(counted), tags: aggregateTags(counted) },
     lossesBy: counted
       .filter(game => game.result === 'loss')
       .reduce<Partial<Record<Ending, number>>>((tally, game) => {
@@ -312,6 +327,8 @@ export function buildExport(
         blunders: game.analysis?.blunders ?? null,
         mistakes: game.analysis?.mistakes ?? null,
         inaccuracies: game.analysis?.inaccuracies ?? null,
+        reviewTags: tagsOf(game),
+        ...(game.review ? { review: game.review } : {}),
         ...(options.includeMoves && game.analysis
           ? { analysisMoves: game.analysis.moves }
           : {}),

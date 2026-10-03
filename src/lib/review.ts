@@ -1,0 +1,274 @@
+import type { GameRecord, GameReview, ReviewedMistake, StoredAnalysis } from '@/types/chess'
+
+/**
+ * A review names one to three moves. The cap is the whole method: a post-mortem that
+ * blames every move explains nothing, so you are forced to pick the moves that
+ * actually decided the game.
+ */
+export const MAX_REVIEW_MISTAKES = 3
+
+export interface TagGroup {
+  name: string
+  /** Why this group of causes is one group, shown as the column's hint. */
+  hint: string
+  tags: string[]
+}
+
+/**
+ * The shared vocabulary. Free tags are allowed — anything already used in a review is
+ * offered back as a suggestion — but a fixed list is what makes the counts comparable
+ * across months, which is the entire reason for keeping them.
+ */
+export const TAG_GROUPS: TagGroup[] = [
+  {
+    name: 'Tactics',
+    hint: 'A motif you missed or allowed',
+    tags: [
+      'hanging piece',
+      'fork',
+      'pin',
+      'skewer',
+      'discovered attack',
+      'back rank',
+      'removing the defender',
+      'overloaded defender',
+      'trapped piece',
+      'mate threat',
+      'in-between move',
+    ],
+  },
+  {
+    name: 'Calculation',
+    hint: 'The search itself broke down',
+    tags: [
+      "missed opponent's reply",
+      'stopped calculating too early',
+      'skipped checks and captures',
+      'miscounted material',
+      'lost track of the position',
+    ],
+  },
+  {
+    name: 'Strategy',
+    hint: 'The move fit no sound plan',
+    tags: [
+      'wrong plan',
+      'weakened my king',
+      'pawn structure',
+      'conceded a square',
+      'wrong piece traded',
+      'misplaced piece',
+      'premature pawn push',
+      'opened the position badly',
+      "ignored opponent's plan",
+    ],
+  },
+  {
+    name: 'Endgame',
+    hint: 'Technique once the pieces thinned out',
+    tags: ['king activity', 'pawn race', 'conversion technique', 'wrong trade into the endgame'],
+  },
+  {
+    name: 'Opening',
+    hint: 'Left the line you know',
+    tags: ['out of book', 'forgot the theory', 'wrong move order'],
+  },
+  {
+    name: 'Mindset',
+    hint: 'Nothing to do with the position',
+    tags: [
+      'played too fast',
+      'time pressure',
+      'autopilot move',
+      'impatient',
+      'overconfident while winning',
+      'panicked while worse',
+      'rattled by a surprise',
+    ],
+  },
+]
+
+const GROUP_BY_TAG = new Map<string, string>(
+  TAG_GROUPS.flatMap(group => group.tags.map(tag => [tag, group.name] as const)),
+)
+
+/** Which group a tag belongs to; tags you invented land in "Your own". */
+export function tagGroup(tag: string): string {
+  return GROUP_BY_TAG.get(tag) ?? 'Your own'
+}
+
+export function hasReview(game: GameRecord): boolean {
+  return (game.review?.mistakes.length ?? 0) > 0
+}
+
+/**
+ * The entries that describe a trainable pattern. A move marked unreasonable is left
+ * out: the engine's objection stands, but there is nothing to practise, and counting
+ * it would inflate whatever tag happens to sit on it.
+ */
+export function trainableMistakes(review: GameReview | undefined): ReviewedMistake[] {
+  return (review?.mistakes ?? []).filter(mistake => !mistake.unreasonable)
+}
+
+/** Tags a game contributes to the pattern counts, de-duplicated within the game. */
+export function tagsOf(game: GameRecord): string[] {
+  const tags = new Set<string>()
+  for (const mistake of trainableMistakes(game.review)) {
+    for (const tag of mistake.tags) tags.add(tag)
+  }
+  return [...tags]
+}
+
+/** Every tag ever written, for suggesting your own additions back to you. */
+export function knownTags(games: GameRecord[]): string[] {
+  const tags = new Set<string>()
+  for (const game of games) {
+    for (const mistake of game.review?.mistakes ?? []) {
+      for (const tag of mistake.tags) {
+        if (!GROUP_BY_TAG.has(tag)) tags.add(tag)
+      }
+    }
+  }
+  return [...tags].sort()
+}
+
+export interface TagTally {
+  tag: string
+  group: string
+  /** How many entries carry this tag. */
+  count: number
+  /** How many games — a tag twice in one game is one game. */
+  games: number
+  /** Results of the games carrying it, so a frequent tag that costs nothing shows up. */
+  losses: number
+}
+
+/** The mistake database: which ideas keep appearing, worst first. */
+export function aggregateTags(games: GameRecord[]): TagTally[] {
+  const counts = new Map<string, { count: number; games: Set<string>; losses: number }>()
+
+  for (const game of games) {
+    for (const mistake of trainableMistakes(game.review)) {
+      for (const tag of mistake.tags) {
+        const entry = counts.get(tag) ?? { count: 0, games: new Set<string>(), losses: 0 }
+        entry.count++
+        if (!entry.games.has(game.id)) {
+          entry.games.add(game.id)
+          if (game.result === 'loss') entry.losses++
+        }
+        counts.set(tag, entry)
+      }
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([tag, entry]) => ({
+      tag,
+      group: tagGroup(tag),
+      count: entry.count,
+      games: entry.games.size,
+      losses: entry.losses,
+    }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+}
+
+export interface ReviewSummary {
+  /** Games in the slice carrying a review. */
+  reviewed: number
+  /** Analysed games with a blunder or mistake and no review yet. */
+  waiting: number
+  /** Entries written, trainable ones only. */
+  mistakes: number
+  /** Entries you marked as beyond reasonable reach. */
+  unreasonable: number
+  /** Trainable entries carrying no tag, which contribute nothing to the counts. */
+  untagged: number
+}
+
+export function reviewSummary(games: GameRecord[]): ReviewSummary {
+  let reviewed = 0
+  let mistakes = 0
+  let unreasonable = 0
+  let untagged = 0
+
+  for (const game of games) {
+    if (!hasReview(game)) continue
+    reviewed++
+
+    for (const mistake of game.review?.mistakes ?? []) {
+      if (mistake.unreasonable) unreasonable++
+      else {
+        mistakes++
+        if (mistake.tags.length === 0) untagged++
+      }
+    }
+  }
+
+  return { reviewed, waiting: reviewQueue(games).length, mistakes, unreasonable, untagged }
+}
+
+/**
+ * Games the engine flagged and you have not taken apart yet, heaviest first. This is
+ * what turns an analysis run into a reading list: the engine says where to look, the
+ * review says why it happened.
+ */
+export function reviewQueue(games: GameRecord[]): GameRecord[] {
+  return games
+    .filter(game => !hasReview(game) && engineFindings(game) > 0)
+    .sort((a, b) => engineFindings(b) - engineFindings(a) || b.playedAt - a.playedAt)
+}
+
+function engineFindings(game: GameRecord): number {
+  const analysis = game.analysis
+  if (!analysis) return 0
+  // a blunder is worth more attention than a mistake, so it sorts first
+  return analysis.blunders * 10 + analysis.mistakes
+}
+
+export interface MistakeCandidate {
+  ply: number
+  san: string
+  moveNumber: number
+  cpBefore: number
+  cpAfter: number
+  cpLoss: number
+  tag: string
+}
+
+/** The engine's own objections, worst first — the moves offered up for review. */
+export function candidateMoves(analysis: StoredAnalysis | undefined): MistakeCandidate[] {
+  return (analysis?.moves ?? [])
+    .filter(move => move.tag === '??' || move.tag === '?' || move.tag === '?!')
+    .sort((a, b) => b.cpLoss - a.cpLoss)
+    .map(move => ({
+      ply: move.ply,
+      san: move.san,
+      moveNumber: move.moveNumber,
+      cpBefore: move.cpBefore,
+      cpAfter: move.cpAfter,
+      cpLoss: move.cpLoss,
+      tag: move.tag,
+    }))
+}
+
+/**
+ * What still has to be filled in. An unreasonable move needs nothing — that is the
+ * point of the mark — but any other entry needs a cause and at least one tag, or it
+ * adds a row to the database that says nothing.
+ */
+export function missingFrom(mistake: ReviewedMistake): string | null {
+  if (mistake.unreasonable) return null
+  if (mistake.cause.trim().length === 0) return 'say why it is a mistake'
+  if (mistake.tags.length === 0) return 'add at least one tag'
+  return null
+}
+
+/** Centipawns as a board shows them: +1.8, −0.4, mate. */
+export function formatCp(cp: number | null): string {
+  if (cp === null) return '—'
+  if (Math.abs(cp) >= 9000) return cp > 0 ? 'mate' : '−mate'
+
+  const pawns = cp / 100
+  const sign = pawns > 0 ? '+' : pawns < 0 ? '−' : ''
+  return `${sign}${Math.abs(pawns).toFixed(1)}`
+}
