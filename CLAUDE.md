@@ -214,6 +214,10 @@ src/
   364ms at 16, so a 40-move game runs about a minute and a half — affordable even for the results
   you sit and wait for. The batch panel still picks its own, lower depth, because it pays that
   cost once per game across a whole branch and only has to find the blunders.
+- **Every evaluation on screen shows both ends.** Where a move left you says nothing without
+  where it started: `+7.4` reads as a disaster until you see it was `+6.0 → +7.4` in a game
+  already gone, and worth no part of a review. That holds for the candidate chips, the entry
+  header, each alternative and the drill.
 - **The move you played is re-evaluated in the review form**, alongside your alternatives, and the
   entry header shows that rather than the stored numbers once it lands. The stored pair was
   written by whatever depth the batch run used — often 12 — so leaving it on screen next to a

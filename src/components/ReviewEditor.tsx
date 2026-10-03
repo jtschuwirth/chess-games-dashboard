@@ -370,15 +370,18 @@ export default function ReviewEditor({
               type="button"
               disabled={full}
               onClick={() => add(move.ply, move.cpBefore, move.cpAfter)}
-              title={`${formatEval(move.cpBefore, game.color)} → ${formatEval(
-                move.cpAfter,
-                game.color,
-              )}`}
+              title={`Take this move apart${
+                game.analysis ? ` — from the stored analysis at depth ${game.analysis.depth}` : ''
+              }`}
               className="px-3 py-1 text-xs rounded-full border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-mono"
             >
               {plyLabel(move.ply, move.san)}
               <span className={TAG_COLOR[move.tag] ?? 'text-zinc-500'}> {move.tag}</span>
-              <span className="text-zinc-500"> {formatEval(move.cpAfter, game.color)}</span>
+              {/* both ends: where the move left you is meaningless without where it started */}
+              <span className="text-zinc-500">
+                {' '}
+                {formatEval(move.cpBefore, game.color)} → {formatEval(move.cpAfter, game.color)}
+              </span>
             </button>
           ))}
 
