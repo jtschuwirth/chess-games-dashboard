@@ -1,5 +1,5 @@
 /**
- * Stockfish 18 (lite, single-threaded) in a Web Worker.
+ * Stockfish 19 (lite, single-threaded) in a Web Worker.
  *
  * The single-threaded build is deliberate: the multi-threaded one needs
  * cross-origin isolation headers, which would constrain where this can be hosted.
@@ -8,7 +8,7 @@
  * analysing a set of games means thousands of sequential positions.
  */
 
-const WORKER_PATH = '/stockfish-18-lite-single.js'
+const WORKER_PATH = '/stockfish-19-lite-single.js'
 
 /** A forced mate is worth more than any material count; clamp it so arithmetic still works. */
 export const MATE_SCORE = 10000

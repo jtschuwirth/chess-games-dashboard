@@ -65,7 +65,7 @@ src/
 │   ├── board.ts                # replay, board squares, SAN parsing for the game view
 │   ├── ratings.ts              # reconstructs pre-game ratings, Elo expectation
 │   ├── clocks.ts               # per-move time, timeout KPI, phases, mistakes by phase
-│   ├── engine.ts               # Stockfish 18 lite in a worker, queued, FEN-cached
+│   ├── engine.ts               # Stockfish 19 lite in a worker, queued, FEN-cached
 │   ├── analysis.ts             # move classification and the annotated PGN
 │   ├── termination.ts          # one ending vocabulary across the two providers
 │   ├── auth.ts                 # signInWithGoogle / signOut
@@ -101,9 +101,12 @@ src/
   context excused — +12.4 to +9.8 earns one — so putting it on screen or offering it up for
   review would argue against the rule that produced it. `FAULT_TAGS` in `lib/review.ts` is the
   one list of marks that reach a screen or a PGN: `??` and `?`.
-- **The engine runs in the browser**, Stockfish 18 lite single-threaded in a worker, copied to
+- **The engine runs in the browser**, Stockfish 19 lite single-threaded in a worker, copied to
   `/public` on postinstall and gitignored. Single-threaded is deliberate: the multi-threaded build
-  needs cross-origin isolation headers. Requests are queued rather than rejected when busy, and
+  needs cross-origin isolation headers. Lite is equally deliberate: the full build ships a 99 MB
+  NNUE network against the lite build's 1.8 MB, which is not something to hand a browser. An
+  upgrade renames the files, so the copy script sweeps the previous version out of `/public`
+  rather than leaving it to be deployed for ever. Requests are queued rather than rejected when busy, and
   cached by FEN — games in one opening share most of their early positions.
 - **Analysis is written per game as it finishes**, both as a `StoredAnalysis` for filtering and as
   an `annotatedPgn` carrying the symbols on your own moves. Stopping a run therefore loses at most
@@ -203,10 +206,15 @@ src/
   `−2.2` reads "I am winning" when it means the opposite. `formatEval(cp, color)` in
   `lib/review.ts` flips the sign at the point of display and is the only place that does; the
   export keeps the stored frame, which is what its field comments say.
-- **The review path runs at `REVIEW_DEPTH` (16), the batch at 12 by default.** A batch pays its
-  depth once per game across a whole branch and only needs to find the blunders; analysing the
-  single game in front of you, or asking what the engine wanted on one move, is about to become
-  something you write down, so it rests on the better evaluation.
+- **Three depths, chosen by what is waiting on them.** `GAME_ANALYSIS_DEPTH` (21) is the single
+  game you analyse from its own page: you press the button and come back, so it buys the most
+  reliable verdict a browser engine offers. `REVIEW_DEPTH` (16) is everything you sit and wait
+  for — the engine's choice on one move, the verdict on an alternative you typed, reading a drill
+  position before you can answer — because a card that took a minute to appear would not get
+  used. The batch panel defaults to 12, since it pays its depth once per game across a whole
+  branch and only has to find the blunders. Measured on this machine, one quiet middlegame
+  position costs 364ms at depth 16 and 1333ms at 21, so a 40-move game runs about a minute and a
+  half at the deeper setting.
 - **The engine says where to look; the review says why.** `reviewQueue` is analysed games with a
   blunder or mistake and no review yet, blunders first, which is what the "Review next game"
   button follows. The engine's own best move is available per entry but only on demand — after

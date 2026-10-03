@@ -4289,10 +4289,10 @@ stable-hash@^0.0.5:
   resolved "https://registry.yarnpkg.com/stable-hash/-/stable-hash-0.0.5.tgz#94e8837aaeac5b4d0f631d2972adef2924b40269"
   integrity sha512-+L3ccpzibovGXFK+Ap/f8LOS0ahMrHTf3xu7mMLSpEGU0EO9ucaysSylKo9eRDFNhWve/y275iPmIZ4z39a9iA==
 
-stockfish@^18.0.7:
-  version "18.0.8"
-  resolved "https://registry.yarnpkg.com/stockfish/-/stockfish-18.0.8.tgz#f361d4b05f4c829a6f17da5cf18328525c5268f6"
-  integrity sha512-z+f2UMPXLylDBGjv9e9zU8QulY7hUl8MYHesLRrdddewlOXjJrUSmtNmbtID1/F72EPhq0CCkCNxgWS5MQVWtQ==
+stockfish@^19.0.0:
+  version "19.0.0"
+  resolved "https://registry.yarnpkg.com/stockfish/-/stockfish-19.0.0.tgz#88db50693ea779c8f4a3a4c1171250b3d5654bb7"
+  integrity sha512-jDyYLbqNpboQcMs5HodTHI2CrKL74zkQWb1+sgoNXw5HI6avTblW4G0X7afFt3BBOc6VbTSkOV64EUxm/DWSpg==
 
 stop-iteration-iterator@^1.1.0:
   version "1.1.0"

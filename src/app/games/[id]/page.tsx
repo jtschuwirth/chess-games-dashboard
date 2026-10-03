@@ -9,7 +9,12 @@ import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell
 import ReviewEditor from '@/components/ReviewEditor'
 import { replayGame } from '@/lib/board'
 import { alignClocks, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
-import { AnalysisStopped, REVIEW_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
+import {
+  AnalysisStopped,
+  GAME_ANALYSIS_DEPTH,
+  analyzeGame,
+  buildAnnotatedPgn,
+} from '@/lib/analysis'
 import { terminateEngine } from '@/lib/engine'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getPatterns, saveAnalysis } from '@/lib/firestore'
@@ -27,6 +32,12 @@ const RESULT_COLOR: Record<GameResult, string> = {
 }
 
 const RESULT_LABEL: Record<GameResult, string> = { win: 'Win', loss: 'Loss', draw: 'Draw' }
+
+function duration(ms: number): string {
+  const seconds = Math.round(ms / 1000)
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
 
 interface Neighbours {
   previous: GameRecord | null
@@ -92,18 +103,25 @@ function AnalyseGame({
   onDone: (game: GameRecord) => void
 }) {
   const [running, setRunning] = useState(false)
-  const [positions, setPositions] = useState(0)
+  const [progress, setProgress] = useState<{ done: number; elapsedMs: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function run() {
     setRunning(true)
     setError(null)
-    setPositions(0)
+    setProgress({ done: 0, elapsedMs: 0 })
+
+    // measured here rather than during render, where reading the clock is not allowed
+    const startedAt = Date.now()
+    let done = 0
 
     try {
       const analysis = await analyzeGame(game, {
-        depth: REVIEW_DEPTH,
-        onPosition: () => setPositions(count => count + 1),
+        depth: GAME_ANALYSIS_DEPTH,
+        onPosition: () => {
+          done++
+          setProgress({ done, elapsedMs: Date.now() - startedAt })
+        },
       })
       const pgn = buildAnnotatedPgn(game, analysis)
       await saveAnalysis(userId, game.id, analysis, pgn)
@@ -120,21 +138,32 @@ function AnalyseGame({
 
   // two evaluations per move of yours, which is what the progress counts against
   const total = game.moves.length
+  const left =
+    progress && progress.done > 0
+      ? ((total - progress.done) * progress.elapsedMs) / progress.done
+      : 0
 
   return (
     <div className="flex items-center gap-3 flex-wrap">
       <button
         onClick={run}
         disabled={running}
+        title={`Depth ${GAME_ANALYSIS_DEPTH}. Thorough and slow — a long game can take several minutes.`}
         className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 rounded-lg hover:bg-zinc-700 transition-colors disabled:opacity-40"
       >
         {running
-          ? `Analysing… ${positions}/${total}`
+          ? `Analysing… ${progress?.done ?? 0}/${total}`
           : game.analysis
-            ? `Re-analyse at depth ${REVIEW_DEPTH}`
-            : `Analyse at depth ${REVIEW_DEPTH}`}
+            ? `Re-analyse at depth ${GAME_ANALYSIS_DEPTH}`
+            : `Analyse at depth ${GAME_ANALYSIS_DEPTH}`}
       </button>
       {running && <Spinner size="w-3.5 h-3.5" />}
+      {running && progress && (
+        <span className="text-xs text-zinc-500">
+          {duration(progress.elapsedMs)} elapsed
+          {left > 0 && ` · ~${duration(left)} left`}
+        </span>
+      )}
       {error && <span className="text-xs text-red-400">{error}</span>}
     </div>
   )

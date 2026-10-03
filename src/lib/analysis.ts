@@ -16,11 +16,19 @@ export interface Thresholds {
 export const DEFAULT_THRESHOLDS: Thresholds = { blunder: 300, mistake: 100 }
 
 /**
- * Depth for the review path: analysing the single game in front of you, and asking what
- * the engine wanted on one move. Deeper than a batch run, where the cost is multiplied by
- * every game in a branch and 12 is enough to find the blunders — here you are about to
- * write down why one move was wrong, so the evaluation it rests on should be the better
- * one, and it is one game's worth of work.
+ * Depth for the one game you are looking at. Nothing here is on a critical path — you
+ * press the button and come back — so it buys the most reliable verdict available from
+ * a browser engine before you write down why a move was wrong. It is slow: every ply
+ * roughly doubles the work, so 21 is well over an order of magnitude past 16, and a
+ * long game can take many minutes.
+ */
+export const GAME_ANALYSIS_DEPTH = 21
+
+/**
+ * Depth for everything you wait on: the engine's choice on one move, the verdict on an
+ * alternative you typed, and reading a drill position before you can answer. Deliberately
+ * *not* the deeper number — a drill card that took a minute to appear would not get used,
+ * and at this depth the difference almost never changes whether a move is a blunder.
  */
 export const REVIEW_DEPTH = 16
 
