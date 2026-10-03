@@ -238,12 +238,15 @@ yarn lint
   `ignored` field is no longer read or written. Old documents may still carry it; it is inert.
 
 ## Known limitations
-- `Failed to obtain primary lease for action 'Collect garbage'` in the console is expected, not a
-  fault. With `persistentMultipleTabManager` exactly one tab holds the primary lease and runs the
-  cache's housekeeping; a second tab that tries logs this and stands down. The SDK logs it through
-  `logError` and handles it on its own retry queue, which is why it looks alarming and changes
-  nothing — reads and writes keep working in every tab. Opening a game view beside the dashboard
-  is enough to produce it.
+- `Failed to obtain primary lease for action '…'` in the console is expected, not a fault — the
+  action is `Collect garbage` or `Backfill Indexes`, and more may appear. Both are the cache's own
+  housekeeping, run as `readwrite-primary` transactions, and with `persistentMultipleTabManager`
+  exactly one tab holds that lease; any other tab that reaches the timer logs this and stands
+  down. The SDK logs it through `logError` and handles it on its own retry queue, which is why it
+  looks alarming and changes nothing — reads and writes keep working in every tab, and the primary
+  does the housekeeping. Opening a game view beside the dashboard is enough to produce it. The
+  backfiller in particular has nothing to do here: it writes entries for persistent *cache*
+  indexes, which this app never configures.
 - Lichess arena *berserk* games halve the starting clock while still reporting the full
   `clock.initial`, so the first move's time is overstated for them. Nothing else is affected.
 - `clocks` is null on games synced before clock capture existed; a re-sync backfills them.
