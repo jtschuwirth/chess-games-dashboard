@@ -87,24 +87,37 @@ export function squaresFrom(fen: string, orientation: 'white' | 'black'): BoardS
   return rows.map(row => [...row].reverse()).reverse()
 }
 
+export interface PlayedMove {
+  san: string
+  /** The position the move leads to — what an engine needs to judge it. */
+  fen: string
+}
+
 /**
- * The SAN for a move if it is legal in this position, otherwise null. Typing "Ka7"
- * or "ka7" or "K a7" should all be accepted, so the input is tidied first and then
- * handed to chess.js, which is the only authority on legality.
+ * Plays a typed move if it is legal in this position. Typing "Ka7" or "ka7" or "K a7"
+ * should all be accepted, so the input is tidied first and then handed to chess.js,
+ * which is the only authority on legality.
  */
-export function normalizeSan(fen: string, input: string): string | null {
+export function playMove(fen: string, input: string): PlayedMove | null {
   const text = input.trim().replace(/\s+/g, '').replace(/^\d+\.+/, '')
   if (text.length === 0) return null
 
   for (const candidate of [text, text[0].toUpperCase() + text.slice(1)]) {
     try {
-      return new Chess(fen).move(candidate).san
+      const chess = new Chess(fen)
+      const move = chess.move(candidate)
+      return { san: move.san, fen: chess.fen() }
     } catch {
       // try the next spelling
     }
   }
 
   return null
+}
+
+/** The SAN for a legal move, otherwise null. */
+export function normalizeSan(fen: string, input: string): string | null {
+  return playMove(fen, input)?.san ?? null
 }
 
 /** The engine speaks UCI ("e2e4"); the move list speaks SAN. */

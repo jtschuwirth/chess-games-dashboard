@@ -141,6 +141,16 @@ src/
   its own reasoning: a bare move is a line to memorise, while the reason is the part that
   transfers to the next game. Reviews saved before that existed hold plain SAN strings in
   `betterMoves`, so `betterMovesOf` converts on read rather than migrating the documents.
+- **Your alternatives are judged by the rule that judged your move.** Each legal one is
+  evaluated — the position before it and the position it leads to, both at `REVIEW_DEPTH` so the
+  two numbers are comparable — and run through the same `classifyMove`, so an idea that answers a
+  blunder with another blunder is marked `??` right there in the form. It is the whole value of
+  writing the alternative down: finding out the fix is also losing. Debounced and keyed by
+  `ply:san`, on top of the engine's own FEN cache, so typing does not queue work.
+- **A review can be a note with no entries.** A game where nothing went wrong still deserves to
+  be marked as looked at, or it keeps coming back as unfinished business. `hasReview` therefore
+  asks whether anything was written at all, entries *or* a note, and the form refuses to save a
+  document that is empty of both.
 - **"Beyond what I could be expected to find" is the escape hatch, and it is not a shrug.** The
   engine's objection stands, but no pattern is trainable from it, so the entry is stored and then
   left out of everything that counts: `trainableMistakes` drops it, so it reaches neither the tag

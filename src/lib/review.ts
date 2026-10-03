@@ -116,8 +116,15 @@ export function betterMovesOf(mistake: ReviewedMistake): ProposedMove[] {
   )
 }
 
+/**
+ * A game counts as reviewed once you have written something about it — entries, or
+ * just a note. A game where nothing went wrong still deserves to be marked as looked
+ * at, otherwise it keeps coming back as unfinished business.
+ */
 export function hasReview(game: GameRecord): boolean {
-  return (game.review?.mistakes.length ?? 0) > 0
+  const review = game.review
+  if (!review) return false
+  return review.mistakes.length > 0 || review.notes.trim().length > 0
 }
 
 /**

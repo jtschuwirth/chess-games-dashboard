@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Chip from '@/components/Chip'
-import { normalizeSan, plyLabel, sanFromUci, type Ply } from '@/lib/board'
-import { REVIEW_DEPTH } from '@/lib/analysis'
+import { playMove, plyLabel, sanFromUci, type Ply } from '@/lib/board'
+import { REVIEW_DEPTH, classifyMove, type MoveTag } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
@@ -12,6 +12,7 @@ import {
   betterMovesOf,
   candidateMoves,
   formatEval,
+  isFault,
   missingFrom,
 } from '@/lib/review'
 import type { GameRecord, GameReview, ProposedMove, ReviewedMistake } from '@/types/chess'
@@ -20,6 +21,12 @@ const TAG_COLOR: Record<string, string> = {
   '??': 'text-red-400',
   '?': 'text-amber-400',
 }
+
+/** How a proposed move turned out when the engine looked at it. */
+type Verdict = { cpBefore: number; cpAfter: number; tag: MoveTag } | 'failed'
+
+/** How long to sit still before spending engine time on what you are still typing. */
+const CHECK_DELAY = 700
 
 /** A move being proposed. `input` is what you typed; its SAN is resolved as you type. */
 interface ProposedRow {
@@ -100,6 +107,9 @@ export default function ReviewEditor({
   const [error, setError] = useState<string | null>(null)
   const [engine, setEngine] = useState<Record<number, string>>({})
   const [asking, setAsking] = useState<number | null>(null)
+  /** Keyed by `ply:san`, so a move retyped or proposed twice is only judged once. */
+  const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({})
+  const requested = useRef(new Set<string>())
 
   /**
    * Whether each entry's tag picker is open, held per entry rather than derived from
@@ -118,6 +128,73 @@ export default function ReviewEditor({
     () => plies.filter(ply => ply.color === game.color),
     [plies, game.color],
   )
+
+  /** Each legal alternative on screen, with the two positions needed to judge it. */
+  const alternatives = useMemo(
+    () =>
+      drafts.flatMap(draft => {
+        const move = plyByIndex.get(draft.ply)
+        if (!move) return []
+
+        return draft.better.flatMap(row => {
+          const played = playMove(move.fenBefore, row.input)
+          if (!played) return []
+          return [
+            {
+              key: `${draft.ply}:${played.san}`,
+              fenBefore: move.fenBefore,
+              fenAfter: played.fen,
+            },
+          ]
+        })
+      }),
+    [drafts, plyByIndex],
+  )
+
+  /**
+   * Judges each alternative by the same rule as the move you played: evaluate the
+   * position before and the one your move leads to, at one depth so the two numbers
+   * are comparable, then classify the swing. An idea that answers a blunder with
+   * another blunder is worth knowing about before you write it down as the lesson.
+   *
+   * Debounced, because the list changes on every keystroke, and keyed so a move is
+   * only ever judged once — the engine caches positions by FEN on top of that.
+   */
+  useEffect(() => {
+    const pending = alternatives.filter(entry => !requested.current.has(entry.key))
+    if (pending.length === 0) return
+
+    let cancelled = false
+    const timer = setTimeout(async () => {
+      for (const entry of pending) {
+        if (cancelled) return
+        requested.current.add(entry.key)
+
+        try {
+          const before = await analyzePosition(entry.fenBefore, REVIEW_DEPTH)
+          const after = await analyzePosition(entry.fenAfter, REVIEW_DEPTH)
+          if (cancelled) return
+
+          const cpBefore = before.cp
+          // scored for your opponent, who is to move after your alternative
+          const cpAfter = -after.cp
+          setVerdicts(prev => ({
+            ...prev,
+            [entry.key]: { cpBefore, cpAfter, tag: classifyMove(cpBefore, cpAfter, false) },
+          }))
+        } catch {
+          // the engine was stopped, or the tab is going away — allow a later retry
+          requested.current.delete(entry.key)
+          if (!cancelled) setVerdicts(prev => ({ ...prev, [entry.key]: 'failed' }))
+        }
+      }
+    }, CHECK_DELAY)
+
+    return () => {
+      cancelled = true
+      clearTimeout(timer)
+    }
+  }, [alternatives])
 
   const taken = new Set(drafts.map(draft => draft.ply))
   const candidates = candidateMoves(game.analysis).filter(move => !taken.has(move.ply))
@@ -195,8 +272,8 @@ export default function ReviewEditor({
     // only legal moves are stored; the illegal ones are flagged in the form instead
     const betterMoves: ProposedMove[] = []
     for (const row of draft.better) {
-      const san = move ? normalizeSan(move.fenBefore, row.input) : null
-      if (san) betterMoves.push({ san, why: row.why.trim() })
+      const played = move ? playMove(move.fenBefore, row.input) : null
+      if (played) betterMoves.push({ san: played.san, why: row.why.trim() })
     }
 
     return {
@@ -213,8 +290,11 @@ export default function ReviewEditor({
     }
   }
 
+  /** Entries, or a note on a game that did not need any. Never an empty document. */
+  const saveable = drafts.length > 0 || notes.trim().length > 0
+
   async function save() {
-    if (problems.length > 0) return
+    if (problems.length > 0 || !saveable) return
 
     setSaving(true)
     setError(null)
@@ -396,12 +476,13 @@ export default function ReviewEditor({
               </Label>
 
               {draft.better.map((row, index) => {
-                const san = move ? normalizeSan(move.fenBefore, row.input) : null
-                const illegal = row.input.trim().length > 0 && san === null
+                const played = move ? playMove(move.fenBefore, row.input) : null
+                const illegal = row.input.trim().length > 0 && played === null
+                const verdict = played ? verdicts[`${draft.ply}:${played.san}`] : undefined
 
                 return (
                   <div key={index} className="flex flex-col sm:flex-row gap-2 items-start">
-                    <div className="flex flex-col gap-1 w-full sm:w-32 shrink-0">
+                    <div className="flex flex-col gap-1 w-full sm:w-36 shrink-0">
                       <input
                         value={row.input}
                         onChange={event => setRow(draft, index, { input: event.target.value })}
@@ -409,8 +490,32 @@ export default function ReviewEditor({
                         aria-label="Move"
                         className={`${FIELD} font-mono ${illegal ? 'border-red-500/60' : ''}`}
                       />
-                      {san && <span className="text-xs text-emerald-400 font-mono">✓ {san}</span>}
+                      {played && (
+                        <span className="text-xs text-zinc-500 font-mono">✓ {played.san}</span>
+                      )}
                       {illegal && <span className="text-xs text-red-400">not legal here</span>}
+
+                      {played &&
+                        (verdict === undefined ? (
+                          <span className="text-xs text-zinc-600">checking…</span>
+                        ) : verdict === 'failed' ? (
+                          <span className="text-xs text-zinc-600">not checked</span>
+                        ) : (
+                          <span
+                            className={`text-xs font-mono ${
+                              TAG_COLOR[verdict.tag] ?? 'text-emerald-400'
+                            }`}
+                            title={
+                              isFault(verdict.tag)
+                                ? 'Your alternative gives something away too'
+                                : 'Your alternative holds the position'
+                            }
+                          >
+                            {formatEval(verdict.cpBefore, game.color)} →{' '}
+                            {formatEval(verdict.cpAfter, game.color)}
+                            {isFault(verdict.tag) && ` ${verdict.tag}`}
+                          </span>
+                        ))}
                     </div>
 
                     <textarea
@@ -571,13 +676,22 @@ export default function ReviewEditor({
 
       {drafts.length === 0 && (
         <p className="text-sm text-zinc-500">
-          Pick a move above to start. The engine&apos;s own objections are offered first, worst
-          loss leading.
+          Pick a move above to start — the engine&apos;s own objections are offered first, worst
+          loss leading. Nothing to pick apart? Leave a note below and save; the game counts as
+          reviewed either way.
         </p>
       )}
 
       <div className="flex flex-col gap-1.5">
-        <Label hint="Optional — the thread running through the whole game.">Game notes</Label>
+        <Label
+          hint={
+            drafts.length === 0
+              ? 'On its own this marks the game reviewed, for one that needed no post-mortem.'
+              : 'Optional — the thread running through the whole game.'
+          }
+        >
+          Game notes
+        </Label>
         <textarea
           value={notes}
           onChange={event => {
@@ -603,7 +717,7 @@ export default function ReviewEditor({
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={save}
-          disabled={saving || drafts.length === 0 || problems.length > 0}
+          disabled={saving || !saveable || problems.length > 0}
           className="px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {saving ? 'Saving…' : saved ? 'Saved' : 'Save review'}
