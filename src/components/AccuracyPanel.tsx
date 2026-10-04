@@ -81,6 +81,7 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
     )
   }
 
+  // floored at 1 so the division is safe when nothing is marked at all
   const worst = Math.max(...buckets.map(bucket => faultRate(bucket) ?? 0), 1)
   const change =
     trend.recent !== null && trend.previous !== null ? trend.recent - trend.previous : null
@@ -110,8 +111,8 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
               }
               hint={
                 trend.window > 0
-                  ? `per move, last ${trend.window} games`
-                  : 'per move, every analysed game'
+                  ? `per move over your last ${trend.window} games · 100 is a pawn`
+                  : 'per move, every analysed game · 100 is a pawn'
               }
             />
 
@@ -144,7 +145,11 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Figure label="Mistakes by think time" value={`${timed}`} hint="moves with a clock reading" />
+          <Figure
+            label="Mistakes by think time"
+            value={`${timed}`}
+            hint="of your moves have a clock reading"
+          />
 
           {timed === 0 ? (
             <p className="text-xs text-zinc-600">
@@ -153,6 +158,12 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
             </p>
           ) : (
             <div className="flex flex-col gap-1">
+              <div className="grid grid-cols-[4.5rem_1fr_3.5rem] gap-2 text-[10px] uppercase tracking-wide text-zinc-600">
+                <span>Spent</span>
+                <span />
+                <span className="text-right">Marked</span>
+              </div>
+
               {buckets.map(bucket => {
                 const rate = faultRate(bucket)
                 return (
@@ -177,8 +188,14 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
           )}
 
           <p className="text-xs text-zinc-600">
-            Share of your moves in each band that the engine marks. A hard position takes longer
-            and goes wrong more often, so read this against your own past, not as a rule.
+            Of the moves you spent that long on, this share carried an engine mark — each band is
+            measured against its own total, so they do not add up to 100. Bars run against the
+            worst band{worst > 0 ? ` (${worst.toFixed(0)}%)` : ''}, not against 100%.
+          </p>
+          <p className="text-xs text-zinc-600">
+            A hard position takes longer <em>and</em>{' '}
+            goes wrong more often, so a slow band being worse is partly the position&apos;s doing.
+            Read it against your own past, not as a rule.
           </p>
         </div>
       </div>

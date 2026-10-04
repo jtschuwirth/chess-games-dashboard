@@ -418,11 +418,27 @@ src/
   compares the last `TREND_WINDOW` games against the ones before, and two windows of one game
   each would report "higher than the run before it" about a single bad evening. `MIN_TREND_WINDOW`
   refuses that: under ten analysed games it shows the plain average and says what a comparison
-  would need. Losses are clamped at zero per move, since a move the engine likes more afterwards
-  should not pay for a blunder.
+  would need.
+- **Accuracy measures inside a ±1000 window, not the stored `cpLoss`.** Evaluations run to
+  `MATE_SCORE` (10000), so one move walking into a forced mate scores a loss near 9,800 — in a
+  44-move game that is 223 added to the average by that move alone. It showed: a real nine-game
+  slice read 126 when the honest figure was a fraction of it, and on the fixture that reproduces
+  it, two mates in nine games move the average from 84.6 to 39.1. `cappedLoss` squeezes both ends
+  into ±1000 first, which is what lichess does, and it brings a second thing the app already
+  believes: a slip made when you were already lost comes out at zero, because both ends pin to the
+  same wall — the rule `classifyMove` follows when it refuses to mark a blunder in a lost
+  position. It is derived on read from the stored `cpBefore`/`cpAfter`, so nothing needs
+  re-analysing. Per-move losses are also floored at zero: a move the engine likes more afterwards
+  is not credit against a blunder elsewhere.
 - **Think time is a comparison with yourself, and says so.** A hard position takes longer *and*
   goes wrong more often, so the bands cannot prove that thinking fast causes mistakes. The panel
   states that where the numbers are, rather than letting the bar chart imply otherwise.
+- **The think-time figures are rates within a band, and the panel has to say so.** "Share of your
+  moves in each band that the engine marks" was read, reasonably, as the share of mistakes falling
+  in each band — which would add to 100, and these do not. Each band is measured against its own
+  total. The bars are drawn against the worst band rather than against 100%, because at a true
+  0–100% scale five rates of 2–9% are invisible slivers; the panel now names the band it is
+  scaled to instead of leaving the bars to imply a scale they do not have.
 - **Stats are never stored.** `computeSplit` runs over the loaded games on every render.
 - **Opening matching is position-based**: `positionKey` is FEN fields 1–3 (placement, side to move,
   castling) after the opening's last move, and a game matches if it ever reaches that key within

@@ -21,6 +21,33 @@ export function comparableGames(games: GameRecord[]): GameRecord[] {
   return games.filter(isComparable)
 }
 
+/**
+ * The window an evaluation is squeezed into before a loss is measured.
+ *
+ * Stored evaluations run to `MATE_SCORE` (10000), so a move that walks into a forced
+ * mate scores a loss of about 9,800 — which in a 44-move game adds 223 to that game's
+ * average on its own, and drowns every other move in it. Two lost games were enough to
+ * put a real reading at 126 when the true figure was a fraction of that.
+ *
+ * Clamping both ends into ±1000 first is what lichess does, and it has a second effect
+ * worth having: a slip made when you were already lost comes out at zero, since both
+ * ends are pinned to the same wall. That is the rule `classifyMove` already follows —
+ * nothing left to throw away — so accuracy and the marks now agree about what counts.
+ */
+export const ACCURACY_CAP = 1000
+
+function capped(cp: number): number {
+  return Math.max(-ACCURACY_CAP, Math.min(ACCURACY_CAP, cp))
+}
+
+/**
+ * What one move gave away, measured inside the window. Never negative: a move the engine
+ * likes more afterwards is not credit against a blunder elsewhere.
+ */
+export function cappedLoss(move: { cpBefore: number; cpAfter: number }): number {
+  return Math.max(0, capped(move.cpBefore) - capped(move.cpAfter))
+}
+
 export interface GameAccuracy {
   gameId: string
   playedAt: number
@@ -31,11 +58,12 @@ export interface GameAccuracy {
 }
 
 /**
- * Average centipawn loss for one game. Null when the game is not comparable.
+ * Average centipawn loss for one game, in centipawns per move of yours — 100 is a pawn.
+ * Null when the game is not comparable.
  *
- * Losses are clamped at zero: a move can come back with a negative `cpLoss` when the
- * engine likes the position more after it than before, and counting that as credit would
- * let one lucky move pay for a blunder.
+ * Measured from the stored evaluations through `cappedLoss` rather than from the stored
+ * `cpLoss`, which is the raw difference and runs to five figures around a mate. Deriving
+ * it on read means no game has to be analysed again for the figure to be worth reading.
  */
 export function gameAccuracy(game: GameRecord): GameAccuracy | null {
   if (!isComparable(game)) return null
@@ -43,7 +71,7 @@ export function gameAccuracy(game: GameRecord): GameAccuracy | null {
   const moves = game.analysis?.moves ?? []
   if (moves.length === 0) return null
 
-  const total = moves.reduce((sum, move) => sum + Math.max(0, move.cpLoss), 0)
+  const total = moves.reduce((sum, move) => sum + cappedLoss(move), 0)
 
   return {
     gameId: game.id,
