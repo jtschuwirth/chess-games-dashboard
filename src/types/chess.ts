@@ -224,6 +224,38 @@ export interface PatternRecord {
 
 export type NewPattern = Omit<PatternRecord, 'id'>
 
+/**
+ * One thing to do on one day. No id: the array is rewritten whole on every change, and
+ * a task is identified by where it sits in its day, the way a line in a list is.
+ */
+export interface PlanTask {
+  text: string
+  done: boolean
+}
+
+/** A day of a study plan: what to do, how it went, and what you wrote up. */
+export interface PlanDay {
+  tasks: PlanTask[]
+  /** Anything about the day itself — how it felt, what to carry into tomorrow. */
+  note: string
+}
+
+/**
+ * A week (or any stretch) of deliberate practice. Days are positional: day `i` is `i`
+ * days after `startDate`, which is what lets a day find the reviews you wrote on it
+ * without either of them storing a link to the other.
+ */
+export interface StudyPlan {
+  id: string
+  name: string
+  /** Local midnight of day one, as epoch ms. */
+  startDate: number
+  days: PlanDay[]
+  createdAt: number
+}
+
+export type NewStudyPlan = Omit<StudyPlan, 'id'>
+
 export interface UserProfile {
   chesscomUsername: string | null
   lichessUsername: string | null

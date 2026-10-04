@@ -34,6 +34,12 @@ const NAV_ITEMS = [
     href: '/dashboard',
   },
   {
+    icon: '🗓️',
+    title: 'Study plans',
+    description: 'What to do each day, ticked off, with that day’s reviews beside it',
+    href: '/plans',
+  },
+  {
     icon: '🎯',
     title: 'Learn from your mistakes',
     description: 'Find the move again in the positions you got wrong',

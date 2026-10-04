@@ -24,8 +24,10 @@ import type {
   StoredAnalysis,
   NewOpeningLine,
   NewPattern,
+  NewStudyPlan,
   OpeningLine,
   PatternRecord,
+  StudyPlan,
   Source,
   SyncedGame,
   UserProfile,
@@ -277,4 +279,38 @@ export async function updatePattern(
 
 export async function deletePattern(userId: string, patternId: string): Promise<void> {
   await deleteDoc(doc(db, 'users', userId, PATTERNS, patternId))
+}
+
+/* ------------------------------------------------------------------ study plans */
+
+const PLANS = 'studyPlans'
+
+export async function getPlans(userId: string, options?: ReadOptions): Promise<StudyPlan[]> {
+  const ref = collection(db, 'users', userId, PLANS)
+  const snapshot = await readDocs(query(ref, orderBy('startDate', 'desc')), options)
+  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as StudyPlan)
+}
+
+export async function savePlan(userId: string, plan: NewStudyPlan): Promise<string> {
+  const ref = collection(db, 'users', userId, PLANS)
+  const docRef = await addDoc(ref, plan)
+  return docRef.id
+}
+
+/**
+ * The whole plan goes back on every change — a checkbox, a note, a task added.
+ * A plan is a few hundred bytes and a write is a write whatever its size, so rewriting
+ * it costs the same as patching one field and removes every question about two edits
+ * racing on the same document.
+ */
+export async function updatePlan(
+  userId: string,
+  planId: string,
+  plan: NewStudyPlan,
+): Promise<void> {
+  await setDoc(doc(db, 'users', userId, PLANS, planId), plan)
+}
+
+export async function deletePlan(userId: string, planId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, PLANS, planId))
 }

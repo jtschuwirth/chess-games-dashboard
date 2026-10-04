@@ -27,7 +27,10 @@ win/draw/loss splits for all games or for the games that followed one of those l
    games showing the same thing. Each pattern's name becomes a tag in the review form,
    so a mistake can point at the idea you should have played, and the pattern's own page
    lists the games where you did that.
-7. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
+7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and the
+   same list of tasks copied onto every day, editable from there. Tick things off, write a
+   note on the day, and read the reviews you wrote that day beside it.
+8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
 
@@ -51,6 +54,8 @@ src/
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
 │   ├── patterns/[id]/page.tsx  # One pattern: conditions, lines, where you wanted it
+│   ├── plans/page.tsx          # Study plans: list + create
+│   ├── plans/[id]/page.tsx     # One plan: days, tasks, notes, that day's reviews
 │   ├── learn/page.tsx          # Drill over the reviewed positions
 │   └── api/
 │       ├── chesscom/games/route.ts
@@ -61,7 +66,8 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
-│                               # UploadPanel, AccuracyPanel, StatusTag, Section
+│                               # UploadPanel, AccuracyPanel, StatusTag, Section,
+│                               # PlanDayCard
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -87,6 +93,7 @@ src/
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
+│   ├── plan.ts                 # study plans: days, dates, progress, that day's reviews
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
 └── types/chess.ts              # shared types
@@ -498,6 +505,34 @@ src/
   reads at a glance — the clock keeps "40 of 40 games have move times" — and drops the prose
   explaining a table that is no longer there. A panel with nothing in it, like the engine readings
   before anything is analysed, has no control at all: there is nothing to fold.
+- **A plan day and a review meet on the date, and neither stores the other.** A day knows which
+  date it is; a review knows when it was written. So the reviews you wrote on a day turn up under
+  it by themselves — nothing to link, nothing to keep in step when a plan is edited or a game is
+  reviewed again, and no way for the two to disagree. The same habit as the variation tree and the
+  pre-game ratings.
+- **Plan days are counted on the calendar, not in milliseconds.** `startDate + index * DAY_MS` is
+  wrong twice a year: a day is 23 or 25 hours across a clock change, so adding fixed milliseconds
+  lands an hour short and every later day reads as the one before it at 23:00. A plan running
+  through 5 April 2026 showed two day fours and no day five. `dayDate` uses
+  `new Date(y, m, d + index)`, which normalises month ends, year ends and clock changes alike, and
+  `todayIndex` compares day keys for the same reason. The test finds the timezone's own boundaries
+  at runtime rather than hardcoding a date, because a fixed-offset machine passes a broken
+  implementation without noticing.
+- **Dates in a plan are spelled out, never `toLocaleDateString`.** The locale version renders
+  `04/10/2026` on the server and `10/4/2026` in the browser, which React reports as a hydration
+  mismatch; `formatDay` writes "Mon 28 Sep" the same way everywhere, and spelling the month also
+  removes the question of which number is which. (`GameRow` still uses the locale version and is
+  the one place left that could trip on this — it only renders after a client-side read, so the
+  server never emits those rows.)
+- **A plan edit is a function of the plan, not a finished plan.** Both the day card and the page
+  take an updater. Handing back a built object meant two boxes ticked in the same React batch were
+  both computed from the same rendered snapshot and the second silently undid the first — three
+  quick clicks landed as one. A ref carries the newest plan forward synchronously, so edits in one
+  batch compose.
+- **A finished day folds on arrival, and never under your hand.** Whether a day starts open is
+  decided once, in a lazy `useState` initialiser; after that it is plain state. Deriving it every
+  render would fold the card away as you ticked its last box, which is exactly how the review
+  form's tag picker once closed itself when you picked the first tag.
 - **Dashboard filters live in the query string** (`readFilters` / `writeFilters`), seeded from
   `useSearchParams` and mirrored with `history.replaceState` so chip clicks stay instant and the
   back button is not flooded.
