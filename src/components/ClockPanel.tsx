@@ -1,3 +1,4 @@
+import { FoldButton, useFolded } from '@/components/Section'
 import { OPENING_MOVES, type ClockStats } from '@/lib/clocks'
 
 function seconds(value: number | null): string {
@@ -43,10 +44,15 @@ export default function ClockPanel({
         ? 'text-amber-400'
         : 'text-emerald-400'
 
+  const [folded, toggle] = useFolded('clock')
+
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
-        <h3 className="text-sm font-semibold text-zinc-300">Clock</h3>
+        <div className="flex items-center gap-2">
+          <FoldButton folded={folded} onToggle={toggle} label="Clock" />
+          <h3 className="text-sm font-semibold text-zinc-300">Clock</h3>
+        </div>
         <span className="text-xs text-zinc-500">
           {stats.games > 0
             ? `${stats.games} of ${totalGames} games have move times`
@@ -54,7 +60,8 @@ export default function ClockPanel({
         </span>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+      {!folded && (
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <Metric
           value={`${stats.timeoutPctOfLosses}%`}
           label={`of losses on time (${stats.timeouts})`}
@@ -66,8 +73,9 @@ export default function ClockPanel({
         <Metric
           value={stats.medianOpeningShare === null ? '—' : `${stats.medianOpeningShare}%`}
           label={`of time in first ${OPENING_MOVES} moves`}
-        />
-      </div>
+          />
+        </div>
+      )}
     </section>
   )
 }

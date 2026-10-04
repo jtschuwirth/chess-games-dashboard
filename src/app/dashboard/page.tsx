@@ -9,6 +9,7 @@ import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell
 import ClockPanel from '@/components/ClockPanel'
 import AccuracyPanel from '@/components/AccuracyPanel'
 import ReviewPanel from '@/components/ReviewPanel'
+import { FoldButton, useFolded } from '@/components/Section'
 import StatBlockCard from '@/components/StatBlockCard'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
@@ -182,6 +183,11 @@ function DashboardBody({ userId }: { userId: string }) {
 
   /** The game view, carrying the filters so its Back link restores this exact slice. */
   const search = useMemo(() => writeFilters(filters), [filters])
+
+  /** Which panels you have folded away, remembered between visits. */
+  const [filtersFolded, toggleFilters] = useFolded('filters')
+  const [resultsFolded, toggleResults] = useFolded('results')
+  const [gamesFolded, toggleGames] = useFolded('games')
   const hrefFor = useCallback(
     (game: GameRecord) => `/games/${game.id}${search}`,
     [search],
@@ -293,7 +299,10 @@ function DashboardBody({ userId }: { userId: string }) {
     <>
       <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="text-xs uppercase tracking-wide text-zinc-500">Filters</h2>
+          <h2 className="text-xs uppercase tracking-wide text-zinc-500 flex items-center gap-2">
+            <FoldButton folded={filtersFolded} onToggle={toggleFilters} label="the filters" />
+            Filters
+          </h2>
           <div className="flex items-center gap-3">
             {isFiltered && (
               <button
@@ -314,6 +323,7 @@ function DashboardBody({ userId }: { userId: string }) {
           </div>
         </div>
 
+        {!filtersFolded && (
         <div className="grid sm:grid-cols-[6rem_1fr] gap-x-4 gap-y-3 items-start">
           <FilterLabel>Opening</FilterLabel>
           <div className="flex flex-col gap-1.5 min-w-0">
@@ -506,6 +516,7 @@ function DashboardBody({ userId }: { userId: string }) {
             />
           </div>
         </div>
+        )}
       </section>
 
       <p className="text-xs text-zinc-500 -mt-3">
@@ -525,10 +536,18 @@ function DashboardBody({ userId }: { userId: string }) {
         )}
       </p>
 
-      <section className="grid gap-3 md:grid-cols-3">
-        <StatBlockCard label="Overall" stats={split.overall} />
-        <StatBlockCard label="As White" stats={split.white} />
-        <StatBlockCard label="As Black" stats={split.black} />
+      <section className="flex flex-col gap-3">
+        <h2 className="font-semibold text-sm flex items-center gap-2">
+          <FoldButton folded={resultsFolded} onToggle={toggleResults} label="the results" />
+          Results
+        </h2>
+        {!resultsFolded && (
+          <div className="grid gap-3 md:grid-cols-3">
+            <StatBlockCard label="Overall" stats={split.overall} />
+            <StatBlockCard label="As White" stats={split.white} />
+            <StatBlockCard label="As Black" stats={split.black} />
+          </div>
+        )}
       </section>
 
       <ClockPanel stats={clock} totalGames={scoped.length} />
@@ -585,10 +604,13 @@ function DashboardBody({ userId }: { userId: string }) {
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <h2 className="font-semibold text-sm">Games ({scoped.length})</h2>
+          <h2 className="font-semibold text-sm flex items-center gap-2">
+            <FoldButton folded={gamesFolded} onToggle={toggleGames} label="the game list" />
+            Games ({scoped.length})
+          </h2>
         </div>
 
-        {scoped.length === 0 ? (
+        {gamesFolded ? null : scoped.length === 0 ? (
           <div className="py-12 text-center text-zinc-500">No games match these filters.</div>
         ) : (
           <>

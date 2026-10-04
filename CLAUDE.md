@@ -61,7 +61,7 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
-│                               # UploadPanel, AccuracyPanel, StatusTag
+│                               # UploadPanel, AccuracyPanel, StatusTag, Section
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -486,6 +486,18 @@ src/
   an admin credential are configured, and 401 on a key mismatch (constant-time compare, header only — never a
   query param). It needs the Admin SDK because it runs with no signed-in user and Firestore rules
   scope every document to its owner.
+- **Every dashboard panel folds, and stays folded.** The page is long and most visits are about
+  one thing, so each panel carries the same `+`/`−` a review entry has. One difference decides the
+  implementation: a review is a form you fill once, while the dashboard is a page you open daily,
+  so the state outlives the visit. It lives in localStorage under one key, read through
+  `useSyncExternalStore` with a server snapshot of "open" — the same reasoning as the engine mode
+  toggle, and the reason it is not a `useState` set from an effect, which would flash and trip
+  `set-state-in-effect`. `useFolded` is a hook and a button rather than a wrapper component
+  because every panel already owns its box and heading; a wrapper would have had to duplicate
+  those or strip them out of five files. A folded panel keeps its heading and whatever figure
+  reads at a glance — the clock keeps "40 of 40 games have move times" — and drops the prose
+  explaining a table that is no longer there. A panel with nothing in it, like the engine readings
+  before anything is analysed, has no control at all: there is nothing to fold.
 - **Dashboard filters live in the query string** (`readFilters` / `writeFilters`), seeded from
   `useSearchParams` and mirrored with `history.replaceState` so chip clicks stay instant and the
   back button is not flooded.

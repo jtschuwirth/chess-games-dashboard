@@ -7,6 +7,7 @@ import {
   mistakesByThinkTime,
   type GameAccuracy,
 } from '@/lib/accuracy'
+import { FoldButton, useFolded } from '@/components/Section'
 import { ENGINE_DEPTH } from '@/lib/analysis'
 import type { GameRecord } from '@/types/chess'
 
@@ -65,6 +66,7 @@ function Figure({ label, value, hint }: { label: string; value: string; hint?: s
  * cannot carry.
  */
 export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
+  const [folded, toggle] = useFolded('engine-readings')
   const trend = accuracyTrend(games)
   const buckets = mistakesByThinkTime(games)
   const timed = buckets.reduce((total, bucket) => total + bucket.moves, 0)
@@ -89,13 +91,17 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-4">
       <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <h2 className="text-xs uppercase tracking-wide text-zinc-500">Engine readings</h2>
+        <div className="flex items-center gap-2">
+          <FoldButton folded={folded} onToggle={toggle} label="the engine readings" />
+          <h2 className="text-xs uppercase tracking-wide text-zinc-500">Engine readings</h2>
+        </div>
         <span className="text-xs text-zinc-600">
           {trend.points.length} game{trend.points.length === 1 ? '' : 's'} analysed at depth{' '}
           {ENGINE_DEPTH}
         </span>
       </div>
 
+      {!folded && (
       <div className="grid md:grid-cols-2 gap-5">
         <div className="flex flex-col gap-2">
           <div className="flex items-end justify-between gap-4">
@@ -198,6 +204,7 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
           </p>
         </div>
       </div>
+      )}
     </section>
   )
 }

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { FoldButton, useFolded } from '@/components/Section'
 import { aggregateTags, reviewQueue, reviewSummary } from '@/lib/review'
 import type { GameRecord } from '@/types/chess'
 
@@ -42,6 +43,7 @@ export default function ReviewPanel({
   const summary = reviewSummary(games)
   const tags = aggregateTags(games, new Set(patternTags))
   const queue = reviewQueue(games)
+  const [folded, toggle] = useFolded('mistakes')
   const shown = tags.slice(0, TOP_TAGS)
   const worst = shown[0]?.count ?? 1
 
@@ -49,12 +51,17 @@ export default function ReviewPanel({
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h2 className="font-semibold text-sm">Mistake database</h2>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Your own reviews across the {games.length} filtered game
-            {games.length === 1 ? '' : 's'}. The engine says where to look; this says why it
-            happened.
-          </p>
+          <h2 className="font-semibold text-sm flex items-center gap-2">
+            <FoldButton folded={folded} onToggle={toggle} label="the mistake database" />
+            Mistake database
+          </h2>
+          {!folded && (
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Your own reviews across the {games.length} filtered game
+              {games.length === 1 ? '' : 's'}. The engine says where to look; this says why it
+              happened.
+            </p>
+          )}
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
@@ -77,6 +84,8 @@ export default function ReviewPanel({
         </div>
       </div>
 
+      {!folded && (
+      <>
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Figure value={summary.reviewed} label="games reviewed" />
         <Figure
@@ -152,6 +161,8 @@ export default function ReviewPanel({
             </p>
           )}
         </div>
+      )}
+      </>
       )}
     </section>
   )

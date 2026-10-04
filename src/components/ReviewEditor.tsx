@@ -378,10 +378,7 @@ export default function ReviewEditor({
       <div>
         <h2 className="font-semibold text-sm">Root cause analysis</h2>
         <p className="text-xs text-zinc-500 mt-0.5">
-          Up to {MAX_REVIEW_MISTAKES} moves per game — blaming every move explains nothing.
-          Each one asks four questions: why you played it, why it is a mistake, what would have
-          changed your mind, and what you would play instead. The tags build up into your record
-          of what keeps going wrong.
+          Up to {MAX_REVIEW_MISTAKES} moves per game.
         </p>
       </div>
 
