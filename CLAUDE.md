@@ -60,7 +60,8 @@ src/
 ├── components/                 # PageShell, SyncPanel, OpeningForm, StatBlockCard,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
-│                               # EnginePanel, EngineMode, PatternForm, LineBoard
+│                               # EnginePanel, EngineMode, PatternForm, LineBoard,
+│                               # UploadPanel, AccuracyPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -84,6 +85,8 @@ src/
 │   ├── sync.ts                 # client calls to the provider routes
 │   ├── opening.ts              # position keys, opening parsing, matching
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
+│   ├── upload.ts               # a pasted PGN turned into ordinary game documents
+│   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
 └── types/chess.ts              # shared types
@@ -398,6 +401,28 @@ src/
   on its spinner forever with nothing but an unhandled rejection in the console. Each page now
   catches, renders `LoadError` with a Try again, and clears the error inside the promise callback
   rather than synchronously in the effect, which would cascade renders.
+- **An uploaded game is a game, and is not your record.** A pasted PGN becomes an ordinary
+  document with `source: 'upload'`, so the board, the engine, the review, the drill and the
+  patterns all work on it without knowing where it came from — and `matchesCriteria` drops it
+  from every slice unless the Site filter asks for `upload` by name, because a game you brought
+  in to study would otherwise be answering a different question inside your win rate. Its id is
+  an FNV-1a hash of the moves and the players, so re-uploading the same game merges onto the same
+  document and a review written on it survives. `Source` splits into `ProviderSource` for this:
+  syncing only ever speaks about the two sites, and an upload has no endpoint to fetch from.
+- **One depth or the number means nothing.** Centipawn loss and the think-time bands only count
+  games analysed at `ENGINE_DEPTH`. A shallower engine finds fewer mistakes and scores them
+  smaller, so mixing depths would have shown a step change at the moment the depth settled at 21
+  and older games kept their 12 — an improvement that was really a tooling change. `isComparable`
+  is the one rule, and both readings say how many games they are built from.
+- **Below ten analysed games there is no trend, rather than a small one.** The accuracy figure
+  compares the last `TREND_WINDOW` games against the ones before, and two windows of one game
+  each would report "higher than the run before it" about a single bad evening. `MIN_TREND_WINDOW`
+  refuses that: under ten analysed games it shows the plain average and says what a comparison
+  would need. Losses are clamped at zero per move, since a move the engine likes more afterwards
+  should not pay for a blunder.
+- **Think time is a comparison with yourself, and says so.** A hard position takes longer *and*
+  goes wrong more often, so the bands cannot prove that thinking fast causes mistakes. The panel
+  states that where the numbers are, rather than letting the bar chart imply otherwise.
 - **Stats are never stored.** `computeSplit` runs over the loaded games on every render.
 - **Opening matching is position-based**: `positionKey` is FEN fields 1–3 (placement, side to move,
   castling) after the opening's last move, and a game matches if it ever reaches that key within

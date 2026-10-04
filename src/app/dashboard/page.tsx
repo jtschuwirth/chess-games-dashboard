@@ -7,6 +7,7 @@ import Chip from '@/components/Chip'
 import GameRow from '@/components/GameRow'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ClockPanel from '@/components/ClockPanel'
+import AccuracyPanel from '@/components/AccuracyPanel'
 import ReviewPanel from '@/components/ReviewPanel'
 import StatBlockCard from '@/components/StatBlockCard'
 import ThinkPanel from '@/components/ThinkPanel'
@@ -531,6 +532,8 @@ function DashboardBody({ userId }: { userId: string }) {
       </section>
 
       <ClockPanel stats={clock} totalGames={scoped.length} />
+
+      <AccuracyPanel games={scoped} />
 
       <ReviewPanel
         patternTags={patternTagList}
