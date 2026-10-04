@@ -1,6 +1,6 @@
 'use client'
 
-import { FoldButton, useFolded } from '@/components/Section'
+import Panel from '@/components/Section'
 import { formatShortDay } from '@/lib/days'
 import {
   TRACKED_POOLS,
@@ -110,8 +110,6 @@ export default function RatingPanel({
   from: number | null
   source: Source | 'both'
 }) {
-  const [folded, toggle] = useFolded('rating')
-
   /*
     The chart ends on the last day the history knows about rather than on today. It is
     the honest end of the data, and it keeps the clock out of render — reading `Date.now`
@@ -127,21 +125,16 @@ export default function RatingPanel({
     start === null ? [] : seriesInRange(history, start, to, pools).filter(e => e.points.length > 0)
 
   return (
-    <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <h2 className="text-xs uppercase tracking-wide text-zinc-500 flex items-center gap-2">
-          <FoldButton folded={folded} onToggle={toggle} label="the rating chart" />
-          Rating
-        </h2>
-        {start !== null && series.length > 0 && (
-          <span className="text-xs text-zinc-600">
-            {formatShortDay(start)} – {formatShortDay(to)}
-          </span>
-        )}
-      </div>
-
-      {!folded &&
-        (series.length === 0 ? (
+    <Panel
+      id="rating"
+      title="Rating"
+      meta={
+        start !== null && series.length > 0
+          ? `${formatShortDay(start)} – ${formatShortDay(to)}`
+          : undefined
+      }
+    >
+      {series.length === 0 ? (
           <p className="text-sm text-zinc-500">
             Nothing recorded yet. Your rating at the close of each day is written as games are
             synced, so this fills in from your next sync onward.
@@ -163,7 +156,7 @@ export default function RatingPanel({
               there is no such thing as your rating in one opening, or as Black.
             </p>
           </>
-        ))}
-    </section>
+      )}
+    </Panel>
   )
 }

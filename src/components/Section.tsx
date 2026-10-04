@@ -104,3 +104,45 @@ export function FoldButton({
     </button>
   )
 }
+
+/**
+ * A dashboard panel: one box, one heading, one fold control, one body.
+ *
+ * The dashboard grew a section at a time and ended up with three heading styles, two
+ * paddings and four of nine panels with no box at all — each one defensible on its own
+ * and incoherent together. This is the only shape now, so a new panel cannot invent a
+ * fourth.
+ *
+ * `meta` is the figure that belongs to the panel as a whole — "18 games analysed at
+ * depth 21" — and stays visible while the panel is folded, because that is usually the
+ * line you folded it down to. `actions` sits at the end for the controls that act on it.
+ */
+export default function Panel({
+  id,
+  title,
+  meta,
+  actions,
+  children,
+}: {
+  /** Stable key for the remembered fold state. */
+  id: string
+  title: string
+  meta?: React.ReactNode
+  actions?: React.ReactNode
+  children: React.ReactNode
+}) {
+  const [folded, toggle] = useFolded(id)
+
+  return (
+    <section className="bg-zinc-900 border border-zinc-800 rounded-xl">
+      <div className="flex items-center gap-3 px-5 py-3.5 flex-wrap">
+        <FoldButton folded={folded} onToggle={toggle} label={title} />
+        <h2 className="text-sm font-semibold text-zinc-100">{title}</h2>
+        {meta && <span className="text-xs text-zinc-500 min-w-0">{meta}</span>}
+        {actions && <div className="ml-auto flex items-center gap-2 shrink-0">{actions}</div>}
+      </div>
+
+      {!folded && <div className="px-5 pb-5 flex flex-col gap-4">{children}</div>}
+    </section>
+  )
+}

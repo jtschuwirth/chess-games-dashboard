@@ -7,7 +7,7 @@ import {
   mistakesByThinkTime,
   type GameAccuracy,
 } from '@/lib/accuracy'
-import { FoldButton, useFolded } from '@/components/Section'
+import Panel from '@/components/Section'
 import { ENGINE_DEPTH } from '@/lib/analysis'
 import type { GameRecord } from '@/types/chess'
 
@@ -66,20 +66,18 @@ function Figure({ label, value, hint }: { label: string; value: string; hint?: s
  * cannot carry.
  */
 export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
-  const [folded, toggle] = useFolded('engine-readings')
   const trend = accuracyTrend(games)
   const buckets = mistakesByThinkTime(games)
   const timed = buckets.reduce((total, bucket) => total + bucket.moves, 0)
 
   if (trend.points.length === 0) {
     return (
-      <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
-        <h2 className="text-xs uppercase tracking-wide text-zinc-500">Engine readings</h2>
+      <Panel id="engine-readings" title="Engine readings">
         <p className="text-sm text-zinc-500">
           Nothing analysed at depth {ENGINE_DEPTH} in this slice yet. Open a game and run the
           engine — these build up as you go.
         </p>
-      </section>
+      </Panel>
     )
   }
 
@@ -89,19 +87,13 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
     trend.recent !== null && trend.previous !== null ? trend.recent - trend.previous : null
 
   return (
-    <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-4">
-      <div className="flex items-baseline justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-2">
-          <FoldButton folded={folded} onToggle={toggle} label="the engine readings" />
-          <h2 className="text-xs uppercase tracking-wide text-zinc-500">Engine readings</h2>
-        </div>
-        <span className="text-xs text-zinc-600">
-          {trend.points.length} game{trend.points.length === 1 ? '' : 's'} analysed at depth{' '}
-          {ENGINE_DEPTH}
-        </span>
-      </div>
-
-      {!folded && (
+    <Panel
+      id="engine-readings"
+      title="Engine readings"
+      meta={`${trend.points.length} game${
+        trend.points.length === 1 ? '' : 's'
+      } analysed at depth ${ENGINE_DEPTH}`}
+    >
       <div className="grid md:grid-cols-2 gap-5">
         <div className="flex flex-col gap-2">
           <div className="flex items-end justify-between gap-4">
@@ -204,7 +196,6 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
           </p>
         </div>
       </div>
-      )}
-    </section>
+    </Panel>
   )
 }

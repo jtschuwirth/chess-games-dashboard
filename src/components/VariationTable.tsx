@@ -1,4 +1,4 @@
-import { FoldButton, useFolded } from '@/components/Section'
+import Panel from '@/components/Section'
 import type { StatBlock } from '@/lib/stats'
 
 /** The "go up one level" control shown as the table's first row. */
@@ -54,20 +54,12 @@ export default function VariationTable({
   /** Climbs back out of the variation you drilled into. */
   up?: UpLink
 }) {
-  const [folded, toggle] = useFolded('variations')
-
   return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h2 className="font-semibold text-sm flex items-center gap-2">
-          <FoldButton folded={folded} onToggle={toggle} label={title} />
-          {title}
-        </h2>
-        {caption && !folded && <p className="text-xs text-zinc-500 mt-0.5">{caption}</p>}
-      </div>
+    <Panel id="variations" title={title}>
+      {caption && <p className="text-xs text-zinc-500">{caption}</p>}
 
-      {!folded && (
-      <div className="border border-zinc-800 rounded-xl overflow-x-auto">
+      {/* flush in the panel rather than a bordered box inside a bordered box */}
+      <div className="-mx-5 overflow-x-auto">
         <table className="w-full text-sm min-w-[44rem] tabular-nums">
           <thead>
             <tr className="text-xs uppercase tracking-wide text-zinc-500 bg-zinc-900">
@@ -140,7 +132,6 @@ export default function VariationTable({
           </tbody>
         </table>
       </div>
-      )}
-    </section>
+    </Panel>
   )
 }

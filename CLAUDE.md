@@ -510,6 +510,14 @@ src/
   an admin credential are configured, and 401 on a key mismatch (constant-time compare, header only — never a
   query param). It needs the Admin SDK because it runs with no signed-in user and Firestore rules
   scope every document to its owner.
+- **One `Panel` shape, and it is the only one.** The dashboard grew a section at a time and
+  ended up with three heading styles, two paddings and four of its nine panels in no box at all —
+  each defensible alone and incoherent together. `Panel` in `components/Section.tsx` owns the box,
+  the heading, the fold control and the body, so a new panel cannot invent a fourth style. `meta`
+  is the figure belonging to the panel as a whole and stays visible while it is folded, because
+  that is usually the line you folded it down to; `actions` holds the controls that act on it.
+  The two wide tables sit flush in the body with `-mx-5` rather than keeping their own border —
+  a bordered box inside a bordered box reads as a mistake.
 - **Every dashboard panel folds, and stays folded.** The page is long and most visits are about
   one thing, so each panel carries the same `+`/`−` a review entry has. One difference decides the
   implementation: a review is a form you fill once, while the dashboard is a page you open daily,

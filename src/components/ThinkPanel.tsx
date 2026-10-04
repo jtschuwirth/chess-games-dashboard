@@ -1,4 +1,4 @@
-import { FoldButton, useFolded } from '@/components/Section'
+import Panel from '@/components/Section'
 import type { PhaseBucket } from '@/lib/clocks'
 
 const GROUP = 'border-l border-zinc-800'
@@ -51,25 +51,15 @@ export default function ThinkPanel({
 }) {
   const timed = phases.some(phase => phase.moves > 0)
 
-  const [folded, toggle] = useFolded('phases')
-
   return (
-    <section className="flex flex-col gap-3">
-      <div>
-        <h2 className="font-semibold text-sm flex items-center gap-2">
-          <FoldButton folded={folded} onToggle={toggle} label="the phase analysis" />
-          Game phase analysis
-        </h2>
-        {!folded && (
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Counted in your own moves. Click a phase to scope everything to the games that ended
-            there. Pick an opening above to scope it to that line.
-          </p>
-        )}
-      </div>
+    <Panel id="phases" title="Game phase analysis">
+      <p className="text-xs text-zinc-500">
+        Counted in your own moves. Click a phase to scope everything to the games that ended
+        there. Pick an opening above to scope it to that line.
+      </p>
 
-      {!folded && (
-      <div className="border border-zinc-800 rounded-xl overflow-x-auto">
+      {/* flush in the panel rather than a bordered box inside a bordered box */}
+      <div className="-mx-5 overflow-x-auto">
         <table className="w-full text-sm min-w-[56rem] tabular-nums">
           <thead className="bg-zinc-900 text-zinc-500">
             <tr className="text-xs uppercase tracking-wide">
@@ -205,7 +195,6 @@ export default function ThinkPanel({
           </tbody>
         </table>
       </div>
-      )}
-    </section>
+    </Panel>
   )
 }
