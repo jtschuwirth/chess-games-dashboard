@@ -159,6 +159,61 @@ export interface OpeningLine {
 
 export type NewOpeningLine = Omit<OpeningLine, 'id'>
 
+/**
+ * What kind of idea a pattern is. Deliberately short: a pattern you cannot file
+ * under one of these is usually two patterns.
+ */
+export type PatternKind = 'tactics' | 'strategy' | 'development' | 'endgame'
+
+/**
+ * A game that shows a pattern, opened at the move where the idea appears.
+ *
+ * The whole PGN is kept, not just the position: the moves before the idea are how you
+ * recognise when you are heading for it, and the moves after are what it was worth.
+ * `startPly` is only where the board opens — you can still step anywhere in the game.
+ */
+export interface PatternLine {
+  /** What this line is called — "Catalan opening", "Panov Attack". */
+  title: string
+  /** The PGN exactly as pasted, so it can be re-read and re-pointed later. */
+  pgn: string
+  /** Normalized SAN, parsed from the PGN at save time. */
+  moves: string[]
+  /** Index of the ply the board opens on. 0 is the position before White's first move. */
+  startPly: number
+  /**
+   * Which way round to show it. A pattern almost always belongs to one side — the note
+   * says "Black - Catalan" — and reading it from the wrong end is reading a different
+   * idea. Absent on lines written before this existed, which read as White.
+   */
+  orientation?: Color
+  /** What to notice here. */
+  note: string
+}
+
+/**
+ * A thematic pattern: an idea you can carry between openings, written up once so it
+ * can be pointed at from a review. The name doubles as a review tag, which is what
+ * connects "I should have played this" to the thing you wrote.
+ */
+export interface PatternRecord {
+  id: string
+  /** Also the review tag, so it has to read as one. */
+  name: string
+  kind: PatternKind
+  /** When the pattern applies — one condition per entry. */
+  conditions: string[]
+  /** The line that explains the idea; where it opens is the headline diagram. */
+  main: PatternLine
+  /** The same idea in other games. */
+  examples: PatternLine[]
+  /** Saved openings this turns up in, by `OpeningLine` id. */
+  openingIds: string[]
+  createdAt: number
+}
+
+export type NewPattern = Omit<PatternRecord, 'id'>
+
 export interface UserProfile {
   chesscomUsername: string | null
   lichessUsername: string | null

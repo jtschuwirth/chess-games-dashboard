@@ -22,7 +22,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
-6. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
+6. `/patterns` — write up the ideas themselves: a name, a kind, the conditions that
+   bring it about, a game that shows it opened on the move where it appears, and more
+   games showing the same thing. Each pattern's name becomes a tag in the review form,
+   so a mistake can point at the idea you should have played, and the pattern's own page
+   lists the games where you did that.
+7. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
 
@@ -44,6 +49,8 @@ src/
 │   ├── openings/page.tsx       # Saved opening lines
 │   ├── dashboard/page.tsx      # Stats + opening filter + game list
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
+│   ├── patterns/page.tsx       # Thematic patterns: list + create
+│   ├── patterns/[id]/page.tsx  # One pattern: conditions, lines, where you wanted it
 │   ├── learn/page.tsx          # Drill over the reviewed positions
 │   └── api/
 │       ├── chesscom/games/route.ts
@@ -53,7 +60,7 @@ src/
 ├── components/                 # PageShell, SyncPanel, OpeningForm, StatBlockCard,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
-│                               # EnginePanel, EngineMode
+│                               # EnginePanel, EngineMode, PatternForm, LineBoard
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -76,6 +83,7 @@ src/
 │   ├── firestore.ts            # profile, games, openings CRUD
 │   ├── sync.ts                 # client calls to the provider routes
 │   ├── opening.ts              # position keys, opening parsing, matching
+│   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
 └── types/chess.ts              # shared types
@@ -239,6 +247,35 @@ src/
   flags the move, so drilling `all` would otherwise hand it straight back. Those two using the same rule is what makes a row in the table and
   the games behind it the same set. A move marked this way needs no answers; everything else
   needs a cause and at least one tag, or it adds a row that says nothing.
+- **A pattern's name is its review tag.** That one decision is what connects the two
+  halves: the tag table, the tag filter, the export and the drill all work on strings
+  already, so a pattern becomes something you can count and filter by without any of them
+  learning what a pattern is. Only two places know the difference — the review form offers
+  your patterns as their own group above the fixed vocabulary, and `tagGroup` calls them
+  `Pattern` rather than `Your own` when it is handed the names. The cost is that renaming a
+  pattern leaves the old name behind on reviews already written, where it survives as an
+  ordinary free tag; rewriting it everywhere would be a write per affected game, and the
+  old name is still true about what you thought at the time.
+- **A pattern's line is a whole game pointed at a move, not a position.** A FEN would have
+  been less to store and would have thrown away the two things worth keeping: how you get
+  there, which is what tells you a pattern is coming, and what it was worth afterwards.
+  `startPly` is only where the board opens — every line steps anywhere in the game from
+  there, and `⏮` returns to the pattern's own move rather than to move one, because that
+  position is why the line is there at all. A board editor was the alternative and is
+  strictly more work for strictly less: these patterns come out of games you played.
+- **Each line carries its own orientation.** A pattern nearly always belongs to one side —
+  the note that prompted this says "Black - Catalan" — and read from the wrong end it is a
+  different idea. Lines written before the field existed read as White.
+- **A pattern is filed under one of four kinds**, tactics / strategy / development /
+  endgame, each with its own colour. The list is short on purpose: a pattern you cannot
+  file under one of them is usually two patterns.
+- **The PGN is kept exactly as pasted, beside the parsed moves.** Re-pointing a line later
+  means reading the game again, and a typo mid-edit must not throw away what you pasted —
+  so a PGN that fails to parse keeps the text, shows the error, and leaves the board on the
+  last moves that did parse.
+- **Thematic patterns live in `thematicPatterns`**, not `patterns`: the saved opening lines
+  hold that collection id and are not moving for a cosmetic reason. See the note in
+  `lib/firestore.ts`.
 - **Tags are a fixed vocabulary you can extend.** `TAG_GROUPS` in `lib/review.ts` groups them by
   what actually broke — tactics, calculation, strategy, endgame, opening, mindset — because a
   count is only comparable across months if the words stay the same. Free tags are still allowed

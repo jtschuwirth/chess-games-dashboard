@@ -102,9 +102,15 @@ const GROUP_BY_TAG = new Map<string, string>(
   TAG_GROUPS.flatMap(group => group.tags.map(tag => [tag, group.name] as const)),
 )
 
-/** Which group a tag belongs to; tags you invented land in "Your own". */
-export function tagGroup(tag: string): string {
-  return GROUP_BY_TAG.get(tag) ?? 'Your own'
+/**
+ * Which group a tag belongs to. A tag that names one of your written-up patterns is a
+ * Pattern, which has to be passed in because patterns are yours and this list is not;
+ * anything else you invented lands in "Your own".
+ */
+export function tagGroup(tag: string, patternTags?: Set<string>): string {
+  const known = GROUP_BY_TAG.get(tag)
+  if (known) return known
+  return patternTags?.has(tag) ? 'Pattern' : 'Your own'
 }
 
 /**
@@ -185,7 +191,7 @@ export interface TagTally {
 }
 
 /** The mistake database: which ideas keep appearing, worst first. */
-export function aggregateTags(games: GameRecord[]): TagTally[] {
+export function aggregateTags(games: GameRecord[], patternTags?: Set<string>): TagTally[] {
   const counts = new Map<string, { count: number; games: Set<string>; losses: number }>()
 
   for (const game of games) {
@@ -205,7 +211,7 @@ export function aggregateTags(games: GameRecord[]): TagTally[] {
   return [...counts.entries()]
     .map(([tag, entry]) => ({
       tag,
-      group: tagGroup(tag),
+      group: tagGroup(tag, patternTags),
       count: entry.count,
       games: entry.games.size,
       losses: entry.losses,

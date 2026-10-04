@@ -17,8 +17,9 @@ import {
   timeSpentPerPly,
 } from '@/lib/clocks'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
-import { getGames, getOpenings } from '@/lib/firestore'
+import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
 import { buildOpeningTree, matchingPath, openingLabel } from '@/lib/opening'
+import { patternTags } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import { betterMovesOf, formatEval, hasReview, isFault, knownTags } from '@/lib/review'
 import { endingOf } from '@/lib/termination'
@@ -29,6 +30,7 @@ import type {
   GameResult,
   GameReview,
   OpeningLine,
+  PatternRecord,
   ProposedMove,
 } from '@/types/chess'
 
@@ -106,6 +108,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const searchParams = useSearchParams()
   const [games, setGames] = useState<GameRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
+  const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const [missing, setMissing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   /**
@@ -128,10 +131,15 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   /** State only moves in the callbacks: setting it synchronously here would cascade. */
   const load = useCallback(
     (options?: { fresh: true }) =>
-      Promise.all([getGames(userId, options), getOpenings(userId, options)])
-        .then(([loadedGames, loadedOpenings]) => {
+      Promise.all([
+        getGames(userId, options),
+        getOpenings(userId, options),
+        getPatterns(userId, options),
+      ])
+        .then(([loadedGames, loadedOpenings, loadedPatterns]) => {
           setGames(loadedGames)
           setOpenings(loadedOpenings)
+          setPatterns(loadedPatterns)
           setLoadError(null)
         })
         .catch(caught => {
@@ -332,6 +340,8 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   }, [games, game, tree, keys, filters])
 
   const suggestedTags = useMemo(() => knownTags(games ?? []), [games])
+  /** Your patterns, as tags, so a mistake can point at the idea you should have used. */
+  const patternTagList = useMemo(() => patternTags(patterns), [patterns])
 
   function applyReview(review: GameReview | null) {
     setGames(prev =>
@@ -680,6 +690,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
         game={game}
         plies={replay.plies}
         suggestedTags={suggestedTags}
+        patternTags={patternTagList}
         onShowPly={setShown}
         onSaved={applyReview}
       />

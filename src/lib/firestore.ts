@@ -23,7 +23,9 @@ import type {
   GameReview,
   StoredAnalysis,
   NewOpeningLine,
+  NewPattern,
   OpeningLine,
+  PatternRecord,
   Source,
   SyncedGame,
   UserProfile,
@@ -239,4 +241,40 @@ export async function updateOpening(
 
 export async function deleteOpening(userId: string, openingId: string): Promise<void> {
   await deleteDoc(doc(db, 'users', userId, 'patterns', openingId))
+}
+
+/* --------------------------------------------------------- thematic patterns */
+
+/**
+ * The written-up patterns. `patterns` as a collection id belongs to the saved opening
+ * lines, which held it first, so these live under `thematicPatterns` — the name a
+ * reader is least likely to confuse with the other one.
+ */
+const PATTERNS = 'thematicPatterns'
+
+export async function getPatterns(
+  userId: string,
+  options?: ReadOptions,
+): Promise<PatternRecord[]> {
+  const ref = collection(db, 'users', userId, PATTERNS)
+  const snapshot = await readDocs(query(ref, orderBy('name')), options)
+  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as PatternRecord)
+}
+
+export async function savePattern(userId: string, pattern: NewPattern): Promise<string> {
+  const ref = collection(db, 'users', userId, PATTERNS)
+  const docRef = await addDoc(ref, pattern)
+  return docRef.id
+}
+
+export async function updatePattern(
+  userId: string,
+  patternId: string,
+  pattern: NewPattern,
+): Promise<void> {
+  await updateDoc(doc(db, 'users', userId, PATTERNS, patternId), { ...pattern })
+}
+
+export async function deletePattern(userId: string, patternId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, PATTERNS, patternId))
 }

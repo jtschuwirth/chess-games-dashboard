@@ -86,6 +86,7 @@ export default function ReviewEditor({
   game,
   plies,
   suggestedTags,
+  patternTags,
   onShowPly,
   onSaved,
 }: {
@@ -94,6 +95,11 @@ export default function ReviewEditor({
   plies: Ply[]
   /** Tags you have invented in other reviews, offered back for consistency. */
   suggestedTags: string[]
+  /**
+   * Your written-up patterns, offered as tags. A pattern's name is its tag, so picking
+   * one here is what connects "I should have played this" to the thing you wrote.
+   */
+  patternTags: string[]
   /** Puts the board on a move, so an entry and the position stay together. */
   onShowPly: (ply: number) => void
   onSaved: (review: GameReview | null) => void
@@ -678,6 +684,35 @@ export default function ReviewEditor({
 
               {(tagsOpen[draft.ply] ?? true) && (
                 <div className="grid sm:grid-cols-2 gap-3">
+                  {patternTags.length > 0 && (
+                    <div className="flex flex-col gap-1.5 sm:col-span-2">
+                      <span className="text-xs uppercase tracking-wide text-zinc-500">
+                        Patterns
+                        <span className="normal-case tracking-normal text-zinc-700">
+                          {' '}
+                          — an idea you have written up
+                        </span>
+                      </span>
+                      <div className="flex gap-1 flex-wrap">
+                        {patternTags.map(tag => (
+                          <Chip
+                            key={tag}
+                            active={draft.tags.includes(tag)}
+                            onClick={() =>
+                              patch(draft.ply, {
+                                tags: draft.tags.includes(tag)
+                                  ? draft.tags.filter(entry => entry !== tag)
+                                  : [...draft.tags, tag],
+                              })
+                            }
+                          >
+                            {tag}
+                          </Chip>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {TAG_GROUPS.map(group => (
                     <div key={group.name} className="flex flex-col gap-1.5">
                       <span className="text-xs uppercase tracking-wide text-zinc-500">

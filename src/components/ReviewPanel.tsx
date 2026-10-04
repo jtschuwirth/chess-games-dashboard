@@ -27,6 +27,7 @@ export default function ReviewPanel({
   onPickTag,
   hrefFor,
   drillHref,
+  patternTags = [],
 }: {
   games: GameRecord[]
   activeTag: string | null
@@ -35,9 +36,11 @@ export default function ReviewPanel({
   hrefFor: (game: GameRecord) => string
   /** The drill over these same games, filters attached. */
   drillHref: string
+  /** Your patterns' names, so a tag that is one reads as a Pattern rather than your own. */
+  patternTags?: string[]
 }) {
   const summary = reviewSummary(games)
-  const tags = aggregateTags(games)
+  const tags = aggregateTags(games, new Set(patternTags))
   const queue = reviewQueue(games)
   const shown = tags.slice(0, TOP_TAGS)
   const worst = shown[0]?.count ?? 1

@@ -22,6 +22,12 @@ const NAV_ITEMS = [
     href: '/openings',
   },
   {
+    icon: '🧩',
+    title: 'Patterns',
+    description: 'Write up the ideas you keep missing, and tag mistakes with them',
+    href: '/patterns',
+  },
+  {
     icon: '📊',
     title: 'Dashboard',
     description: 'Win / draw / loss splits, overall or per saved line',

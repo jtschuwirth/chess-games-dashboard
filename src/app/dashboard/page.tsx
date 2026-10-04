@@ -11,7 +11,8 @@ import ReviewPanel from '@/components/ReviewPanel'
 import StatBlockCard from '@/components/StatBlockCard'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
-import { getGames, getOpenings } from '@/lib/firestore'
+import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
+import { patternTags } from '@/lib/pattern'
 import {
   buildOpeningTree,
   findPath,
@@ -34,7 +35,7 @@ import { SINCE_OPTIONS } from '@/lib/game-filters'
 import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL } from '@/types/chess'
-import type { Color, GameRecord, OpeningLine, Source } from '@/types/chess'
+import type { Color, GameRecord, OpeningLine, PatternRecord, Source } from '@/types/chess'
 
 const PAGE_SIZE = 50
 
@@ -78,6 +79,7 @@ function toggle<T>(values: T[], value: T): T[] {
 function DashboardBody({ userId }: { userId: string }) {
   const [games, setGames] = useState<GameRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
+  const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const searchParams = useSearchParams()
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
   const [limit, setLimit] = useState(PAGE_SIZE)
@@ -111,10 +113,15 @@ function DashboardBody({ userId }: { userId: string }) {
   /** State only moves in the callbacks: setting it synchronously here would cascade. */
   const load = useCallback(
     (options?: { fresh: true }) =>
-      Promise.all([getGames(userId, options), getOpenings(userId, options)])
-        .then(([loadedGames, loadedOpenings]) => {
+      Promise.all([
+        getGames(userId, options),
+        getOpenings(userId, options),
+        getPatterns(userId, options),
+      ])
+        .then(([loadedGames, loadedOpenings, loadedPatterns]) => {
           setGames(loadedGames)
           setOpenings(loadedOpenings)
+          setPatterns(loadedPatterns)
           setLoadError(null)
         })
         .catch(caught => {
@@ -144,6 +151,8 @@ function DashboardBody({ userId }: { userId: string }) {
   const availableControls = useMemo(() => timeControlsIn(games ?? []), [games])
 
   const tree = useMemo(() => buildOpeningTree(openings), [openings])
+  /** Pattern names, so the mistake table can tell a pattern from a tag you invented. */
+  const patternTagList = useMemo(() => patternTags(patterns), [patterns])
   const allNodes = useMemo(() => flattenTree(tree), [tree])
   const unclassifiedView = opening === UNCLASSIFIED_OPENING
   const path = useMemo(
@@ -519,6 +528,7 @@ function DashboardBody({ userId }: { userId: string }) {
       <ClockPanel stats={clock} totalGames={scoped.length} />
 
       <ReviewPanel
+        patternTags={patternTagList}
         games={scoped}
         activeTag={tag}
         onPickTag={value => patch({ tag: value })}
