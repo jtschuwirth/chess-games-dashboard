@@ -313,6 +313,11 @@ src/
   what actually broke — tactics missed, tactics allowed, calculation, strategy, endgame, opening,
   mindset — because a count is only comparable across months if the words stay the same. The
   groups carried a one-line gloss each; the names say it.
+- **A search fails in three ways, and they are three tags.** The move was never a candidate
+  (`never considered the move`); it was a candidate, got cut, and was good (`abandoned a good
+  line`); or the whole think ended before it was finished (`stopped calculating too early`).
+  Dropping a line you had already started is not the same as never starting, and neither is the
+  same as playing before you were done — one list could only name one of them.
 - **Tactics have a direction, and it is two different mistakes.** Missing a fork your opponent
   left you is a failure to look; walking into one is a failure to check what your move allows, and
   the training for each is nothing like the other. A single list of bare motifs — `fork`, `pin` —

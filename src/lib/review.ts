@@ -67,6 +67,11 @@ export const TAG_GROUPS: TagGroup[] = [
     name: 'Calculation',
     tags: [
       "missed opponent's reply",
+      // three ways a search can fail, and they are not the same failure: the move was
+      // never a candidate, it was a candidate and got cut while it was still good, or
+      // the whole think ended before it was finished
+      'never considered the move',
+      'abandoned a good line',
       'stopped calculating too early',
       'skipped checks and captures',
       'miscounted material',
