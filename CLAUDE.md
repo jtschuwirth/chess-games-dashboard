@@ -483,6 +483,17 @@ src/
   account key or the `authorized_user` JSON from `gcloud auth application-default login`;
   `readCredential` picks `cert()` or `refreshToken()` off the `type` field. The second form exists
   because org policy can forbid service account keys outright.
+- **The two providers disagree about which rating they report, and lichess is normalised at the
+  door.** chess.com's archive carries the rating *after* the game; lichess reports the rating going
+  *in* plus a `ratingDiff`. The provider stored lichess's raw `rating` and never read the diff, so
+  every lichess rating was one game behind — a win you had just played did not show, and a figure
+  could *fall* after a win, because it was reading the rating before the game that followed the
+  loss before it. That is how it was found: a week's lichess classical figure went down after the
+  only classical game of the week was won. `ratingAfter` in `lib/providers/lichess.ts` adds the
+  diff once, at the edge, so everything downstream can keep assuming post-game rather than each
+  reader knowing where the game came from. **Lichess games synced before this carry the pre-game
+  number and cannot be repaired at read time — the diff was never stored — so they need a
+  re-sync**, the same as the clock alignment fix.
 - **Stored ratings are POST-game, on both providers.** `userRating` / `opponentRating` already
   include the result of that very game, so bucketing by rating difference sorts wins into
   "weaker opponent" and losses into "stronger opponent" by construction — it produced a completely
@@ -620,6 +631,8 @@ yarn lint
 - Lichess arena *berserk* games halve the starting clock while still reporting the full
   `clock.initial`, so the first move's time is overstated for them. Nothing else is affected.
 - `clocks` is null on games synced before clock capture existed; a re-sync backfills them.
+- Lichess games synced before `ratingAfter` existed carry the rating from *before* the game.
+  A re-sync fixes them; nothing can at read time, because the rating change was never stored.
 
 ## Not built yet
 - Transpositions *between* named openings (a line only nests by literal move prefix)

@@ -22,8 +22,27 @@ const TIME_CLASS_BY_SPEED: Record<string, TimeClass> = {
 
 interface LichessPlayer {
   user?: { name: string; id: string }
+  /** The rating the player took INTO the game. */
   rating?: number
+  /** What the game did to it. Absent on unrated games. */
+  ratingDiff?: number
   aiLevel?: number
+}
+
+/**
+ * The rating a player came out of the game with.
+ *
+ * Lichess reports the rating going in and the change separately, so what it calls
+ * `rating` is the figure before the result — the opposite of chess.com, whose archive
+ * already carries the rating after. Storing the raw field meant a lichess rating was
+ * always one game behind: a win you had just played never showed, and a week's figure
+ * could fall after a win because it was reading the rating before the game that followed
+ * the loss before it. Everything downstream assumes post-game, so the addition happens
+ * here, once, rather than every reader having to know which provider it came from.
+ */
+function ratingAfter(player: LichessPlayer): number | null {
+  if (player.rating === undefined) return null
+  return player.rating + (player.ratingDiff ?? 0)
 }
 
 interface LichessGame {
@@ -81,8 +100,8 @@ function normalize(game: LichessGame, username: string): SyncedGame | null {
     opponent: playerName(opponent),
     // lichess flags engine opponents with an aiLevel and gives them no account
     opponentIsBot: opponent.aiLevel !== undefined,
-    opponentRating: opponent.rating ?? null,
-    userRating: me.rating ?? null,
+    opponentRating: ratingAfter(opponent),
+    userRating: ratingAfter(me),
     eco: game.opening?.eco ?? null,
     openingName: game.opening?.name ?? null,
     moves,
