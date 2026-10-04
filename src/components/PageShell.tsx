@@ -7,8 +7,18 @@ import { signOut } from '@/lib/auth'
 import { isFirebaseConfigured } from '@/lib/firebase'
 import ConfigNotice from '@/components/ConfigNotice'
 
+/**
+ * A span, not a div, because half its uses sit inside a sentence — "elapsed", "reading
+ * the position" — and a div inside a `<p>` is invalid HTML that React reports as a
+ * hydration error. `inline-block` keeps the circle a circle; as a flex item it is
+ * blockified anyway, which is every other use.
+ */
 export function Spinner({ size = 'w-8 h-8' }: { size?: string }) {
-  return <div className={`${size} border-2 border-zinc-600 border-t-zinc-200 rounded-full animate-spin`} />
+  return (
+    <span
+      className={`${size} inline-block border-2 border-zinc-600 border-t-zinc-200 rounded-full animate-spin`}
+    />
+  )
 }
 
 /** Turns whatever was thrown into something a person can read. */
