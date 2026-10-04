@@ -17,8 +17,8 @@ import {
   timeSpentPerPly,
 } from '@/lib/clocks'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
-import { getGames, getPatterns } from '@/lib/firestore'
-import { buildPatternTree, matchingPath, patternLabel } from '@/lib/pattern'
+import { getGames, getOpenings } from '@/lib/firestore'
+import { buildOpeningTree, matchingPath, openingLabel } from '@/lib/opening'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import { betterMovesOf, formatEval, hasReview, isFault, knownTags } from '@/lib/review'
 import { endingOf } from '@/lib/termination'
@@ -28,7 +28,7 @@ import type {
   GameRecord,
   GameResult,
   GameReview,
-  PatternRecord,
+  OpeningLine,
   ProposedMove,
 } from '@/types/chess'
 
@@ -105,7 +105,7 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
 function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const searchParams = useSearchParams()
   const [games, setGames] = useState<GameRecord[] | null>(null)
-  const [patterns, setPatterns] = useState<PatternRecord[]>([])
+  const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [missing, setMissing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   /**
@@ -128,10 +128,10 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   /** State only moves in the callbacks: setting it synchronously here would cascade. */
   const load = useCallback(
     (options?: { fresh: true }) =>
-      Promise.all([getGames(userId, options), getPatterns(userId, options)])
-        .then(([loadedGames, loadedPatterns]) => {
+      Promise.all([getGames(userId, options), getOpenings(userId, options)])
+        .then(([loadedGames, loadedOpenings]) => {
           setGames(loadedGames)
-          setPatterns(loadedPatterns)
+          setOpenings(loadedOpenings)
           setLoadError(null)
         })
         .catch(caught => {
@@ -292,7 +292,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     [game],
   )
 
-  const tree = useMemo(() => buildPatternTree(patterns), [patterns])
+  const tree = useMemo(() => buildOpeningTree(openings), [openings])
 
   /** One replay of every game, kept off the filter path so changing a filter is cheap. */
   const keys = useMemo(() => positionKeyMap(games ?? []), [games])
@@ -300,7 +300,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const line = useMemo(() => {
     if (!game) return []
     return matchingPath(tree, game, keys.get(game.id) ?? new Set()).map(node =>
-      patternLabel(node.pattern),
+      openingLabel(node.opening),
     )
   }, [tree, game, keys])
 

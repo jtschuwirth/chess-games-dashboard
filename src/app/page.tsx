@@ -19,7 +19,7 @@ const NAV_ITEMS = [
     icon: '📖',
     title: 'Openings',
     description: 'Save the lines you play and name them',
-    href: '/patterns',
+    href: '/openings',
   },
   {
     icon: '📊',

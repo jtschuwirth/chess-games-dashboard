@@ -9,7 +9,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
 1. Sign in with Google (`/`)
 2. `/profile` — save chess.com / lichess usernames, then sync the last N games in the selected time
    formats
-3. `/patterns` — paste an opening line, name it, optionally tie it to a colour; a line that
+3. `/openings` — paste an opening line, name it, optionally tie it to a colour; a line that
    continues an existing one nests under it as a sub-variation. Saved lines can be edited.
 4. `/dashboard` — the Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
@@ -41,8 +41,8 @@ src/
 │   ├── layout.tsx              # Root layout, wraps AuthProvider
 │   ├── page.tsx                # Sign-in + nav
 │   ├── profile/page.tsx        # Linked accounts + sync
-│   ├── patterns/page.tsx       # Saved opening lines
-│   ├── dashboard/page.tsx      # Stats + pattern filter + game list
+│   ├── openings/page.tsx       # Saved opening lines
+│   ├── dashboard/page.tsx      # Stats + opening filter + game list
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   ├── learn/page.tsx          # Drill over the reviewed positions
 │   └── api/
@@ -50,7 +50,7 @@ src/
 │       ├── lichess/games/route.ts
 │       ├── engine/route.ts     # server-side Stockfish, Firebase token gated
 │       └── export/route.ts     # read-only JSON export, API-key gated
-├── components/                 # PageShell, SyncPanel, PatternForm, StatBlockCard,
+├── components/                 # PageShell, SyncPanel, OpeningForm, StatBlockCard,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode
@@ -73,9 +73,9 @@ src/
 │   ├── analysis.ts             # move classification and the annotated PGN
 │   ├── termination.ts          # one ending vocabulary across the two providers
 │   ├── auth.ts                 # signInWithGoogle / signOut
-│   ├── firestore.ts            # profile, games, patterns CRUD
+│   ├── firestore.ts            # profile, games, openings CRUD
 │   ├── sync.ts                 # client calls to the provider routes
-│   ├── pattern.ts              # position keys, pattern parsing, matching
+│   ├── opening.ts              # position keys, opening parsing, matching
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
 └── types/chess.ts              # shared types
@@ -352,17 +352,17 @@ src/
   catches, renders `LoadError` with a Try again, and clears the error inside the promise callback
   rather than synchronously in the effect, which would cascade renders.
 - **Stats are never stored.** `computeSplit` runs over the loaded games on every render.
-- **Pattern matching is position-based**: `positionKey` is FEN fields 1–3 (placement, side to move,
-  castling) after the pattern's last move, and a game matches if it ever reaches that key within
-  `MAX_PATTERN_PLY` (60) half-moves. That makes transpositions count.
-- **The variation tree is derived, never stored.** `buildPatternTree` nests a saved line under the
+- **Opening matching is position-based**: `positionKey` is FEN fields 1–3 (placement, side to move,
+  castling) after the opening's last move, and a game matches if it ever reaches that key within
+  `MAX_OPENING_PLY` (60) half-moves. That makes transpositions count.
+- **The variation tree is derived, never stored.** `buildOpeningTree` nests a saved line under the
   deepest other saved line that is a move-prefix of it, so 1.e4 c6 2.d4 d5 3.e5 files itself under
   1.e4 c6. Editing or deleting a line re-parents everything automatically.
 - **Colour is part of a repertoire's identity.** The same opening saved once as White and once as
   Black is two separate trees, and `canNest` keeps a line out of a parent saved for the other
   colour — the Panov Attack saved as White will not land under a Caro-Kann saved as Black. A
   colour-agnostic parent adopts either side; a colour-specific parent never adopts an agnostic
-  child, which would widen it. `patternLabel` appends "(as White)" / "(as Black)" so the two are
+  child, which would widen it. `openingLabel` appends "(as White)" / "(as Black)" so the two are
   distinguishable in the dropdown, breadcrumb and tables.
 - **`next.config.ts` pins `@opentelemetry/api` to its CommonJS build.** firebase-admin pulls it in
   transitively and its ESM entry has extensionless relative imports the bundler cannot resolve;

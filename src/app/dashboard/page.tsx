@@ -11,16 +11,16 @@ import ReviewPanel from '@/components/ReviewPanel'
 import StatBlockCard from '@/components/StatBlockCard'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
-import { getGames, getPatterns } from '@/lib/firestore'
+import { getGames, getOpenings } from '@/lib/firestore'
 import {
-  buildPatternTree,
+  buildOpeningTree,
   findPath,
   flattenTree,
   formatMoves,
   gameMatchesNode,
   matchingPath,
-  patternLabel,
-} from '@/lib/pattern'
+  openingLabel,
+} from '@/lib/opening'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import {
   ALL_OPENINGS,
@@ -34,7 +34,7 @@ import { SINCE_OPTIONS } from '@/lib/game-filters'
 import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL } from '@/types/chess'
-import type { Color, GameRecord, PatternRecord, Source } from '@/types/chess'
+import type { Color, GameRecord, OpeningLine, Source } from '@/types/chess'
 
 const PAGE_SIZE = 50
 
@@ -77,7 +77,7 @@ function toggle<T>(values: T[], value: T): T[] {
 
 function DashboardBody({ userId }: { userId: string }) {
   const [games, setGames] = useState<GameRecord[] | null>(null)
-  const [patterns, setPatterns] = useState<PatternRecord[]>([])
+  const [openings, setOpenings] = useState<OpeningLine[]>([])
   const searchParams = useSearchParams()
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
   const [limit, setLimit] = useState(PAGE_SIZE)
@@ -111,10 +111,10 @@ function DashboardBody({ userId }: { userId: string }) {
   /** State only moves in the callbacks: setting it synchronously here would cascade. */
   const load = useCallback(
     (options?: { fresh: true }) =>
-      Promise.all([getGames(userId, options), getPatterns(userId, options)])
-        .then(([loadedGames, loadedPatterns]) => {
+      Promise.all([getGames(userId, options), getOpenings(userId, options)])
+        .then(([loadedGames, loadedOpenings]) => {
           setGames(loadedGames)
-          setPatterns(loadedPatterns)
+          setOpenings(loadedOpenings)
           setLoadError(null)
         })
         .catch(caught => {
@@ -143,7 +143,7 @@ function DashboardBody({ userId }: { userId: string }) {
   /** Only offer controls the user has actually played. */
   const availableControls = useMemo(() => timeControlsIn(games ?? []), [games])
 
-  const tree = useMemo(() => buildPatternTree(patterns), [patterns])
+  const tree = useMemo(() => buildOpeningTree(openings), [openings])
   const allNodes = useMemo(() => flattenTree(tree), [tree])
   const unclassifiedView = opening === UNCLASSIFIED_OPENING
   const path = useMemo(
@@ -181,7 +181,7 @@ function DashboardBody({ userId }: { userId: string }) {
     const map = new Map<string, string[]>()
     for (const game of scoped.slice(0, limit)) {
       const nodes = matchingPath(tree, game, positionKeys.get(game.id) ?? new Set())
-      if (nodes.length > 0) map.set(game.id, nodes.map(node => node.pattern.name))
+      if (nodes.length > 0) map.set(game.id, nodes.map(node => node.opening.name))
     }
     return map
   }, [scoped, limit, tree, positionKeys])
@@ -202,13 +202,13 @@ function DashboardBody({ userId }: { userId: string }) {
       const matchingClock = computeClockStats(matching)
 
       return {
-        key: node.pattern.id,
-        name: patternLabel(node.pattern),
-        note: formatMoves(node.pattern.moves),
+        key: node.opening.id,
+        name: openingLabel(node.opening),
+        note: formatMoves(node.opening.moves),
         stats: computeStats(matching),
         think: matchingClock.medianPerMove,
         blundersPerGame: blunderRate(matching),
-        onSelect: () => patch({ opening: node.pattern.id }),
+        onSelect: () => patch({ opening: node.opening.id }),
       }
     })
 
@@ -221,7 +221,7 @@ function DashboardBody({ userId }: { userId: string }) {
         key: 'unclassified',
         name: current ? 'Other lines' : 'Not in a saved opening',
         note: current
-          ? 'Reached ' + patternLabel(current.pattern) + ' but no saved sub-variation'
+          ? 'Reached ' + openingLabel(current.opening) + ' but no saved sub-variation'
           : undefined,
         stats: computeStats(rest),
         think: restClock.medianPerMove,
@@ -269,8 +269,8 @@ function DashboardBody({ userId }: { userId: string }) {
 
   const up = current
     ? {
-        label: parent ? patternLabel(parent.pattern) : 'All games',
-        onSelect: () => patch({ opening: parent ? parent.pattern.id : ALL_OPENINGS }),
+        label: parent ? openingLabel(parent.opening) : 'All games',
+        onSelect: () => patch({ opening: parent ? parent.opening.id : ALL_OPENINGS }),
       }
     : undefined
 
@@ -309,9 +309,9 @@ function DashboardBody({ userId }: { userId: string }) {
             >
               <option value={ALL_OPENINGS}>All games</option>
               {allNodes.map(node => (
-                <option key={node.pattern.id} value={node.pattern.id}>
+                <option key={node.opening.id} value={node.opening.id}>
                   {'— '.repeat(node.depth)}
-                  {patternLabel(node.pattern)}
+                  {openingLabel(node.opening)}
                 </option>
               ))}
               <option value={UNCLASSIFIED_OPENING}>Not in a saved opening</option>
@@ -339,17 +339,17 @@ function DashboardBody({ userId }: { userId: string }) {
                   All games
                 </button>
                 {path.map((node, index) => (
-                  <span key={node.pattern.id} className="flex items-center gap-1.5">
+                  <span key={node.opening.id} className="flex items-center gap-1.5">
                     <span className="text-zinc-700">›</span>
                     <button
-                      onClick={() => patch({ opening: node.pattern.id })}
+                      onClick={() => patch({ opening: node.opening.id })}
                       className={
                         index === path.length - 1
                           ? 'text-zinc-200'
                           : 'text-zinc-400 hover:text-zinc-100 transition-colors'
                       }
                     >
-                      {patternLabel(node.pattern)}
+                      {openingLabel(node.opening)}
                     </button>
                   </span>
                 ))}
@@ -495,14 +495,14 @@ function DashboardBody({ userId }: { userId: string }) {
 
       <p className="text-xs text-zinc-500 -mt-3">
         {current
-          ? `${scoped.length} of ${games.length} games reached ${patternLabel(current.pattern)} or one of its sub-variations.`
+          ? `${scoped.length} of ${games.length} games reached ${openingLabel(current.opening)} or one of its sub-variations.`
           : unclassifiedView
             ? `${scoped.length} of ${games.length} games reached none of your saved openings.`
             : `${scoped.length} of ${games.length} games in scope.`}
-        {patterns.length === 0 && (
+        {openings.length === 0 && (
           <>
             {' '}
-            <Link href="/patterns" className="underline text-zinc-300">
+            <Link href="/openings" className="underline text-zinc-300">
               Save an opening
             </Link>{' '}
             to break these numbers down by line.
@@ -534,7 +534,7 @@ function DashboardBody({ userId }: { userId: string }) {
 
       {breakdown.length > 0 ? (
         <VariationTable
-          title={current ? `Sub-variations of ${patternLabel(current.pattern)}` : 'By opening'}
+          title={current ? `Sub-variations of ${openingLabel(current.opening)}` : 'By opening'}
           caption={
             current
               ? 'Each row counts the games that reached that sub-variation. Click one to drill in.'
@@ -555,8 +555,8 @@ function DashboardBody({ userId }: { userId: string }) {
               Back to {up.label}
             </button>
             <p className="text-xs text-zinc-600">
-              No sub-variations saved under {patternLabel(current.pattern)} yet —{' '}
-              <Link href="/patterns" className="underline text-zinc-400">
+              No sub-variations saved under {openingLabel(current.opening)} yet —{' '}
+              <Link href="/openings" className="underline text-zinc-400">
                 add a longer line
               </Link>{' '}
               and it will nest here.

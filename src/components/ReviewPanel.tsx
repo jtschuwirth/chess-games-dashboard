@@ -107,7 +107,7 @@ export default function ReviewPanel({
       ) : (
         <div className="flex flex-col">
           <div className="grid grid-cols-[1fr_3.5rem_3.5rem_3.5rem] gap-2 px-2 pb-1.5 text-xs uppercase tracking-wide text-zinc-500 border-b border-zinc-800">
-            <span>Pattern</span>
+            <span>Tag</span>
             <span className="text-right">Times</span>
             <span className="text-right">Games</span>
             <span className="text-right">Lost</span>

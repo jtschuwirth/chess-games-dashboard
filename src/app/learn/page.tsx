@@ -9,11 +9,11 @@ import EngineModeToggle from '@/components/EngineMode'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { terminateEngine } from '@/lib/engine'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
-import { getGames, getPatterns } from '@/lib/firestore'
-import { buildPatternTree } from '@/lib/pattern'
+import { getGames, getOpenings } from '@/lib/firestore'
+import { buildOpeningTree } from '@/lib/opening'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import { buildDrillCards, drillProgress, isDrillSource, type DrillSource } from '@/lib/drill'
-import type { DrillStat, GameRecord, PatternRecord } from '@/types/chess'
+import type { DrillStat, GameRecord, OpeningLine } from '@/types/chess'
 
 const SOURCES: { value: DrillSource; label: string; hint: string }[] = [
   {
@@ -35,7 +35,7 @@ function pct(part: number, whole: number): string {
 function LearnBody({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const [games, setGames] = useState<GameRecord[] | null>(null)
-  const [patterns, setPatterns] = useState<PatternRecord[]>([])
+  const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [source, setSource] = useState<DrillSource>(() => {
@@ -65,10 +65,10 @@ function LearnBody({ userId }: { userId: string }) {
 
   const load = useCallback(
     (options?: { fresh: true }) =>
-      Promise.all([getGames(userId, options), getPatterns(userId, options)])
-        .then(([loadedGames, loadedPatterns]) => {
+      Promise.all([getGames(userId, options), getOpenings(userId, options)])
+        .then(([loadedGames, loadedOpenings]) => {
           setGames(loadedGames)
-          setPatterns(loadedPatterns)
+          setOpenings(loadedOpenings)
           setLoadError(null)
         })
         .catch(caught => setLoadError(errorText(caught, 'Could not load your games.'))),
@@ -79,7 +79,7 @@ function LearnBody({ userId }: { userId: string }) {
     load()
   }, [load])
 
-  const tree = useMemo(() => buildPatternTree(patterns), [patterns])
+  const tree = useMemo(() => buildOpeningTree(openings), [openings])
   const keys = useMemo(() => positionKeyMap(games ?? []), [games])
   const scoped = useMemo(
     () => scopeGames(games ?? [], tree, keys, filters),
@@ -239,7 +239,7 @@ function LearnBody({ userId }: { userId: string }) {
 
           <div className="flex flex-col">
             <div className="grid grid-cols-[1fr_4rem_4rem_4rem] gap-2 px-2 pb-1.5 text-xs uppercase tracking-wide text-zinc-500 border-b border-zinc-800">
-              <span>Pattern</span>
+              <span>Opening</span>
               <span className="text-right">Found</span>
               <span className="text-right">Tries</span>
               <span className="text-right">New</span>

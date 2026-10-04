@@ -1,6 +1,6 @@
 import { ALL_OPENINGS, UNCLASSIFIED_OPENING, type Filters } from './dashboard-filters'
 import { matchesCriteria } from './game-filters'
-import { findPath, gameMatchesNode, gamePositionKeys, type PatternNode } from './pattern'
+import { findPath, gameMatchesNode, gamePositionKeys, type OpeningNode } from './opening'
 import type { GameRecord } from '@/types/chess'
 
 /** Every position each game passed through, so repeated matching costs one replay. */
@@ -17,7 +17,7 @@ export function positionKeyMap(games: GameRecord[]): Map<string, Set<string>> {
 export function matchesOpening(
   game: GameRecord,
   keys: Set<string>,
-  tree: PatternNode[],
+  tree: OpeningNode[],
   opening: string,
 ): boolean {
   if (opening === ALL_OPENINGS) return true
@@ -37,7 +37,7 @@ export function matchesOpening(
  */
 export function scopeGames(
   games: GameRecord[],
-  tree: PatternNode[],
+  tree: OpeningNode[],
   keys: Map<string, Set<string>>,
   filters: Filters,
   now: Date = new Date(),

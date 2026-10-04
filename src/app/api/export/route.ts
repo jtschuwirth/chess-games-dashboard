@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { buildExport } from '@/lib/export'
 import { isSinceKey, matchesCriteria, type GameCriteria, type SinceKey } from '@/lib/game-filters'
-import type { GameRecord, PatternRecord, UserProfile } from '@/types/chess'
+import type { GameRecord, OpeningLine, UserProfile } from '@/types/chess'
 import type { Firestore } from 'firebase-admin/firestore'
 
 const DEFAULT_GAME_LIMIT = 200
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
     const userId = await resolveUserId(db)
     const userRef = db.collection('users').doc(userId)
 
-    const [profileSnap, gamesSnap, patternsSnap] = await Promise.all([
+    const [profileSnap, gamesSnap, openingsSnap] = await Promise.all([
       userRef.get(),
       userRef.collection('games').orderBy('playedAt', 'desc').get(),
       userRef.collection('patterns').get(),
@@ -112,11 +112,11 @@ export async function GET(request: Request) {
     const games = gamesSnap.docs
       .map(doc => ({ ...doc.data(), id: doc.id }) as GameRecord)
       .filter(game => matchesCriteria(game, criteria, now))
-    const patterns = patternsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id }) as PatternRecord)
+    const openings = openingsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id }) as OpeningLine)
 
     return NextResponse.json({
       filters: criteria,
-      ...buildExport(profile, games, patterns, options),
+      ...buildExport(profile, games, openings, options),
     })
   } catch (error) {
     console.error('export failed', error)

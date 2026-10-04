@@ -1,10 +1,10 @@
 import {
-  buildPatternTree,
+  buildOpeningTree,
   flattenTree,
   gameMatchesNode,
   gamePositionKeys,
   matchingPath,
-} from './pattern'
+} from './opening'
 import { computeSplit, computeStats, type StatBlock, type StatSplit } from './stats'
 import { actualScore, expectedScore, withRatingsBefore } from './ratings'
 import {
@@ -28,8 +28,8 @@ import type {
   GameRecord,
   GameReview,
   StoredAnalysis,
-  PatternColor,
-  PatternRecord,
+  OpeningColor,
+  OpeningLine,
   TimeClass,
   UserProfile,
 } from '@/types/chess'
@@ -43,7 +43,7 @@ export interface VariationExport {
   /** Root first, e.g. ["Caro-Kann", "Exchange Variation", "Panov Attack"]. */
   path: string[]
   depth: number
-  color: PatternColor
+  color: OpeningColor
   ply: number
   moves: string[]
   /** Covers this line and every sub-variation below it. */
@@ -121,7 +121,13 @@ export interface CompactGame {
 export interface ExportPayload {
   generatedAt: string
   profile: UserProfile
-  counts: { games: number; patterns: number }
+  /**
+   * `patterns` is the old name for `openings` and carries the same number. The saved
+   * opening lines were called patterns until the word was needed for the thematic
+   * patterns, and a field that something out there may already read is not worth
+   * breaking over a rename.
+   */
+  counts: { games: number; openings: number; patterns: number }
   totals: StatSplit
   byTimeClass: Partial<Record<TimeClass, StatBlock>>
   variations: VariationExport[]
@@ -172,21 +178,21 @@ function round(value: number): number {
 export function buildExport(
   profile: UserProfile,
   games: GameRecord[],
-  patterns: PatternRecord[],
+  openings: OpeningLine[],
   options: ExportOptions,
 ): ExportPayload {
   const counted = withRatingsBefore(games)
   const keys = new Map(counted.map(game => [game.id, gamePositionKeys(game.moves)]))
   const keysFor = (game: GameRecord) => keys.get(game.id) ?? new Set<string>()
 
-  const tree = buildPatternTree(patterns)
+  const tree = buildOpeningTree(openings)
   const nodes = flattenTree(tree)
 
   const pathsById = new Map<string, string[]>()
   for (const game of counted) {
     pathsById.set(
       game.id,
-      matchingPath(tree, game, keysFor(game)).map(node => node.pattern.name),
+      matchingPath(tree, game, keysFor(game)).map(node => node.opening.name),
     )
   }
 
@@ -195,13 +201,13 @@ export function buildExport(
     const matching = counted.filter(game => gameMatchesNode(game, keysFor(game), node))
 
     return {
-      id: node.pattern.id,
-      name: node.pattern.name,
+      id: node.opening.id,
+      name: node.opening.name,
       path: [],
       depth: node.depth,
-      color: node.pattern.color,
-      ply: node.pattern.ply,
-      moves: node.pattern.moves,
+      color: node.opening.color,
+      ply: node.opening.ply,
+      moves: node.opening.moves,
       stats: computeSplit(matching),
     }
   })
@@ -210,7 +216,7 @@ export function buildExport(
   const trail: string[] = []
   nodes.forEach((node, index) => {
     trail.length = node.depth
-    trail.push(node.pattern.name)
+    trail.push(node.opening.name)
     variations[index].path = [...trail]
   })
 
@@ -277,7 +283,7 @@ export function buildExport(
   const payload: ExportPayload = {
     generatedAt: new Date().toISOString(),
     profile,
-    counts: { games: games.length, patterns: patterns.length },
+    counts: { games: games.length, openings: openings.length, patterns: openings.length },
     totals: computeSplit(counted),
     byTimeClass,
     variations,

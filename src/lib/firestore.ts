@@ -22,8 +22,8 @@ import type {
   GameRecord,
   GameReview,
   StoredAnalysis,
-  NewPattern,
-  PatternRecord,
+  NewOpeningLine,
+  OpeningLine,
   Source,
   SyncedGame,
   UserProfile,
@@ -208,28 +208,35 @@ export async function saveDrillResult(
   )
 }
 
-/* --------------------------------------------------------------- patterns */
+/* --------------------------------------------------------------- openings */
 
-export async function getPatterns(userId: string, options?: ReadOptions): Promise<PatternRecord[]> {
+/**
+ * Saved opening lines. They live under the `patterns` collection id because that is
+ * what they were called when they were written, and moving a user's documents to free
+ * the word for the thematic patterns would be a migration with real downside and no
+ * visible gain. The code says opening; only the id remembers.
+ */
+
+export async function getOpenings(userId: string, options?: ReadOptions): Promise<OpeningLine[]> {
   const ref = collection(db, 'users', userId, 'patterns')
   const snapshot = await readDocs(query(ref, orderBy('name')), options)
-  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as PatternRecord)
+  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as OpeningLine)
 }
 
-export async function savePattern(userId: string, pattern: NewPattern): Promise<string> {
+export async function saveOpening(userId: string, opening: NewOpeningLine): Promise<string> {
   const ref = collection(db, 'users', userId, 'patterns')
-  const docRef = await addDoc(ref, { ...pattern, createdAt: serverTimestamp() })
+  const docRef = await addDoc(ref, { ...opening, createdAt: serverTimestamp() })
   return docRef.id
 }
 
-export async function updatePattern(
+export async function updateOpening(
   userId: string,
-  patternId: string,
-  pattern: NewPattern,
+  openingId: string,
+  opening: NewOpeningLine,
 ): Promise<void> {
-  await updateDoc(doc(db, 'users', userId, 'patterns', patternId), { ...pattern })
+  await updateDoc(doc(db, 'users', userId, 'patterns', openingId), { ...opening })
 }
 
-export async function deletePattern(userId: string, patternId: string): Promise<void> {
-  await deleteDoc(doc(db, 'users', userId, 'patterns', patternId))
+export async function deleteOpening(userId: string, openingId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, 'patterns', openingId))
 }

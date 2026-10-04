@@ -4,7 +4,7 @@ export type TimeClass = 'bullet' | 'blitz' | 'rapid' | 'classical' | 'daily'
 
 export type Color = 'white' | 'black'
 
-export type PatternColor = Color | 'any'
+export type OpeningColor = Color | 'any'
 
 export type GameResult = 'win' | 'loss' | 'draw'
 
@@ -144,7 +144,7 @@ export interface StoredAnalysis {
   }[]
 }
 
-export interface PatternRecord {
+export interface OpeningLine {
   id: string
   name: string
   /** The line exactly as the user typed it. */
@@ -154,10 +154,10 @@ export interface PatternRecord {
   /** FEN fields 1-3 after the last move — what games are matched against. */
   positionKey: string
   ply: number
-  color: PatternColor
+  color: OpeningColor
 }
 
-export type NewPattern = Omit<PatternRecord, 'id'>
+export type NewOpeningLine = Omit<OpeningLine, 'id'>
 
 export interface UserProfile {
   chesscomUsername: string | null

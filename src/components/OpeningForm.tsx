@@ -2,44 +2,44 @@
 
 import { useMemo, useState } from 'react'
 import {
-  MAX_PATTERN_PLY,
+  MAX_OPENING_PLY,
   canNest,
   formatMoves,
   isParentLine,
-  parsePattern,
-  patternLabel,
-} from '@/lib/pattern'
-import type { NewPattern, PatternColor, PatternRecord } from '@/types/chess'
+  parseOpening,
+  openingLabel,
+} from '@/lib/opening'
+import type { NewOpeningLine, OpeningColor, OpeningLine } from '@/types/chess'
 
-const COLORS: { value: PatternColor; label: string }[] = [
+const COLORS: { value: OpeningColor; label: string }[] = [
   { value: 'any', label: 'Either colour' },
   { value: 'white', label: 'As White' },
   { value: 'black', label: 'As Black' },
 ]
 
-export default function PatternForm({
+export default function OpeningForm({
   initial,
   others,
   onSubmit,
   onCancel,
 }: {
   /** The line being edited, or null when adding a new one. */
-  initial: PatternRecord | null
+  initial: OpeningLine | null
   /** Every other saved line, used to show which variation this one sits under. */
-  others: PatternRecord[]
-  onSubmit: (pattern: NewPattern) => Promise<void>
+  others: OpeningLine[]
+  onSubmit: (opening: NewOpeningLine) => Promise<void>
   onCancel?: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [pgn, setPgn] = useState(initial?.pgn ?? '')
-  const [color, setColor] = useState<PatternColor>(initial?.color ?? 'any')
+  const [color, setColor] = useState<OpeningColor>(initial?.color ?? 'any')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const parsed = useMemo(() => {
     if (!pgn.trim()) return null
     try {
-      return { ok: true as const, value: parsePattern(pgn) }
+      return { ok: true as const, value: parseOpening(pgn) }
     } catch (caught) {
       return { ok: false as const, message: (caught as Error).message }
     }
@@ -127,7 +127,7 @@ export default function PatternForm({
         <span className="text-xs uppercase tracking-wide text-zinc-500">Count games played</span>
         <select
           value={color}
-          onChange={event => setColor(event.target.value as PatternColor)}
+          onChange={event => setColor(event.target.value as OpeningColor)}
           className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm outline-none focus:border-zinc-600"
         >
           {COLORS.map(option => (
@@ -148,7 +148,7 @@ export default function PatternForm({
             {nesting?.parent ? (
               <>
                 sub-variation of{' '}
-                <span className="text-zinc-300">{patternLabel(nesting.parent)}</span>
+                <span className="text-zinc-300">{openingLabel(nesting.parent)}</span>
               </>
             ) : (
               'a top-level opening'
@@ -156,14 +156,14 @@ export default function PatternForm({
           </span>
           {!nesting?.parent && nesting?.blocked && (
             <span className="text-amber-400">
-              It continues {patternLabel(nesting.blocked)}, but that line is saved for the other
+              It continues {openingLabel(nesting.blocked)}, but that line is saved for the other
               colour — pick the matching colour above to file it there instead of starting a new
               top-level opening.
             </span>
           )}
-          {parsed.value.ply > MAX_PATTERN_PLY && (
+          {parsed.value.ply > MAX_OPENING_PLY && (
             <span className="text-amber-400">
-              Longer than {MAX_PATTERN_PLY} half-moves — games are only searched that deep, so this
+              Longer than {MAX_OPENING_PLY} half-moves — games are only searched that deep, so this
               line will never match.
             </span>
           )}
