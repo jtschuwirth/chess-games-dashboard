@@ -1,6 +1,8 @@
 import { hasReview } from './review'
 import type {
   GameRecord,
+  Source,
+  TimeClass,
   NewStudyPlan,
   PlanDay,
   PlanTask,
@@ -284,6 +286,89 @@ export function gamesOn(games: GameRecord[], ms: number): GameRecord[] {
 /** How many of a day's games you have taken apart, for the day's own heading. */
 export function reviewedCount(games: GameRecord[]): number {
   return games.filter(hasReview).length
+}
+
+/* ------------------------------------------------------------------ ratings */
+
+export interface TrackedPool {
+  /** Stable key for the stored record. */
+  id: string
+  source: Source
+  timeClass: TimeClass
+  label: string
+}
+
+/**
+ * The pools a plan tracks. A rating only means something against the pool it was earned
+ * in — a site keeps one per time class — so these are named pairs rather than a single
+ * number, and the list is short because tracking everything tracks nothing.
+ */
+export const TRACKED_POOLS: TrackedPool[] = [
+  { id: 'chesscom:rapid', source: 'chesscom', timeClass: 'rapid', label: 'chess.com rapid' },
+  { id: 'chesscom:blitz', source: 'chesscom', timeClass: 'blitz', label: 'chess.com blitz' },
+  { id: 'lichess:classical', source: 'lichess', timeClass: 'classical', label: 'lichess classical' },
+]
+
+/**
+ * Your rating in a pool going into a given moment: the rating after the last game you
+ * played in it at or before then.
+ *
+ * Stored ratings are POST-game on both providers, which is exactly right here — the
+ * rating after your last game before the week began is the rating you started it with.
+ * Engine games are skipped, as they are everywhere else.
+ */
+export function ratingAt(games: GameRecord[], pool: TrackedPool, ms: number): number | null {
+  let best: GameRecord | null = null
+
+  for (const game of games) {
+    if (game.opponentIsBot) continue
+    if (game.source !== pool.source || game.timeClass !== pool.timeClass) continue
+    if (game.userRating === null || game.playedAt > ms) continue
+    if (!best || game.playedAt > best.playedAt) best = game
+  }
+
+  return best?.userRating ?? null
+}
+
+/** Every tracked rating as a week began, for the button that fills the table. */
+export function ratingsAt(games: GameRecord[], ms: number): Record<string, number | null> {
+  return Object.fromEntries(TRACKED_POOLS.map(pool => [pool.id, ratingAt(games, pool, ms)]))
+}
+
+/** What a week records for one pool, or null when it has never been filled in. */
+export function weekRating(week: PlanWeek, poolId: string): number | null {
+  const value = week.ratings?.[poolId]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+export interface RatingSeries {
+  pool: TrackedPool
+  /** One entry per week, in order; null where nothing is recorded. */
+  points: (number | null)[]
+  first: number | null
+  last: number | null
+  /** last − first across the weeks that have a number, or null with fewer than two. */
+  change: number | null
+}
+
+/**
+ * One series per pool across the plan's weeks, which is what makes a plan comparable to
+ * itself. The change spans the weeks that actually carry a number, so a gap in the middle
+ * does not make the whole thing unreadable.
+ */
+export function ratingSeries(plan: Pick<StudyPlan, 'weeks'>): RatingSeries[] {
+  return TRACKED_POOLS.map(pool => {
+    const points = plan.weeks.map(week => weekRating(week, pool.id))
+    const known = points.filter((value): value is number => value !== null)
+
+    return {
+      pool,
+      points,
+      first: known[0] ?? null,
+      last: known[known.length - 1] ?? null,
+      change: known.length >= 2 ? known[known.length - 1] - known[0] : null,
+    }
+  })
 }
 
 /* ------------------------------------------------------------------ building */

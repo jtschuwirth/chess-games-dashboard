@@ -4,14 +4,17 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
+import { RatingProgress } from '@/components/PlanRatings'
 import PlanWeekCard from '@/components/PlanWeekCard'
 import { deletePlan, getGames, getPlans, updatePlan } from '@/lib/firestore'
 import {
   MAX_PLAN_WEEKS,
   buildWeek,
+  dayDate,
   planBody,
   planProgress,
   planRange,
+  ratingsAt,
   templateFrom,
   todayPosition,
   weekLabel,
@@ -167,6 +170,25 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <RatingProgress plan={plan} />
+      </div>
+
+      <button
+        onClick={() =>
+          save(current => ({
+            ...current,
+            weeks: current.weeks.map((week, index) => ({
+              ...week,
+              ratings: ratingsAt(games, dayDate(current, index, 0)),
+            })),
+          }))
+        }
+        className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+      >
+        Fill every week&apos;s ratings from games
+      </button>
 
       <div className="flex flex-col gap-2">
         {plan.weeks.map((week, index) => (

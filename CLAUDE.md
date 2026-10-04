@@ -30,7 +30,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
 7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
-   Weeks fold, and more can be added as the plan runs on.
+   Each week records what you were rated going into it, filled from your games with a
+   button, and the plan draws each tracked rating across its weeks. Weeks fold, and more
+   can be added as the plan runs on.
 8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
@@ -68,7 +70,7 @@ src/
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
-│                               # PlanDayCard, PlanWeekCard
+│                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -514,6 +516,23 @@ src/
   apart on Tuesday morning would file itself under Tuesday, away from the task it answers.
   Reviewing a game later does not move it; the day shows every game played and marks which have
   been reviewed. The same habit as the variation tree and the pre-game ratings.
+- **A week's ratings are stored, which almost nothing else here is.** Everything else a plan
+  shows is derived, but a rating is read off the last game before the week began — and the games
+  from before you started syncing are not in the app, so a derived figure would be blank for
+  exactly the early weeks a plan is measured against. So the button fills the table and the table
+  is editable by hand: a number typed from memory beats a blank. Re-filling is idempotent, since
+  it only ever reads the games.
+- **Three pools, named pairs, because a rating only means something against its own.** A site
+  keeps one rating per time class, so `TRACKED_POOLS` holds `chesscom:rapid`, `chesscom:blitz` and
+  `lichess:classical` rather than one number. Stored ratings being POST-game is exactly right
+  here: the rating after your last game before the week began is the rating you started it with,
+  which is the one case where the post-game figure needs no reconstruction. Engine games are
+  skipped, as everywhere else.
+- **Each rating gets its own line, not a shared chart.** 1251 and 1624 on one set of axes
+  flattens both into the same wiggle, and the question a plan asks is "which way is each going",
+  not "which is higher". Each line is scaled to its own range with the figures beside it, so the
+  shape carries the trend and the numbers carry the size. A gap in the middle does not break a
+  series — the change spans the weeks that carry a number.
 - **A chess day runs 6am to 6am.** A game at one in the morning belongs to the evening it came
   out of, not to the day that has just started, so a late session counts against the day you sat
   down to play — which is the day the plan asked you to. `chessDayKey` files a game, and

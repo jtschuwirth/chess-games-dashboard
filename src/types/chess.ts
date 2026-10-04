@@ -251,6 +251,15 @@ export interface PlanDay {
 export interface PlanWeek {
   name: string
   days: PlanDay[]
+  /**
+   * Your rating going into this week, keyed by tracked pool (`chesscom:rapid`).
+   *
+   * Stored rather than derived, unlike almost everything else here, for one reason: it
+   * is read off the last game before the week started, and games from before you began
+   * syncing are not in the app. A derived figure would be blank for exactly the early
+   * weeks a plan is measured against. Filled by a button and editable by hand.
+   */
+  ratings?: Record<string, number | null>
 }
 
 /**

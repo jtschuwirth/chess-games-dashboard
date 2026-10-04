@@ -2,7 +2,15 @@
 
 import { useState } from 'react'
 import PlanDayCard from '@/components/PlanDayCard'
-import { dayDate, weekLabel, weekProgress, weekRange, type PlanPosition } from '@/lib/plan'
+import { WeekRatings } from '@/components/PlanRatings'
+import {
+  dayDate,
+  ratingsAt,
+  weekLabel,
+  weekProgress,
+  weekRange,
+  type PlanPosition,
+} from '@/lib/plan'
 import type { GameRecord, PlanWeek, StudyPlan } from '@/types/chess'
 
 /**
@@ -85,7 +93,20 @@ export default function PlanWeekCard({
       </div>
 
       {open && (
-        <div className="px-3 pb-3 flex flex-col gap-2">
+        <div className="px-3 pb-3 flex flex-col gap-3">
+          <WeekRatings
+            week={week}
+            previous={index > 0 ? plan.weeks[index - 1] : null}
+            onChange={onChange}
+            onSync={() =>
+              onChange(current => ({
+                ...current,
+                // the rating going in is the one after your last game before day one
+                ratings: ratingsAt(games, dayDate(plan, index, 0)),
+              }))
+            }
+          />
+
           {week.days.map((day, dayIndex) => (
             <PlanDayCard
               key={dayIndex}
