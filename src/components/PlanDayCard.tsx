@@ -3,9 +3,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import StatusTag from '@/components/StatusTag'
-import { dayProgress, formatDay, isDayComplete, reviewsOn, taskComplete } from '@/lib/plan'
-import { trainableMistakes } from '@/lib/review'
-import type { GameRecord, PlanDay, PlanTask } from '@/types/chess'
+import {
+  dayProgress,
+  formatDay,
+  gamesOn,
+  isDayComplete,
+  reviewedCount,
+  taskComplete,
+} from '@/lib/plan'
+import { hasReview, trainableMistakes } from '@/lib/review'
+import type { GameRecord, GameResult, PlanDay, PlanTask } from '@/types/chess'
+
+const RESULT_COLOR: Record<GameResult, string> = {
+  win: 'text-emerald-400',
+  loss: 'text-red-400',
+  draw: 'text-zinc-400',
+}
+
+const RESULT_LABEL: Record<GameResult, string> = {
+  win: 'Win',
+  loss: 'Loss',
+  draw: 'Draw',
+}
 
 /** How long after the last keystroke a note is written. */
 const NOTE_DEBOUNCE_MS = 800
@@ -72,7 +91,7 @@ function TaskRow({
         aria-checked={complete}
         aria-label={task.text || 'Task'}
         onClick={() => onPatch(current => ({ ...current, done: taskComplete(current) ? 0 : current.target }))}
-        title={counted ? (complete ? 'Clear all of it' : 'Mark all of it done') : undefined}
+        title={counted ? (complete ? 'Clear all of them' : 'Mark them all done') : undefined}
         className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[10px] leading-none transition-colors ${
           complete
             ? 'bg-emerald-500/80 border-emerald-500/80 text-zinc-950'
@@ -90,7 +109,7 @@ function TaskRow({
           const text = event.target.value
           onPatch(current => ({ ...current, text }))
         }}
-        placeholder="what to do"
+        placeholder="something to do"
         className={`flex-1 min-w-0 bg-transparent outline-none text-sm placeholder:text-zinc-700 ${
           complete ? 'text-zinc-600 line-through' : 'text-zinc-200'
         }`}
@@ -128,7 +147,7 @@ function TaskRow({
       )}
 
       {/* how many there are of this task — muted, because it is set once and then read */}
-      <label className="flex items-center gap-0.5 shrink-0" title="How many of these">
+      <label className="flex items-center gap-0.5 shrink-0" title="How many of these in a day">
         <span className="text-[10px] text-zinc-700">×</span>
         <input
           type="number"
@@ -139,7 +158,7 @@ function TaskRow({
             const target = Math.max(1, Math.min(999, Math.round(Number(event.target.value) || 1)))
             onPatch(current => ({ ...current, target, done: Math.min(current.done, target) }))
           }}
-          aria-label="How many of this task"
+          aria-label="How many of this task in a day"
           className="w-8 bg-transparent text-xs text-zinc-600 focus:text-zinc-200 outline-none text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </label>
@@ -199,7 +218,7 @@ export default function PlanDayCard({
   const [note, setNote] = useState(day.note)
 
   const { done, total } = dayProgress(day)
-  const reviews = useMemo(() => reviewsOn(games, date), [games, date])
+  const played = useMemo(() => gamesOn(games, date), [games, date])
 
   /**
    * The note is written once the typing stops rather than once per keystroke. The effect
@@ -303,27 +322,29 @@ export default function PlanDayCard({
 
           <div className="flex flex-col gap-1.5">
             <span className="text-xs uppercase tracking-wide text-zinc-500">
-              Reviewed this day
+              Played this day
               <span className="normal-case tracking-normal text-zinc-700">
                 {' '}
-                — found by date, nothing to link
+                — found by date, nothing to attach
+                {played.length > 0 &&
+                  ` · ${reviewedCount(played)} of ${played.length} reviewed`}
               </span>
             </span>
 
-            {reviews.length === 0 ? (
+            {played.length === 0 ? (
               <p className="text-xs text-zinc-600">
-                Nothing reviewed on {formatDay(date)}.{' '}
+                Nothing played on {formatDay(date)}, or nothing synced yet.{' '}
                 <Link
-                  href="/dashboard"
+                  href="/profile"
                   className="underline decoration-zinc-700 hover:decoration-zinc-400"
                 >
-                  Find a game to take apart
+                  Sync your games
                 </Link>
                 .
               </p>
             ) : (
               <div className="flex flex-col divide-y divide-zinc-800/70">
-                {reviews.map(game => {
+                {played.map(game => {
                   const tags = trainableMistakes(game.review).flatMap(entry => entry.tags)
                   return (
                     <Link
@@ -331,15 +352,26 @@ export default function PlanDayCard({
                       href={`/games/${game.id}`}
                       className="flex items-center gap-2 py-2 text-sm hover:bg-zinc-800/50 -mx-2 px-2 rounded transition-colors"
                     >
-                      <StatusTag tone="review">◆ reviewed</StatusTag>
+                      <span className={`text-xs font-bold w-10 shrink-0 ${RESULT_COLOR[game.result]}`}>
+                        {RESULT_LABEL[game.result]}
+                      </span>
                       <span className="text-zinc-300 truncate min-w-0">
                         {game.color === 'white' ? 'White' : 'Black'} vs {game.opponent}
                       </span>
-                      {tags.length > 0 && (
-                        <span className="text-xs text-zinc-600 truncate min-w-0 ml-auto">
-                          {tags.join(' · ')}
-                        </span>
-                      )}
+                      <span className="text-xs text-zinc-600 shrink-0">{game.timeControl}</span>
+
+                      <span className="ml-auto flex items-center gap-2 shrink-0 min-w-0">
+                        {tags.length > 0 && (
+                          <span className="text-xs text-zinc-600 truncate min-w-0 hidden sm:inline">
+                            {tags.join(' · ')}
+                          </span>
+                        )}
+                        {hasReview(game) ? (
+                          <StatusTag tone="review">◆ reviewed</StatusTag>
+                        ) : (
+                          <span className="text-xs text-zinc-700">not reviewed</span>
+                        )}
+                      </span>
                     </Link>
                   )
                 })}

@@ -36,7 +36,7 @@ const NAV_ITEMS = [
   {
     icon: '🗓️',
     title: 'Study plans',
-    description: 'What to do each day, ticked off, with that day’s reviews beside it',
+    description: 'Weeks of practice, counted off, with that day’s games beside them',
     href: '/plans',
   },
   {

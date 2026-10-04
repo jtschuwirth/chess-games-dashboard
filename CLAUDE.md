@@ -29,7 +29,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    lists the games where you did that.
 7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
-   puzzles — write a note on the day, and read the reviews you wrote that day beside it.
+   puzzles — write a note on the day, and see the games you played that day beside it.
    Weeks fold, and more can be added as the plan runs on.
 8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
@@ -56,7 +56,7 @@ src/
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
 │   ├── patterns/[id]/page.tsx  # One pattern: conditions, lines, where you wanted it
 │   ├── plans/page.tsx          # Study plans: list + create
-│   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's reviews
+│   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's games
 │   ├── learn/page.tsx          # Drill over the reviewed positions
 │   └── api/
 │       ├── chesscom/games/route.ts
@@ -506,11 +506,14 @@ src/
   reads at a glance — the clock keeps "40 of 40 games have move times" — and drops the prose
   explaining a table that is no longer there. A panel with nothing in it, like the engine readings
   before anything is analysed, has no control at all: there is nothing to fold.
-- **A plan day and a review meet on the date, and neither stores the other.** A day knows which
-  date it is; a review knows when it was written. So the reviews you wrote on a day turn up under
-  it by themselves — nothing to link, nothing to keep in step when a plan is edited or a game is
-  reviewed again, and no way for the two to disagree. The same habit as the variation tree and the
-  pre-game ratings.
+- **A plan day and a game meet on the date the game was *played*, and neither stores the other.**
+  A day knows which date it is; a game knows when it was played. So the games that answer "play
+  two rapid games" turn up under the day that asked for them — nothing to link, nothing to keep in
+  step when a plan is edited, and no way for the two to disagree. Matching on when the *review*
+  was written was wrong in a way that only shows in use: a game played on Monday evening and taken
+  apart on Tuesday morning would file itself under Tuesday, away from the task it answers.
+  Reviewing a game later does not move it; the day shows every game played and marks which have
+  been reviewed. The same habit as the variation tree and the pre-game ratings.
 - **Plan days are counted on the calendar, not in milliseconds.** `startDate + index * DAY_MS` is
   wrong twice a year: a day is 23 or 25 hours across a clock change, so adding fixed milliseconds
   lands an hour short and every later day reads as the one before it at 23:00. A plan running

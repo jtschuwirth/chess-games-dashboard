@@ -239,21 +239,30 @@ export function todayPosition(
   return null
 }
 
-/* ------------------------------------------------------------------- reviews */
+/* --------------------------------------------------------------------- games */
 
 /**
- * The reviews you wrote on a given day.
+ * The games you played on a given day, oldest first.
  *
- * Nothing links a game to a plan: the day knows its date and a review knows when it was
- * written, so the two meet without either storing the other. A review written on the
- * right day turns up by itself, and nothing has to be kept in step when a plan is edited
- * or a game is reviewed again.
+ * Matched on when the game was *played*, not when it was reviewed. A day of a plan asks
+ * you to play two rapid games, so the games that answer it are the ones played that day —
+ * and a game played on Monday and taken apart on Tuesday belongs under Monday, where the
+ * task was. Reviewing it later does not move it.
+ *
+ * Nothing links a game to a plan: the day knows its date and a game knows when it was
+ * played, so the two meet without either storing the other. Nothing has to be kept in
+ * step when a plan is edited or a game is reviewed again.
  */
-export function reviewsOn(games: GameRecord[], ms: number): GameRecord[] {
+export function gamesOn(games: GameRecord[], ms: number): GameRecord[] {
   const key = dayKey(ms)
   return games
-    .filter(game => hasReview(game) && game.review && dayKey(game.review.reviewedAt) === key)
-    .sort((a, b) => (a.review?.reviewedAt ?? 0) - (b.review?.reviewedAt ?? 0))
+    .filter(game => dayKey(game.playedAt) === key)
+    .sort((a, b) => a.playedAt - b.playedAt)
+}
+
+/** How many of a day's games you have taken apart, for the day's own heading. */
+export function reviewedCount(games: GameRecord[]): number {
+  return games.filter(hasReview).length
 }
 
 /* ------------------------------------------------------------------ building */
