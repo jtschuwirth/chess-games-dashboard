@@ -154,10 +154,9 @@ export default function DrillCardView({
           {!answer ? (
             <>
               <div>
-                <h3 className="font-semibold text-sm">Find a move that holds</h3>
+                <h3 className="font-semibold text-sm">Propose a continuation</h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  Not necessarily the engine&apos;s best — anything that gives nothing away
-                  counts, which is what you set out to find when you reviewed this.
+                  It does not have to be the engine&apos;s best.
                 </p>
               </div>
 
