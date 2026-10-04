@@ -126,8 +126,7 @@ function ProfileBody({ userId }: { userId: string }) {
         <h2 className="font-semibold">Data export</h2>
         <p className="text-sm text-zinc-500">
           <code className="text-zinc-400">GET /api/export</code> returns your games, saved lines and
-          their results as JSON. It needs <code className="text-zinc-400">EXPORT_API_KEY</code> and
-          an admin credential in <code className="text-zinc-400">.env.local</code> — see the README.
+          their results as JSON, authenticated with your sign-in.
         </p>
         <p className="text-xs text-zinc-600">
           Your user id: <code className="text-zinc-400 break-all">{userId}</code>

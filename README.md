@@ -43,14 +43,13 @@ lines you play, and see how each one actually scores.
 ## JSON export (`GET /api/export`)
 
 A read-only endpoint that returns everything the dashboard derives, so the data can be analysed
-outside the app. **It is off until you configure it**, and it serves nothing without the key.
+outside the app. It is authenticated with your Firebase ID token and returns **your** data — there
+is no API key, and no account can ask for another's.
 
 Add to `.env.local`:
 
 ```
-EXPORT_API_KEY=<a long random string>
 FIREBASE_ADMIN_CREDENTIALS=<admin credential JSON on one line>
-# EXPORT_UID=<only needed once a second account has signed in>
 ```
 
 Firestore rules scope every document to its owner, so the endpoint needs an admin credential to
@@ -70,12 +69,14 @@ escapes, so pasting it by hand tends to break it):
 node scripts/set-admin-credentials.mjs /path/to/credentials.json
 ```
 
-`GOOGLE_APPLICATION_CREDENTIALS` pointing at either file works too. With one account stored the
-export finds your uid on its own. `.env.local` is gitignored — treat `EXPORT_API_KEY` as a
-password: anyone holding it can read every game and line you have stored.
+`GOOGLE_APPLICATION_CREDENTIALS` pointing at either file works too.
 
-```bash
-curl -H "x-api-key: $EXPORT_API_KEY" http://localhost:3000/api/export
+Call it with the ID token of whoever is asking. In the browser console, signed in:
+
+```js
+await (await fetch('/api/export', {
+  headers: { authorization: 'Bearer ' + (await firebase.auth().currentUser.getIdToken()) },
+})).json()
 ```
 
 | Query | Default | Meaning |
@@ -123,7 +124,7 @@ will just show the setup notice until the Firebase ones are in.
 | Variable | Needed for |
 | --- | --- |
 | `NEXT_PUBLIC_FIREBASE_*` (six) | signing in and reading your games; also what the engine service checks a sign-in against |
-| `EXPORT_API_KEY` | only `GET /api/export`; leave it out and the endpoint stays off |
+| `ADMIN_IDS` | server-side engine analysis; comma-separated Firebase uids. Empty means nobody |
 | `FIREBASE_ADMIN_CREDENTIALS` | only `GET /api/export` |
 
 Two things to do in the Firebase console afterwards:

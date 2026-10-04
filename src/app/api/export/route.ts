@@ -1,56 +1,30 @@
-import { timingSafeEqual } from 'node:crypto'
 import { NextResponse } from 'next/server'
+import { deny, requireUser } from '@/lib/api-auth'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { buildExport } from '@/lib/export'
 import { isSinceKey, matchesCriteria, type GameCriteria, type SinceKey } from '@/lib/game-filters'
 import type { GameRecord, OpeningLine, UserProfile } from '@/types/chess'
-import type { Firestore } from 'firebase-admin/firestore'
 
 const DEFAULT_GAME_LIMIT = 200
 const MAX_GAME_LIMIT = 2000
 
-function matchesKey(provided: string, expected: string): boolean {
-  const a = Buffer.from(provided)
-  const b = Buffer.from(expected)
-  return a.length === b.length && timingSafeEqual(a, b)
-}
-
-function deny(message: string, status: number) {
-  return NextResponse.json({ error: message }, { status })
-}
-
 /**
- * EXPORT_UID is optional: a single-user install has exactly one document under
- * `users`, so there is nothing to disambiguate. It is only required once a second
- * account has signed in.
+ * Your own data, as JSON.
+ *
+ * Authenticated with the Firebase ID token of whoever is asking, and it returns that
+ * account's data and no one else's. It used to be a shared `EXPORT_API_KEY` plus an
+ * `EXPORT_UID` naming whose data to hand over, which is two things to configure, one
+ * secret to leak, and a design that could only ever serve one person. A token is already
+ * what the browser holds, so there is nothing new to manage and nothing to leak.
+ *
+ * It still needs the Admin SDK: the route runs outside any session, and Firestore rules
+ * scope every document to its owner, so the client SDK could read nothing here. The uid
+ * from the token is what makes that safe — the route reads one user's tree, the one that
+ * asked.
  */
-async function resolveUserId(db: Firestore): Promise<string> {
-  const configured = process.env.EXPORT_UID
-  if (configured) return configured
-
-  const users = await db.collection('users').limit(2).get()
-  if (users.empty) {
-    throw new Error('No user data in Firestore yet — sign in and sync some games first.')
-  }
-  if (users.size > 1) {
-    throw new Error('More than one account stored — set EXPORT_UID in .env.local to pick one.')
-  }
-
-  return users.docs[0].id
-}
-
 export async function GET(request: Request) {
-  const expectedKey = process.env.EXPORT_API_KEY
-
-  // fail closed: without a key configured the endpoint serves nothing
-  if (!expectedKey) {
-    return deny('Export is disabled — set EXPORT_API_KEY in .env.local to enable it.', 503)
-  }
-
-  const provided = request.headers.get('x-api-key') ?? ''
-  if (!matchesKey(provided, expectedKey)) {
-    return deny('Invalid or missing x-api-key header.', 401)
-  }
+  const who = await requireUser(request)
+  if ('error' in who) return who.error
 
   const params = new URL(request.url).searchParams
   const limit = Number(params.get('limit') ?? DEFAULT_GAME_LIMIT)
@@ -92,8 +66,7 @@ export async function GET(request: Request) {
 
   try {
     const db = getAdminDb()
-    const userId = await resolveUserId(db)
-    const userRef = db.collection('users').doc(userId)
+    const userRef = db.collection('users').doc(who.uid)
 
     const [profileSnap, gamesSnap, openingsSnap] = await Promise.all([
       userRef.get(),

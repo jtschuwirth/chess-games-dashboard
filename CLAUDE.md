@@ -521,10 +521,25 @@ src/
   `source + timeClass`, since a site keeps one rating per class, not per clock. It is derived at
   read time rather than stored, because syncs arrive newest-first and a game's predecessor often
   lands in a later sync.
-- **The export endpoint fails closed.** `/api/export` returns 503 unless `EXPORT_API_KEY` and
-  an admin credential are configured, and 401 on a key mismatch (constant-time compare, header only — never a
-  query param). It needs the Admin SDK because it runs with no signed-in user and Firestore rules
-  scope every document to its owner.
+- **One token check for every route, and it is the only one.** `lib/api-auth.ts` holds it:
+  `requireUser` for a signed-in caller, `requireAdmin` for the deployment's owner, sharing one
+  verified-token cache. A second copy would be a second place to be subtly wrong, and would not
+  share the cache — which is what makes it affordable, since a game's analysis is eighty requests
+  carrying the same token. It checks tokens against Google's `accounts:lookup` rather than
+  firebase-admin, for the loading reason documented under `/api/engine`.
+- **Server-side analysis is for the owner, not for anyone signed in.** `/api/engine` is the one
+  endpoint that burns real CPU per request — a game is eighty positions at depth 21 — so every
+  account that can reach it can spend the deployment's compute, and signing in is free. `ADMIN_IDS`
+  is a comma-separated list of uids, read on the server only: deliberately not `NEXT_PUBLIC_`, so
+  the browser bundle never carries it and the client is never the thing deciding. Empty means
+  nobody, and the route refuses rather than opening up. Everyone else still has the engine — it
+  runs in their own browser, which is the default anyway.
+- **The export authenticates as you and returns your data.** It was a shared `EXPORT_API_KEY` plus
+  an `EXPORT_UID` naming whose data to hand over: two things to configure, one secret that could
+  leak everything, and a design that could only ever serve one person. Now it takes the Firebase ID
+  token the browser already holds and reads the tree belonging to that uid. It still needs the
+  Admin SDK, because the route runs outside any session and Firestore rules scope every document
+  to its owner — the uid from the token is what makes using it safe.
 - **One `Panel` shape, and it is the only one.** The dashboard grew a section at a time and
   ended up with three heading styles, two paddings and four of its nine panels in no box at all —
   each defensible alone and incoherent together. `Panel` in `components/Section.tsx` owns the box,
