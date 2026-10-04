@@ -310,9 +310,18 @@ src/
   hold that collection id and are not moving for a cosmetic reason. See the note in
   `lib/firestore.ts`.
 - **Tags are a fixed vocabulary you can extend.** `TAG_GROUPS` in `lib/review.ts` groups them by
-  what actually broke — tactics, calculation, strategy, endgame, opening, mindset — because a
-  count is only comparable across months if the words stay the same. The groups carried a one-line
-  gloss each; the names say it. Free tags are still allowed
+  what actually broke — tactics missed, tactics allowed, calculation, strategy, endgame, opening,
+  mindset — because a count is only comparable across months if the words stay the same. The
+  groups carried a one-line gloss each; the names say it.
+- **Tactics have a direction, and it is two different mistakes.** Missing a fork your opponent
+  left you is a failure to look; walking into one is a failure to check what your move allows, and
+  the training for each is nothing like the other. A single list of bare motifs — `fork`, `pin` —
+  could only ever mean one of them, and it read as the missing kind, so there was no way to record
+  hanging a piece. `Tactics allowed` holds the other direction, with each tag saying so on its own
+  (`hung a piece`, `allowed a fork`) since a tag appears alone in the mistake table. The existing
+  tags were not renamed: only the group was, from `Tactics` to `Tactics missed`, and group names
+  are derived at read time while tag strings are stored — so nothing already written was
+  orphaned. Free tags are still allowed
   and are offered back as suggestions (`knownTags`), landing in a "Your own" group.
 - **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
   already holds every game, so filtering by review state, counting tags and finding the next game

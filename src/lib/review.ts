@@ -23,10 +23,16 @@ export interface TagGroup {
  * The shared vocabulary. Free tags are allowed — anything already used in a review is
  * offered back as a suggestion — but a fixed list is what makes the counts comparable
  * across months, which is the entire reason for keeping them.
+ *
+ * Tactics come in two directions and they are different mistakes. Missing a fork your
+ * opponent left you is a failure to look; walking into one is a failure to check what
+ * your move allows, and the training for each is nothing like the other. One list of
+ * bare motifs could only ever mean one of them.
  */
 export const TAG_GROUPS: TagGroup[] = [
   {
-    name: 'Tactics',
+    // the tags are unchanged: only the group is renamed, and group names are not stored
+    name: 'Tactics missed',
     tags: [
       'hanging piece',
       'fork',
@@ -39,6 +45,22 @@ export const TAG_GROUPS: TagGroup[] = [
       'trapped piece',
       'mate threat',
       'in-between move',
+    ],
+  },
+  {
+    name: 'Tactics allowed',
+    tags: [
+      'hung a piece',
+      'hung a pawn',
+      'allowed a fork',
+      'allowed a pin',
+      'allowed a skewer',
+      'allowed a discovered attack',
+      'allowed back rank mate',
+      'my defender was removed',
+      'my defender was overloaded',
+      'let a piece get trapped',
+      'allowed a mate threat',
     ],
   },
   {
