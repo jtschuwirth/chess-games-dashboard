@@ -144,7 +144,10 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
 
         <div className="flex flex-col gap-2">
           {/* a heading, not a figure: the move count is already on every row */}
-          <span className="text-xs uppercase tracking-wide text-zinc-500">
+          <span
+            className="text-xs uppercase tracking-wide text-zinc-500"
+            title="Share of each band's own moves, so they do not total 100. Hard positions take longer, so a slow band reads worse for reasons other than the clock."
+          >
             Mistakes by think time
           </span>
 
@@ -184,15 +187,7 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
             </div>
           )}
 
-          {/*
-            One line, not three. The two facts that stop the bars being read wrongly are
-            that each band has its own denominator and that hard positions take longer;
-            everything else was restating the chart.
-          */}
-          <p className="text-xs text-zinc-600">
-            Share of each band&apos;s own moves, so they do not total 100. Hard positions take
-            longer, so a slow band reads worse for reasons other than the clock.
-          </p>
+          {/* the one thing the bars cannot say for themselves, as a tooltip on the header */}
         </div>
       </div>
     </Panel>

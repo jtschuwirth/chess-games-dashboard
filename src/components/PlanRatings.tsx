@@ -51,10 +51,6 @@ export function WeekRatings({
     <div className="flex flex-col gap-1.5">
       <span className="text-xs uppercase tracking-wide text-zinc-500">
         Rating going in
-        <span className="normal-case tracking-normal text-zinc-700">
-          {' '}
-          — your close the day before, and what the week before did
-        </span>
       </span>
 
       <div className="flex flex-col divide-y divide-zinc-800/70 border border-zinc-800 rounded-lg overflow-hidden">

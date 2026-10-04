@@ -16,8 +16,6 @@ export const MAX_REVIEW_MISTAKES = 3
 
 export interface TagGroup {
   name: string
-  /** Why this group of causes is one group, shown as the column's hint. */
-  hint: string
   tags: string[]
 }
 
@@ -29,7 +27,6 @@ export interface TagGroup {
 export const TAG_GROUPS: TagGroup[] = [
   {
     name: 'Tactics',
-    hint: 'A motif you missed or allowed',
     tags: [
       'hanging piece',
       'fork',
@@ -46,7 +43,6 @@ export const TAG_GROUPS: TagGroup[] = [
   },
   {
     name: 'Calculation',
-    hint: 'The search itself broke down',
     tags: [
       "missed opponent's reply",
       'stopped calculating too early',
@@ -60,7 +56,6 @@ export const TAG_GROUPS: TagGroup[] = [
   },
   {
     name: 'Strategy',
-    hint: 'The move fit no sound plan',
     tags: [
       'wrong plan',
       'weakened my king',
@@ -75,17 +70,14 @@ export const TAG_GROUPS: TagGroup[] = [
   },
   {
     name: 'Endgame',
-    hint: 'Technique once the pieces thinned out',
     tags: ['king activity', 'pawn race', 'conversion technique', 'wrong trade into the endgame'],
   },
   {
     name: 'Opening',
-    hint: 'Left the line you know',
     tags: ['out of book', 'forgot the theory', 'wrong move order'],
   },
   {
     name: 'Mindset',
-    hint: 'Nothing to do with the position',
     tags: [
       'played too fast',
       'time pressure',

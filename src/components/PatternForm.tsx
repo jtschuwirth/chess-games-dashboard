@@ -78,7 +78,7 @@ function LineFields({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label hint="paste the game, then point the board at the move">PGN</Label>
+          <Label>PGN</Label>
           <textarea
             value={line.pgn}
             onChange={event => setPgn(event.target.value)}
@@ -96,7 +96,7 @@ function LineFields({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label hint="what to notice">Note</Label>
+          <Label>Note</Label>
           <textarea
             value={line.note}
             onChange={event => onChange({ ...line, note: event.target.value })}
@@ -280,7 +280,7 @@ export default function PatternForm({
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-4">
       <div className="grid sm:grid-cols-[minmax(0,1fr)_auto] gap-3 items-end">
         <div className="flex flex-col gap-1.5 min-w-0">
-          <Label hint="this is the tag you will pick when reviewing">Name</Label>
+          <Label hint="also the review tag">Name</Label>
           <input
             value={name}
             onChange={event => setName(event.target.value)}
@@ -302,7 +302,7 @@ export default function PatternForm({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <Label hint="one per line">Conditions</Label>
+        <Label>Conditions</Label>
         <textarea
           value={conditions}
           onChange={event => setConditions(event.target.value)}
@@ -314,7 +314,7 @@ export default function PatternForm({
 
       {openings.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <Label hint="where this turns up">Openings</Label>
+          <Label>Openings</Label>
           <OpeningPicker
             openings={openings}
             selected={openingIds}
@@ -328,12 +328,12 @@ export default function PatternForm({
       )}
 
       <div className="flex flex-col gap-2">
-        <Label hint="the game that shows the idea">Main line</Label>
+        <Label>Main line</Label>
         <LineFields line={main} titlePlaceholder="what this line is called" onChange={setMain} />
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label hint="the same idea elsewhere">Examples</Label>
+        <Label>Examples</Label>
         {examples.map((example, index) => (
           <LineFields
             key={index}

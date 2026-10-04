@@ -377,9 +377,6 @@ export default function ReviewEditor({
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
       <div>
         <h2 className="font-semibold text-sm">Root cause analysis</h2>
-        <p className="text-xs text-zinc-500 mt-0.5">
-          Up to {MAX_REVIEW_MISTAKES} moves per game.
-        </p>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -494,7 +491,7 @@ export default function ReviewEditor({
             {isFolded ? (
               <p className="text-xs text-zinc-500">
                 {draft.unreasonable
-                  ? 'Hard to find — left out of the tag counts.'
+                  ? 'Hard to find'
                   : draft.tags.length > 0
                     ? draft.tags.join(' · ')
                     : 'Nothing written down yet.'}
@@ -504,7 +501,7 @@ export default function ReviewEditor({
             {!draft.unreasonable && (
               <>
                 <div className="flex flex-col gap-1.5">
-                  <Label hint="The idea at the time, even if it turned out to be wrong.">
+                  <Label>
                     Why did I play it?
                   </Label>
                   <textarea
@@ -517,7 +514,7 @@ export default function ReviewEditor({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label hint="What it costs — material, king safety, the initiative.">
+                  <Label>
                     Why is it a mistake?
                   </Label>
                   <textarea
@@ -530,7 +527,7 @@ export default function ReviewEditor({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label hint="Something already on the board, or a line that stopped too early.">
+                  <Label>
                     What could I have seen or worked out?
                   </Label>
                   <textarea
@@ -546,9 +543,6 @@ export default function ReviewEditor({
 
             <div className="flex flex-col gap-2">
               <Label
-                hint={`Any move that holds, and what makes it hold — it does not have to be the engine's best. A line is fine, up to ${
-                  MAX_LINE_PLIES / 2
-                } moves each side; only the first is judged, since the rest is the opponent's to choose.`}
               >
                 What would I play instead?
               </Label>
@@ -662,7 +656,7 @@ export default function ReviewEditor({
             </div>
 
             <div className="flex flex-col gap-2">
-              <Label hint="This is the part that adds up across games.">Tags</Label>
+              <Label>Tags</Label>
 
               <div className="flex gap-1.5 flex-wrap">
                 {draft.tags.length === 0 && (
@@ -703,10 +697,6 @@ export default function ReviewEditor({
                     <div className="flex flex-col gap-1.5 sm:col-span-2">
                       <span className="text-xs uppercase tracking-wide text-zinc-500">
                         Patterns
-                        <span className="normal-case tracking-normal text-zinc-700">
-                          {' '}
-                          — an idea you have written up
-                        </span>
                       </span>
                       <div className="flex gap-1 flex-wrap">
                         {patternTags.map(tag => (
@@ -732,10 +722,6 @@ export default function ReviewEditor({
                     <div key={group.name} className="flex flex-col gap-1.5">
                       <span className="text-xs uppercase tracking-wide text-zinc-500">
                         {group.name}
-                        <span className="normal-case tracking-normal text-zinc-700">
-                          {' '}
-                          — {group.hint}
-                        </span>
                       </span>
                       <div className="flex gap-1 flex-wrap">
                         {group.tags.map(tag => (

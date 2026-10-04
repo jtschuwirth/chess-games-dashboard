@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Chip from '@/components/Chip'
-import { MAX_PLAN_WEEKS, buildPlan, startOfDay } from '@/lib/plan'
+import { buildPlan, startOfDay } from '@/lib/plan'
 
 const INPUT =
   'bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600'
@@ -79,10 +79,7 @@ export default function PlanForm({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-wide text-zinc-500">
-            Starts
-            <span className="normal-case tracking-normal text-zinc-700"> — day one</span>
-          </span>
+          <span className="text-xs uppercase tracking-wide text-zinc-500">Starts</span>
           <input
             type="date"
             value={start}
@@ -97,8 +94,7 @@ export default function PlanForm({
           How many weeks
           <span className="normal-case tracking-normal text-zinc-700">
             {' '}
-            — seven days each, counted from the start date rather than from a Monday. Up to{' '}
-            {MAX_PLAN_WEEKS}, and you can add more as you go.
+            — from the start date, not from a Monday
           </span>
         </span>
         <div className="flex gap-1 flex-wrap">
@@ -113,11 +109,6 @@ export default function PlanForm({
       <div className="flex flex-col gap-1.5">
         <span className="text-xs uppercase tracking-wide text-zinc-500">
           Each day, to start with
-          <span className="normal-case tracking-normal text-zinc-700">
-            {' '}
-            — the base every day begins from, one task per line. Any day can then be changed on
-            its own. End a line with ×5 for something you do five times.
-          </span>
         </span>
         <textarea
           value={tasks}

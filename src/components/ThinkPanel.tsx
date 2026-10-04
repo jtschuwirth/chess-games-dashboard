@@ -53,10 +53,6 @@ export default function ThinkPanel({
 
   return (
     <Panel id="phases" title="Game phase analysis">
-      <p className="text-xs text-zinc-500">
-        Your own moves. Click a phase to scope everything to the games that ended there.
-      </p>
-
       {/* flush in the panel rather than a bordered box inside a bordered box */}
       <div className="-mx-5 overflow-x-auto">
         <table className="w-full text-sm min-w-[56rem] tabular-nums">

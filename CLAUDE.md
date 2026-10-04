@@ -311,7 +311,8 @@ src/
   `lib/firestore.ts`.
 - **Tags are a fixed vocabulary you can extend.** `TAG_GROUPS` in `lib/review.ts` groups them by
   what actually broke — tactics, calculation, strategy, endgame, opening, mindset — because a
-  count is only comparable across months if the words stay the same. Free tags are still allowed
+  count is only comparable across months if the words stay the same. The groups carried a one-line
+  gloss each; the names say it. Free tags are still allowed
   and are offered back as suggestions (`knownTags`), landing in a "Your own" group.
 - **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
   already holds every game, so filtering by review state, counting tags and finding the next game
@@ -572,11 +573,15 @@ src/
 - **A date range keeps its year when the ends differ.** Without it a three-year span renders as
   "7 Oct – 3 Oct", which reads as four days backwards; that is exactly what the rating panel
   showed. `formatRange` adds both years when they differ and stays short inside one year.
-- **Panels explain themselves in one line or not at all.** The dashboard had grown a paragraph
-  under most charts, and together they read as an essay rather than a tool. A line survives only
-  if it stops a wrong reading — that each think-time band has its own denominator, that hard
-  positions take longer — and is written in one sentence. Anything restating what the chart
-  already shows is gone.
+- **The screen explains itself, or the screen is wrong.** Every field had a hint, every panel a
+  paragraph, every tag group a gloss — each one reasonable alone and together an essay wrapped
+  round a tool. The rule now: text earns its place only if it says something the control cannot,
+  and cannot be moved into a label, a placeholder or a tooltip. So the review form is four
+  questions and nothing else; the tag groups are their own names; `×5` is taught by the default
+  value using it rather than by a sentence about it; and the two facts that genuinely stop a wrong
+  reading — that a chess day runs 6am to 6am, and that think-time bands each have their own
+  denominator — are tooltips on the headings they belong to. If something still seems to need a
+  paragraph, that is a signal about the control, not a licence to write one.
 - **A chess day runs 6am to 6am.** A game at one in the morning belongs to the evening it came
   out of, not to the day that has just started, so a late session counts against the day you sat
   down to play — which is the day the plan asked you to. `chessDayKey` files a game, and

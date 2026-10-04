@@ -321,19 +321,22 @@ export default function PlanDayCard({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs uppercase tracking-wide text-zinc-500">
+            <span
+              className="text-xs uppercase tracking-wide text-zinc-500"
+              title="A day runs 6am to 6am, so a late session counts against the day it started in"
+            >
               Played this day
-              <span className="normal-case tracking-normal text-zinc-700">
-                {' '}
-                — a day runs 6am to 6am, so a late session counts here
-                {played.length > 0 &&
-                  ` · ${reviewedCount(played)} of ${played.length} reviewed`}
-              </span>
+              {played.length > 0 && (
+                <span className="normal-case tracking-normal text-zinc-700">
+                  {' '}
+                  · {reviewedCount(played)} of {played.length} reviewed
+                </span>
+              )}
             </span>
 
             {played.length === 0 ? (
               <p className="text-xs text-zinc-600">
-                Nothing played on {formatDay(date)}, or nothing synced yet.{' '}
+                Nothing played on {formatDay(date)}.{' '}
                 <Link
                   href="/profile"
                   className="underline decoration-zinc-700 hover:decoration-zinc-400"

@@ -627,7 +627,6 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                   `, ${formatClock(remainingByPly.get(current.index) as number)} left`}
               </span>
             )}
-            <span className="text-zinc-700 ml-auto">← → to step</span>
           </div>
         </div>
 

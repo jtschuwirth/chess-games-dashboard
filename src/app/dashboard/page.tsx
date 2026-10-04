@@ -517,22 +517,14 @@ function DashboardBody({ userId }: { userId: string }) {
           </div>
         </div>
 
-        <p className="text-xs text-zinc-500">
-          {current
-            ? `${scoped.length} of ${games.length} games reached ${openingLabel(current.opening)} or one of its sub-variations.`
-            : unclassifiedView
-              ? `${scoped.length} of ${games.length} games reached none of your saved openings.`
-              : `${scoped.length} of ${games.length} games in scope.`}
-          {openings.length === 0 && (
-            <>
-              {' '}
-              <Link href="/openings" className="underline text-zinc-300">
-                Save an opening
-              </Link>{' '}
-              to break these numbers down by line.
-            </>
-          )}
-        </p>
+        {openings.length === 0 && (
+          <p className="text-xs text-zinc-500">
+            <Link href="/openings" className="underline text-zinc-300">
+              Save an opening
+            </Link>{' '}
+            to break these numbers down by line.
+          </p>
+        )}
       </Panel>
 
       <Panel id="results" title="Results">
@@ -571,11 +563,6 @@ function DashboardBody({ userId }: { userId: string }) {
       {breakdown.length > 0 ? (
         <VariationTable
           title={current ? `Sub-variations of ${openingLabel(current.opening)}` : 'By opening'}
-          caption={
-            current
-              ? 'Each row counts the games that reached that sub-variation. Click one to drill in.'
-              : 'Each row counts the games that reached that opening, sub-variations included.'
-          }
           rows={breakdown}
           up={up}
         />
