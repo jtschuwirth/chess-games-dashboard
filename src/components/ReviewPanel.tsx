@@ -71,12 +71,6 @@ export default function ReviewPanel({
         </>
       }
     >
-      <p className="text-xs text-zinc-500">
-        Your own reviews across the {games.length} filtered game
-        {games.length === 1 ? '' : 's'}. The engine says where to look; this says why it
-        happened.
-      </p>
-
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         <Figure value={summary.reviewed} label="games reviewed" />
         <Figure

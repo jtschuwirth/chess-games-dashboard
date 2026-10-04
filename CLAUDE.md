@@ -561,16 +561,22 @@ src/
   one, straight out of the history. It used to be stored on the week and filled by a button, which
   meant a figure that could be out of date and a button that had to be remembered — both
   unnecessary once the history exists.
-- **Each pool gets its own vertical scale, even on one chart.** Rapid at 1690 and blitz at 1244 are
-  450 points apart, so a shared axis flattens each pool's own hundred-point swing into a straight
-  line — which is the whole thing you came to look at. The rows share the x axis so they line up
-  in time, and the figures beside each carry the size. The panel says so, rather than letting the
-  drawing imply the heights are comparable.
-- **The rating chart follows the date window and the site, and says that is all it follows.**
-  There is no such thing as your rating "in the Caro-Kann as Black", so letting the opening,
-  colour or tag filters appear to narrow it would be inventing a number. It also ends on the last
-  day the history knows rather than on today, which keeps `Date.now` out of render — the purity
-  rule catches that — and is the honest end of the data.
+- **One pool at a time, full height.** Three stacked strips of 48 pixels each was three charts
+  too small to read, and stacking them invited the question of whether the heights compared, which
+  they cannot — rapid at 1690 and blitz at 1244 share no scale. Chips switch pools, the chart gets
+  the whole panel, and the axis labels and the figure in the header belong to whichever is showing.
+- **The rating chart follows the date window and the site, and nothing else.** There is no such
+  thing as your rating "in the Caro-Kann as Black", so the opening, colour and tag filters do not
+  touch it. It ends on the last day the history knows rather than on today, which keeps `Date.now`
+  out of render — the purity rule catches that — and is the honest end of the data.
+- **A date range keeps its year when the ends differ.** Without it a three-year span renders as
+  "7 Oct – 3 Oct", which reads as four days backwards; that is exactly what the rating panel
+  showed. `formatRange` adds both years when they differ and stays short inside one year.
+- **Panels explain themselves in one line or not at all.** The dashboard had grown a paragraph
+  under most charts, and together they read as an essay rather than a tool. A line survives only
+  if it stops a wrong reading — that each think-time band has its own denominator, that hard
+  positions take longer — and is written in one sentence. Anything restating what the chart
+  already shows is gone.
 - **A chess day runs 6am to 6am.** A game at one in the morning belongs to the evening it came
   out of, not to the day that has just started, so a late session counts against the day you sat
   down to play — which is the day the plan asked you to. `chessDayKey` files a game, and

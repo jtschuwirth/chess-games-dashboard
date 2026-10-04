@@ -54,8 +54,7 @@ export default function ThinkPanel({
   return (
     <Panel id="phases" title="Game phase analysis">
       <p className="text-xs text-zinc-500">
-        Counted in your own moves. Click a phase to scope everything to the games that ended
-        there. Pick an opening above to scope it to that line.
+        Your own moves. Click a phase to scope everything to the games that ended there.
       </p>
 
       {/* flush in the panel rather than a bordered box inside a bordered box */}

@@ -1,7 +1,9 @@
 'use client'
 
+import { useState } from 'react'
+import Chip from '@/components/Chip'
 import Panel from '@/components/Section'
-import { formatShortDay } from '@/lib/days'
+import { formatRange, formatShortDay } from '@/lib/days'
 import {
   TRACKED_POOLS,
   historyRange,
@@ -11,13 +13,6 @@ import {
   type TrackedPool,
 } from '@/lib/rating-history'
 import type { Source } from '@/types/chess'
-
-/** One colour per pool, clear of the red and amber a mistake is written in. */
-const LINE: Record<string, string> = {
-  'chesscom:rapid': 'text-sky-400',
-  'chesscom:blitz': 'text-violet-400',
-  'lichess:classical': 'text-emerald-400',
-}
 
 function Change({ value }: { value: number | null }) {
   if (value === null) return <span className="text-zinc-700">—</span>
@@ -30,76 +25,58 @@ function Change({ value }: { value: number | null }) {
   )
 }
 
-/**
- * One pool's line, scaled to its own range.
- *
- * Not one chart with three lines on shared axes: rapid at 1690 and blitz at 1244 are 450
- * points apart, so a scale that holds both flattens each pool's own 100-point swing into
- * a nearly straight line — which is the whole thing you came to look at. The x axis is
- * shared, so the rows still line up in time; only the vertical is each pool's own, and
- * the figures beside it carry the size.
- */
-function PoolLine({ series, from, to }: { series: PoolSeries; from: number; to: number }) {
+/** One pool, the full height of the panel, with its own scale. */
+function Chart({ series, from, to }: { series: PoolSeries; from: number; to: number }) {
   const low = series.low ?? 0
   const high = series.high ?? 0
-  const pad = Math.max(4, Math.round((high - low) * 0.15))
+  const pad = Math.max(5, Math.round((high - low) * 0.08))
   const floor = low - pad
-  const span = high + pad - floor || 1
+  const ceiling = high + pad
+  const span = ceiling - floor || 1
   const days = Math.max(1, Math.round((to - from) / 86400000))
 
   const path = series.points
     .map((point, index) => {
       const x = ((point.at - from) / 86400000 / days) * 100
-      const y = 24 - ((point.rating - floor) / span) * 24
+      const y = 100 - ((point.rating - floor) / span) * 100
       return `${index === 0 ? 'M' : 'L'}${x.toFixed(2)},${y.toFixed(2)}`
     })
     .join(' ')
 
   return (
-    <div className="grid grid-cols-[7.5rem_minmax(0,1fr)_7rem] items-center gap-3">
-      <span className="flex items-center gap-2 min-w-0">
-        <span
-          className={`w-3 h-0.5 rounded-full shrink-0 bg-current ${
-            LINE[series.pool.id] ?? 'text-zinc-400'
-          }`}
-        />
-        <span className="text-xs text-zinc-400 truncate">{series.pool.label}</span>
-      </span>
+    <div className="flex gap-3">
+      <div className="flex flex-col justify-between text-[10px] font-mono text-zinc-600 tabular-nums shrink-0 py-0.5">
+        <span>{high}</span>
+        <span>{low}</span>
+      </div>
 
-      <svg
-        viewBox="0 0 100 24"
-        preserveAspectRatio="none"
-        className="w-full h-12"
-        role="img"
-        aria-label={`${series.pool.label} from ${formatShortDay(from)} to ${formatShortDay(to)}`}
-      >
-        <path
-          d={path}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-          className={LINE[series.pool.id] ?? 'text-zinc-400'}
-        />
-      </svg>
+      <div className="flex-1 min-w-0 flex flex-col gap-1">
+        <svg
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+          className="w-full h-64 text-sky-400"
+          role="img"
+          aria-label={`${series.pool.label}, ${formatRange(from, to)}`}
+        >
+          <path
+            d={path}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+            strokeLinejoin="round"
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
 
-      <span className="text-xs font-mono text-right tabular-nums text-zinc-300">
-        {series.last ?? '—'} <Change value={series.change} />
-      </span>
+        <div className="flex justify-between text-[10px] text-zinc-600">
+          <span>{formatShortDay(from)}</span>
+          <span>{formatShortDay(to)}</span>
+        </div>
+      </div>
     </div>
   )
 }
 
-/**
- * Your rating over the slice the dashboard is showing.
- *
- * It follows the date window and the site, and nothing else — and says so. A rating is
- * not a property of a slice of games: there is no such thing as your rating "in the
- * Caro-Kann as Black", so letting the opening or colour filters appear to narrow it
- * would be inventing a number. The date window and the site are the two that genuinely
- * apply, because they pick *when* and *which pools*.
- */
 export default function RatingPanel({
   history,
   from,
@@ -110,52 +87,59 @@ export default function RatingPanel({
   from: number | null
   source: Source | 'both'
 }) {
+  const [picked, setPicked] = useState<string | null>(null)
+
   /*
-    The chart ends on the last day the history knows about rather than on today. It is
-    the honest end of the data, and it keeps the clock out of render — reading `Date.now`
-    there is impure and the lint rule says so.
+    Ends on the last day the history knows rather than on today: it is the honest end of
+    the data, and it keeps the clock out of render, which the purity rule forbids.
   */
   const known = historyRange(history)
   const to = known?.to ?? 0
   const start = known === null ? null : Math.max(from ?? known.from, known.from)
+
   const pools: TrackedPool[] =
     source === 'both' ? TRACKED_POOLS : TRACKED_POOLS.filter(pool => pool.source === source)
 
   const series =
     start === null ? [] : seriesInRange(history, start, to, pools).filter(e => e.points.length > 0)
 
+  const shown = series.find(entry => entry.pool.id === picked) ?? series[0]
+
   return (
     <Panel
       id="rating"
       title="Rating"
-      meta={
-        start !== null && series.length > 0
-          ? `${formatShortDay(start)} – ${formatShortDay(to)}`
-          : undefined
+      meta={start !== null && shown ? formatRange(start, to) : undefined}
+      actions={
+        shown ? (
+          <span className="font-mono text-sm tabular-nums text-zinc-200">
+            {shown.last} <Change value={shown.change} />
+          </span>
+        ) : undefined
       }
     >
-      {series.length === 0 ? (
-          <p className="text-sm text-zinc-500">
-            Nothing recorded yet. Your rating at the close of each day is written as games are
-            synced, so this fills in from your next sync onward.
-          </p>
-        ) : (
-          <>
-            <div className="flex flex-col gap-2">
+      {!shown ? (
+        <p className="text-sm text-zinc-500">
+          Nothing recorded yet — this fills in as games are synced.
+        </p>
+      ) : (
+        <>
+          {series.length > 1 && (
+            <div className="flex gap-1 flex-wrap">
               {series.map(entry => (
-                <PoolLine key={entry.pool.id} series={entry} from={start as number} to={to} />
+                <Chip
+                  key={entry.pool.id}
+                  active={entry.pool.id === shown.pool.id}
+                  onClick={() => setPicked(entry.pool.id)}
+                >
+                  {entry.pool.label}
+                </Chip>
               ))}
             </div>
+          )}
 
-            <p className="text-xs text-zinc-600">
-              Each line is scaled to its own range, so the shape is that rating&apos;s movement
-              rather than how it compares with the others.
-            </p>
-            <p className="text-xs text-zinc-600">
-              Follows the date window and the site. Nothing else here can narrow a rating —
-              there is no such thing as your rating in one opening, or as Black.
-            </p>
-          </>
+          <Chart series={shown} from={start as number} to={to} />
+        </>
       )}
     </Panel>
   )

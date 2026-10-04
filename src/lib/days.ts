@@ -87,3 +87,19 @@ export function formatShortDay(ms: number): string {
   const date = new Date(ms)
   return `${date.getDate()} ${MONTHS[date.getMonth()]}`
 }
+
+/**
+ * "7 Oct 2023 – 3 Oct 2026", or "28 Sep – 4 Oct" inside one year.
+ *
+ * The year is not decoration: without it a three-year span renders as "7 Oct – 3 Oct",
+ * which reads as four days backwards.
+ */
+export function formatRange(from: number, to: number): string {
+  const a = new Date(from)
+  const b = new Date(to)
+
+  if (a.getFullYear() === b.getFullYear()) {
+    return `${formatShortDay(from)} – ${formatShortDay(to)}`
+  }
+  return `${formatShortDay(from)} ${a.getFullYear()} – ${formatShortDay(to)} ${b.getFullYear()}`
+}

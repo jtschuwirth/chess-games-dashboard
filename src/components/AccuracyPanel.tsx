@@ -184,15 +184,14 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
             </div>
           )}
 
+          {/*
+            One line, not three. The two facts that stop the bars being read wrongly are
+            that each band has its own denominator and that hard positions take longer;
+            everything else was restating the chart.
+          */}
           <p className="text-xs text-zinc-600">
-            Of the moves you spent that long on, this share carried an engine mark — each band is
-            measured against its own total, so they do not add up to 100. Bars run against the
-            worst band{worst > 0 ? ` (${worst.toFixed(0)}%)` : ''}, not against 100%.
-          </p>
-          <p className="text-xs text-zinc-600">
-            A hard position takes longer <em>and</em>{' '}
-            goes wrong more often, so a slow band being worse is partly the position&apos;s doing.
-            Read it against your own past, not as a rule.
+            Share of each band&apos;s own moves, so they do not total 100. Hard positions take
+            longer, so a slow band reads worse for reasons other than the clock.
           </p>
         </div>
       </div>
