@@ -126,6 +126,26 @@ export function dayKey(ms: number): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/**
+ * When a chess day starts. A game at one in the morning belongs to the evening it came
+ * out of, not to the day that has just started — so a late session counts against the
+ * day you sat down to play, which is the day the plan asked you to.
+ */
+export const DAY_START_HOUR = 6
+
+/**
+ * Which day a *game* belongs to, which is not always the calendar day it was played on.
+ *
+ * Stepping back a calendar day rather than subtracting six hours of milliseconds keeps
+ * this right across a clock change, for the same reason `dateAt` counts on the calendar.
+ */
+export function chessDayKey(ms: number): string {
+  const date = new Date(ms)
+  if (date.getHours() >= DAY_START_HOUR) return dayKey(ms)
+
+  return dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1).getTime())
+}
+
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
@@ -228,8 +248,9 @@ export function todayPosition(
   plan: Pick<StudyPlan, 'startDate' | 'weeks'>,
   now = Date.now(),
 ): PlanPosition | null {
-  // compared on the calendar for the same reason `dateAt` is counted on it
-  const key = dayKey(now)
+  // the same 6am boundary a game is filed by: at one in the morning you are still on
+  // yesterday's day of the plan, which is the one the late session belongs to
+  const key = chessDayKey(now)
 
   for (let week = 0; week < plan.weeks.length; week++) {
     for (let day = 0; day < plan.weeks[week].days.length; day++) {
@@ -256,7 +277,7 @@ export function todayPosition(
 export function gamesOn(games: GameRecord[], ms: number): GameRecord[] {
   const key = dayKey(ms)
   return games
-    .filter(game => dayKey(game.playedAt) === key)
+    .filter(game => chessDayKey(game.playedAt) === key)
     .sort((a, b) => a.playedAt - b.playedAt)
 }
 

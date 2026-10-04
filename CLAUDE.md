@@ -514,6 +514,18 @@ src/
   apart on Tuesday morning would file itself under Tuesday, away from the task it answers.
   Reviewing a game later does not move it; the day shows every game played and marks which have
   been reviewed. The same habit as the variation tree and the pre-game ratings.
+- **A chess day runs 6am to 6am.** A game at one in the morning belongs to the evening it came
+  out of, not to the day that has just started, so a late session counts against the day you sat
+  down to play — which is the day the plan asked you to. `chessDayKey` files a game, and
+  `todayPosition` uses the same boundary, so before six you are still on yesterday's day of the
+  plan. It steps back a calendar day rather than subtracting six hours of milliseconds, for the
+  same reason `dateAt` counts on the calendar. The plan's own dates are untouched: `dayKey` still
+  answers which calendar day a plan day is.
+- **A day's game rows carry no tags.** They ran to nine on one game, which squeezed the
+  opponent's name out of the row and carried the review pill off the edge of the card — the tags
+  belong to the game view, where there is room to read them. The row says result, who, class and
+  whether it has been reviewed, and the class rather than the control because "blitz" lands where
+  "180+2" has to be decoded.
 - **Plan days are counted on the calendar, not in milliseconds.** `startDate + index * DAY_MS` is
   wrong twice a year: a day is 23 or 25 hours across a clock change, so adding fixed milliseconds
   lands an hour short and every later day reads as the one before it at 23:00. A plan running

@@ -11,7 +11,7 @@ import {
   reviewedCount,
   taskComplete,
 } from '@/lib/plan'
-import { hasReview, trainableMistakes } from '@/lib/review'
+import { hasReview } from '@/lib/review'
 import type { GameRecord, GameResult, PlanDay, PlanTask } from '@/types/chess'
 
 const RESULT_COLOR: Record<GameResult, string> = {
@@ -325,7 +325,7 @@ export default function PlanDayCard({
               Played this day
               <span className="normal-case tracking-normal text-zinc-700">
                 {' '}
-                — found by date, nothing to attach
+                — a day runs 6am to 6am, so a late session counts here
                 {played.length > 0 &&
                   ` · ${reviewedCount(played)} of ${played.length} reviewed`}
               </span>
@@ -344,37 +344,38 @@ export default function PlanDayCard({
               </p>
             ) : (
               <div className="flex flex-col divide-y divide-zinc-800/70">
-                {played.map(game => {
-                  const tags = trainableMistakes(game.review).flatMap(entry => entry.tags)
-                  return (
-                    <Link
-                      key={game.id}
-                      href={`/games/${game.id}`}
-                      className="flex items-center gap-2 py-2 text-sm hover:bg-zinc-800/50 -mx-2 px-2 rounded transition-colors"
+                {/*
+                  No tags here. They are the whole point of the game view and they ran to
+                  nine on one game, which squeezed the opponent's name out of the row and
+                  carried the review pill off the edge of the card. The row answers "what
+                  did I play today", and the class says more at a glance than the control:
+                  "blitz" lands where "180+2" has to be decoded.
+                */}
+                {played.map(game => (
+                  <Link
+                    key={game.id}
+                    href={`/games/${game.id}`}
+                    className="flex items-center gap-2 py-2 text-sm hover:bg-zinc-800/50 -mx-2 px-2 rounded transition-colors"
+                  >
+                    <span
+                      className={`text-xs font-bold w-10 shrink-0 ${RESULT_COLOR[game.result]}`}
                     >
-                      <span className={`text-xs font-bold w-10 shrink-0 ${RESULT_COLOR[game.result]}`}>
-                        {RESULT_LABEL[game.result]}
-                      </span>
-                      <span className="text-zinc-300 truncate min-w-0">
-                        {game.color === 'white' ? 'White' : 'Black'} vs {game.opponent}
-                      </span>
-                      <span className="text-xs text-zinc-600 shrink-0">{game.timeControl}</span>
+                      {RESULT_LABEL[game.result]}
+                    </span>
+                    <span className="text-zinc-300 truncate min-w-0">
+                      {game.color === 'white' ? 'White' : 'Black'} vs {game.opponent}
+                    </span>
+                    <span className="text-xs text-zinc-600 shrink-0">{game.timeClass}</span>
 
-                      <span className="ml-auto flex items-center gap-2 shrink-0 min-w-0">
-                        {tags.length > 0 && (
-                          <span className="text-xs text-zinc-600 truncate min-w-0 hidden sm:inline">
-                            {tags.join(' · ')}
-                          </span>
-                        )}
-                        {hasReview(game) ? (
-                          <StatusTag tone="review">◆ reviewed</StatusTag>
-                        ) : (
-                          <span className="text-xs text-zinc-700">not reviewed</span>
-                        )}
-                      </span>
-                    </Link>
-                  )
-                })}
+                    <span className="ml-auto shrink-0">
+                      {hasReview(game) ? (
+                        <StatusTag tone="review">◆ reviewed</StatusTag>
+                      ) : (
+                        <span className="text-xs text-zinc-700">not reviewed</span>
+                      )}
+                    </span>
+                  </Link>
+                ))}
               </div>
             )}
           </div>
