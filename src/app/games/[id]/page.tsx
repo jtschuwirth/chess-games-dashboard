@@ -8,6 +8,7 @@ import MoveList from '@/components/MoveList'
 import EnginePanel from '@/components/EnginePanel'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
+import StatusTag from '@/components/StatusTag'
 import { playLine as playLineMoves, replayGame } from '@/lib/board'
 import {
   alignClocks,
@@ -459,19 +460,16 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             vs {game.opponent}
             {game.opponentRating ? ` (${game.opponentRating})` : ''}
           </span>
-          {hasReview(game) && (
-            <span className="px-2 py-0.5 text-xs rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30">
-              ◆ reviewed
-            </span>
-          )}
-          {/* same icon and colour as the game list, so the two views read alike */}
+          {/* the same component the game list uses, so the two views cannot drift */}
+          {hasReview(game) && <StatusTag tone="review">◆ reviewed</StatusTag>}
           {analysed && (
-            <span
-              className="px-2 py-0.5 text-xs font-mono rounded-full bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"
+            <StatusTag
+              tone="engine"
+              mono
               title={`The engine has been over this game at depth ${analysed.depth}`}
             >
               ⚙ d{analysed.depth}
-            </span>
+            </StatusTag>
           )}
           <a
             href={game.url}

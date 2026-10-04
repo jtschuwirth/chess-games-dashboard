@@ -145,11 +145,10 @@ export default function AccuracyPanel({ games }: { games: GameRecord[] }) {
         </div>
 
         <div className="flex flex-col gap-2">
-          <Figure
-            label="Mistakes by think time"
-            value={`${timed}`}
-            hint="of your moves have a clock reading"
-          />
+          {/* a heading, not a figure: the move count is already on every row */}
+          <span className="text-xs uppercase tracking-wide text-zinc-500">
+            Mistakes by think time
+          </span>
 
           {timed === 0 ? (
             <p className="text-xs text-zinc-600">

@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import StatusTag from '@/components/StatusTag'
 import { hasReview, trainableMistakes } from '@/lib/review'
 import type { GameRecord, GameResult } from '@/types/chess'
 import { SOURCE_LABEL } from '@/types/chess'
@@ -58,8 +59,8 @@ export default function GameRow({
             {game.eco && <span className="text-xs text-zinc-500">{game.eco}</span>}
 
             {reviewed && (
-              <span
-                className="text-xs text-sky-400 shrink-0"
+              <StatusTag
+                tone="review"
                 title={
                   tags.length > 0
                     ? `Reviewed — ${tags.join(', ')}`
@@ -67,20 +68,20 @@ export default function GameRow({
                 }
               >
                 ◆ reviewed
-              </span>
+              </StatusTag>
             )}
             {/* depth always, so an analysed game with nothing wrong is not mistaken
                 for one the engine has never seen */}
             {game.analysis ? (
-              <span
-                className="text-xs text-yellow-400 font-mono shrink-0"
-                title={`Analysed at depth ${game.analysis.depth} — ${game.analysis.blunders} blunder${
-                  game.analysis.blunders === 1 ? '' : 's'
-                }, ${game.analysis.mistakes} mistake${game.analysis.mistakes === 1 ? '' : 's'}`}
+              <StatusTag
+                tone="engine"
+                mono
+                title={`The engine has been over this game at depth ${game.analysis.depth}`}
               >
                 ⚙ d{game.analysis.depth}
-              </span>
+              </StatusTag>
             ) : (
+              /* an absence, not a status — so it is not wrapped in a tag */
               <span
                 className="text-xs text-zinc-600 shrink-0"
                 title="The engine has never looked at this game"
@@ -89,6 +90,7 @@ export default function GameRow({
               </span>
             )}
 
+            {/* what the engine found, written plainly: a count is a measurement */}
             {game.analysis && game.analysis.blunders > 0 && (
               <span
                 className="text-xs text-red-400 font-mono shrink-0"
@@ -97,6 +99,16 @@ export default function GameRow({
                 } at depth ${game.analysis.depth}`}
               >
                 {game.analysis.blunders}??
+              </span>
+            )}
+            {game.analysis && game.analysis.mistakes > 0 && (
+              <span
+                className="text-xs text-amber-400 font-mono shrink-0"
+                title={`${game.analysis.mistakes} mistake${
+                  game.analysis.mistakes === 1 ? '' : 's'
+                } at depth ${game.analysis.depth}`}
+              >
+                {game.analysis.mistakes}?
               </span>
             )}
           </div>

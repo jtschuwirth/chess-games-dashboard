@@ -61,7 +61,7 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
-│                               # UploadPanel, AccuracyPanel
+│                               # UploadPanel, AccuracyPanel, StatusTag
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -178,9 +178,11 @@ src/
   `minmax(0,28rem)` took its width from the readout *under* the board, so the board shrank on
   moves with no clock reading to show. The track is a fixed `28rem` for the same reason.
 - **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
-  engine depth as a yellow `⚙ d21`, and the blunder count when there is one.
+  engine depth as a violet `⚙ d21`, and what the engine found when it found anything —
+  `2??` in red and `1?` in amber.
 - **Status is a tag, findings are a figure.** Both views use the same two markers — `◆ reviewed`
-  in blue, `⚙ d21` in yellow — and in the game view they are bordered pills in the title beside
+  in blue, `⚙ d21` in violet — and in both views they are bordered pills, rendered by the one
+  `StatusTag` component so the two cannot drift. In the game view they sit in the title beside
   the result, because "the engine has been over this at depth 21" is a state the game is in, not
   a measurement. What the engine actually *found* is a separate figure below, `2?? 1?`, with no
   depth in it. Keeping the depth in both places made the header read as though the number of
@@ -188,6 +190,11 @@ src/
   analysed game, including a clean one: without it a game the engine found nothing in looks
   exactly like a game the engine has never seen, which is the one thing the badge is for. The
   Engine filter has a matching `Not analysed yet` to list what is still missing.
+- **The engine's colour is violet, and that is the whole reason for it.** It was yellow, which
+  sits in the same family as the amber a mistake is written in, so `⚙ d21` and `3?` beside each
+  other in a game row read as one thing in two shades. Violet is clear of the amber, of the red a
+  blunder uses and of the blue of a review. `no engine` stays plain muted text rather than a
+  pill — it is the absence of a status, not one.
 - **A review is four questions about at most three moves.** The method is borrowed from
   incident root-cause analysis: what you were doing, what failed, what would have caught it, and
   what to do instead. `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every
