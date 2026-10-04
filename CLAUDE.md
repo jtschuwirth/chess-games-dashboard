@@ -329,6 +329,23 @@ src/
   eviction is a billed read later, the whole collection is a few hundred small documents, and the
   SDK never starts its `Collect garbage` scheduler when the threshold is -1, so a tab that is not
   primary has one fewer background job to fail at.
+- **One Firestore log line is filtered out, and it is the only one.**
+  `Failed to obtain primary lease for action 'Backfill Indexes'` is noise the SDK makes and then
+  handles itself. The index backfiller wakes on a timer in every tab and opens a
+  `readwrite-primary` transaction; with `persistentMultipleTabManager` exactly one tab holds that
+  lease, so elsewhere `IndexedDbPersistence.runTransaction` writes the line straight to
+  `console.error` and throws a FAILED_PRECONDITION its own scheduler catches and ignores. Nothing
+  is lost — the primary tab does the work — and this app configures no persistent cache indexes,
+  so there is nothing to backfill at all. Normally the scheduler is stopped as soon as a tab stops
+  being primary, and the line escapes only between losing the lease and that stop landing, which
+  is why it appears sporadically rather than every minute. Nothing can turn it off: the backfiller
+  opens the transaction before checking whether an index exists, `onLog` adds a handler *alongside*
+  the console one instead of replacing it, and `setLogLevel('silent')` would take every real error
+  with it. So `silenceLeaseHandoverNoise` in `lib/firebase.ts` drops that sentence when it carries
+  the `@firebase/firestore` tag, and passes everything else through — a backend that cannot be
+  reached, a rules rejection, an app error of our own. Left in, it is also what inflates the Next
+  dev overlay's issue count while the app sits open. `CACHE_SIZE_UNLIMITED` already removes the
+  `Collect garbage` half by never starting that scheduler.
 - **A failed read shows itself instead of spinning.** Every page load went through a bare
   `.then`, so a Firestore failure — the daily quota, a dropped connection, rules — left the page
   on its spinner forever with nothing but an unhandled rejection in the console. Each page now
@@ -396,15 +413,6 @@ yarn lint
 - The phase and variation tables scroll sideways on a phone rather than reflowing — they are
   wide by nature, and both sit in an `overflow-x-auto` with a visible scrollbar. Nothing else
   needs horizontal scrolling at 375px; the board and the move list stack.
-- `Failed to obtain primary lease for action '…'` in the console is expected, not a fault — the
-  action is `Collect garbage` or `Backfill Indexes`, and more may appear. Both are the cache's own
-  housekeeping, run as `readwrite-primary` transactions, and with `persistentMultipleTabManager`
-  exactly one tab holds that lease; any other tab that reaches the timer logs this and stands
-  down. The SDK logs it through `logError` and handles it on its own retry queue, which is why it
-  looks alarming and changes nothing — reads and writes keep working in every tab, and the primary
-  does the housekeeping. Opening a game view beside the dashboard is enough to produce it. The
-  backfiller in particular has nothing to do here: it writes entries for persistent *cache*
-  indexes, which this app never configures.
 - Lichess arena *berserk* games halve the starting clock while still reporting the full
   `clock.initial`, so the first move's time is overstated for them. Nothing else is affected.
 - `clocks` is null on games synced before clock capture existed; a re-sync backfills them.

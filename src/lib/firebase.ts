@@ -32,6 +32,47 @@ const app =
     ? initializeApp({ ...firebaseConfig, apiKey: firebaseConfig.apiKey || 'not-configured' })
     : getApps()[0]
 
+const LEASE_NOISE = 'Failed to obtain primary lease for action'
+
+/**
+ * Drops the one line the SDK logs at error level and then handles by itself.
+ *
+ * Firestore's index backfiller wakes on a timer in every tab and opens a
+ * `readwrite-primary` IndexedDB transaction. With `persistentMultipleTabManager`
+ * exactly one tab holds that lease, so in any other tab the transaction fails:
+ * `IndexedDbPersistence.runTransaction` writes "Failed to obtain primary lease for
+ * action 'Backfill Indexes'" straight to `console.error` and throws a
+ * FAILED_PRECONDITION that the backfiller's own scheduler catches and ignores. No work
+ * is lost — the primary tab does it — and this app configures no persistent cache
+ * indexes, so there was nothing to backfill in the first place.
+ *
+ * Normally the SDK stops the backfiller as soon as a tab stops being primary, and the
+ * line only escapes in the window between losing the lease and that stop landing, which
+ * is why it shows up sporadically rather than every minute.
+ *
+ * There is no switch for it. The backfiller opens its transaction before checking
+ * whether any index exists; `onLog` adds a handler *alongside* the console one rather
+ * than replacing it; and `setLogLevel('silent')` would take every real Firestore error
+ * with it. Intercepting the sentence is the only lever left.
+ *
+ * Matched together with the `@firebase/firestore` tag the logger prefixes, so this can
+ * only ever drop a lease handover — every other message still reaches the console.
+ */
+function silenceLeaseHandoverNoise(): void {
+  const scope = window as typeof window & { __leaseNoiseSilenced?: boolean }
+  if (scope.__leaseNoiseSilenced) return
+  scope.__leaseNoiseSilenced = true
+
+  const write = console.error.bind(console)
+  console.error = (...args: unknown[]) => {
+    const fromFirestore = typeof args[0] === 'string' && args[0].includes('@firebase/firestore')
+    if (fromFirestore && args.some(arg => typeof arg === 'string' && arg.includes(LEASE_NOISE))) {
+      return
+    }
+    write(...args)
+  }
+}
+
 /**
  * Firestore with an IndexedDB cache, so the games collection survives a reload.
  * Reads are billed per document, and the dashboard needs every game, so without a
@@ -42,6 +83,8 @@ const app =
  */
 function createDb(instance: FirebaseApp): Firestore {
   if (typeof window === 'undefined') return getFirestore(instance)
+
+  silenceLeaseHandoverNoise()
 
   try {
     return initializeFirestore(instance, {
