@@ -1,4 +1,8 @@
-export type Source = 'chesscom' | 'lichess'
+/** The sites a game can be synced from. Syncing only ever speaks about these. */
+export type ProviderSource = 'chesscom' | 'lichess'
+
+/** Where a game came from. `upload` is one you pasted in yourself to study. */
+export type Source = ProviderSource | 'upload'
 
 export type TimeClass = 'bullet' | 'blitz' | 'rapid' | 'classical' | 'daily'
 
@@ -13,6 +17,7 @@ export const TIME_CLASSES: TimeClass[] = ['bullet', 'blitz', 'rapid', 'classical
 export const SOURCE_LABEL: Record<Source, string> = {
   chesscom: 'Chess.com',
   lichess: 'Lichess',
+  upload: 'Uploaded',
 }
 
 /** A game as it comes back from a provider route — no id, no ignore flag yet. */

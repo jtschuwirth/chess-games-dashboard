@@ -39,10 +39,15 @@ import type { Color, GameRecord, OpeningLine, PatternRecord, Source } from '@/ty
 
 const PAGE_SIZE = 50
 
+/**
+ * `both` means both sites you play on. Uploaded games are a separate question — they are
+ * games you brought in to study, not your record — so they only appear when asked for.
+ */
 const SOURCE_OPTIONS: { value: Source | 'both'; label: string }[] = [
   { value: 'both', label: 'both' },
   { value: 'chesscom', label: SOURCE_LABEL.chesscom },
   { value: 'lichess', label: SOURCE_LABEL.lichess },
+  { value: 'upload', label: SOURCE_LABEL.upload },
 ]
 
 const REVIEW_OPTIONS: { value: Filters['reviewed']; label: string; title: string }[] = [

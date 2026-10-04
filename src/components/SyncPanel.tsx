@@ -6,10 +6,10 @@ import { Spinner } from '@/components/PageShell'
 import { saveGames, saveProfile } from '@/lib/firestore'
 import { fetchProviderGames } from '@/lib/sync'
 import { SOURCE_LABEL, TIME_CLASSES } from '@/types/chess'
-import type { GameRecord, Source, SyncedGame, TimeClass, UserProfile } from '@/types/chess'
+import type { GameRecord, ProviderSource, SyncedGame, TimeClass, UserProfile } from '@/types/chess'
 
 const COUNTS = [50, 100, 200, 500, 1000]
-const SOURCES: Source[] = ['chesscom', 'lichess']
+const SOURCES: ProviderSource[] = ['chesscom', 'lichess']
 
 function toggle<T>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter(v => v !== value) : [...values, value]
@@ -24,12 +24,12 @@ export default function SyncPanel({
   profile: UserProfile
   onSynced: (added: GameRecord[]) => void
 }) {
-  const usernames: Record<Source, string | null> = {
+  const usernames: Record<ProviderSource, string | null> = {
     chesscom: profile.chesscomUsername,
     lichess: profile.lichessUsername,
   }
 
-  const [sources, setSources] = useState<Source[]>(['chesscom', 'lichess'])
+  const [sources, setSources] = useState<ProviderSource[]>(['chesscom', 'lichess'])
   const [timeClasses, setTimeClasses] = useState<TimeClass[]>(['blitz', 'rapid'])
   const [count, setCount] = useState(100)
   const [running, setRunning] = useState(false)

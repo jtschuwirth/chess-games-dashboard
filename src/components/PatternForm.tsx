@@ -1,9 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Chip from '@/components/Chip'
 import LineBoard from '@/components/LineBoard'
-import { openingLabel } from '@/lib/opening'
+import { buildOpeningTree, openingLabel, type OpeningNode } from '@/lib/opening'
 import {
   KIND_LABEL,
   PATTERN_KINDS,
@@ -126,6 +126,108 @@ function LineFields({
 }
 
 /**
+ * Every saved opening in tree order, each knowing what it hangs under.
+ *
+ * `flattenTree` gives the order and the depth but drops the trail, and the trail is the
+ * part that matters here: filtering has to be able to keep a match's ancestors on screen,
+ * or "Exchange variation" appears four times with nothing to tell them apart.
+ */
+function rowsWithTrail(
+  nodes: OpeningNode[],
+  trail: string[] = [],
+): { node: OpeningNode; trail: string[] }[] {
+  return nodes.flatMap(node => [
+    { node, trail },
+    ...rowsWithTrail(node.children, [...trail, node.opening.id]),
+  ])
+}
+
+/** Past this many, scanning the list beats scrolling it. */
+const FILTER_THRESHOLD = 8
+
+/**
+ * Picking the openings a pattern turns up in.
+ *
+ * A flat row of chips was wrong in a way that only shows with real data: half a
+ * repertoire's lines are called "Exchange variation", and in a flat list they are four
+ * identical chips. Nesting them under the line they branch from is the only thing that
+ * tells them apart, so this keeps the same tree the dashboard and the openings page use —
+ * one ordering of a repertoire, everywhere.
+ */
+function OpeningPicker({
+  openings,
+  selected,
+  onToggle,
+}: {
+  openings: OpeningLine[]
+  selected: string[]
+  onToggle: (id: string) => void
+}) {
+  const [filter, setFilter] = useState('')
+
+  const rows = useMemo(() => rowsWithTrail(buildOpeningTree(openings)), [openings])
+
+  const shown = useMemo(() => {
+    const needle = filter.trim().toLowerCase()
+    if (needle.length === 0) return rows
+
+    // A match keeps its whole trail, so you can still see what it branches from.
+    const keep = new Set<string>()
+    for (const row of rows) {
+      if (!openingLabel(row.node.opening).toLowerCase().includes(needle)) continue
+      keep.add(row.node.opening.id)
+      for (const id of row.trail) keep.add(id)
+    }
+    return rows.filter(row => keep.has(row.node.opening.id))
+  }, [rows, filter])
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      {openings.length > FILTER_THRESHOLD && (
+        <input
+          value={filter}
+          onChange={event => setFilter(event.target.value)}
+          placeholder="filter openings"
+          className={`${INPUT} py-1.5`}
+        />
+      )}
+
+      <div className="max-h-56 overflow-y-auto border border-zinc-800 rounded-lg divide-y divide-zinc-800/60">
+        {shown.length === 0 ? (
+          <p className="px-3 py-2 text-xs text-zinc-600">Nothing matches that.</p>
+        ) : (
+          shown.map(({ node }) => {
+            const active = selected.includes(node.opening.id)
+            return (
+              <button
+                key={node.opening.id}
+                type="button"
+                onClick={() => onToggle(node.opening.id)}
+                className={`w-full flex items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors ${
+                  active ? 'bg-zinc-800 text-zinc-100' : 'text-zinc-400 hover:bg-zinc-800/50'
+                }`}
+              >
+                <span
+                  className={`w-3 h-3 shrink-0 rounded-sm border flex items-center justify-center leading-none text-[9px] ${
+                    active ? 'bg-zinc-200 border-zinc-200 text-zinc-900' : 'border-zinc-700'
+                  }`}
+                >
+                  {active ? '✓' : ''}
+                </span>
+                <span className="min-w-0 truncate" style={{ paddingLeft: node.depth * 14 }}>
+                  {node.depth > 0 && <span className="text-zinc-600">↳ </span>}
+                  {openingLabel(node.opening)}
+                </span>
+              </button>
+            )
+          })
+        )}
+      </div>
+    </div>
+  )
+}
+
+/**
  * Writing up one pattern. The name is also the review tag, which is why it is asked for
  * first and why the form says so: it is the string you will be picking off a list months
  * from now with the game in front of you, not a title.
@@ -213,23 +315,15 @@ export default function PatternForm({
       {openings.length > 0 && (
         <div className="flex flex-col gap-1.5">
           <Label hint="where this turns up">Openings</Label>
-          <div className="flex gap-1 flex-wrap">
-            {openings.map(opening => (
-              <Chip
-                key={opening.id}
-                active={openingIds.includes(opening.id)}
-                onClick={() =>
-                  setOpeningIds(prev =>
-                    prev.includes(opening.id)
-                      ? prev.filter(id => id !== opening.id)
-                      : [...prev, opening.id],
-                  )
-                }
-              >
-                {openingLabel(opening)}
-              </Chip>
-            ))}
-          </div>
+          <OpeningPicker
+            openings={openings}
+            selected={openingIds}
+            onToggle={id =>
+              setOpeningIds(prev =>
+                prev.includes(id) ? prev.filter(entry => entry !== id) : [...prev, id],
+              )
+            }
+          />
         </div>
       )}
 

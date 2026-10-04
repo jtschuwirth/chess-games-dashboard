@@ -103,6 +103,14 @@ export function matchesCriteria(
   // engine games are never part of the analysis: they say nothing about play against people
   if (game.opponentIsBot) return false
 
+  /*
+   * Uploaded games are not part of your record. They are games you brought in to study —
+   * someone else's, or one off a board — and counting them would make every split answer
+   * a different question from the one it claims to. They are still reachable by asking
+   * for them by name, which is what the Uploaded source is for.
+   */
+  if (game.source === 'upload' && criteria.source !== 'upload') return false
+
   if (criteria.source !== 'both' && game.source !== criteria.source) return false
   if (criteria.endedIn !== null && endingPhaseOf(game) !== criteria.endedIn) return false
 

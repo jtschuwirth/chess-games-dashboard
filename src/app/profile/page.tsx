@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import SyncPanel from '@/components/SyncPanel'
+import UploadPanel from '@/components/UploadPanel'
 import { getProfile, saveProfile } from '@/lib/firestore'
 import type { UserProfile } from '@/types/chess'
 
@@ -138,6 +139,8 @@ function ProfileBody({ userId }: { userId: string }) {
         profile={profile}
         onSynced={added => setAddedCount(added.length)}
       />
+
+      <UploadPanel userId={userId} profile={profile} onUploaded={() => {}} />
 
       {addedCount !== null && (
         <p className="text-sm text-zinc-400">

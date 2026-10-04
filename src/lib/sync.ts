@@ -1,12 +1,12 @@
-import type { ProviderResponse, Source, TimeClass } from '@/types/chess'
+import type { ProviderResponse, ProviderSource, TimeClass } from '@/types/chess'
 
-const ENDPOINT: Record<Source, string> = {
+const ENDPOINT: Record<ProviderSource, string> = {
   chesscom: '/api/chesscom/games',
   lichess: '/api/lichess/games',
 }
 
 export async function fetchProviderGames(
-  source: Source,
+  source: ProviderSource,
   username: string,
   max: number,
   timeClasses: TimeClass[],
