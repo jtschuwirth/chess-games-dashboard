@@ -160,7 +160,8 @@ users/{uid}/games/{id}          id = `chesscom_{uuid}` | `lichess_{id}`
                                 moves: string[] (SAN), clocks: number[] (seconds left per ply)
 users/{uid}/patterns/{id}       saved OPENING lines — the id predates the rename
 users/{uid}/thematicPatterns/{id}  name, kind, conditions[], main, examples[], openingIds[]
-users/{uid}/studyPlans/{id}     name, startDate, weeks: [{ name, days, ratings }]
+users/{uid}/studyPlans/{id}     name, startDate, weeks: [{ name, days }]
+users/{uid}/ratingHistory/{year}  days: { 'YYYY-MM-DD': { 'chesscom:rapid': 1624 } }
 ```
 
 Nothing aggregated is ever stored: every number on the dashboard is derived from the games list at

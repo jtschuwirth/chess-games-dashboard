@@ -1,8 +1,7 @@
+import { addDays, chessDayKey, dayKey, formatDay, formatShortDay, startOfDay } from './days'
 import { hasReview } from './review'
 import type {
   GameRecord,
-  Source,
-  TimeClass,
   NewStudyPlan,
   PlanDay,
   PlanTask,
@@ -10,24 +9,22 @@ import type {
   StudyPlan,
 } from '@/types/chess'
 
-export const DAY_MS = 24 * 60 * 60 * 1000
+export {
+  DAY_MS,
+  DAY_START_HOUR,
+  addDays,
+  chessDayKey,
+  dayKey,
+  formatDay,
+  formatShortDay,
+  startOfDay,
+} from './days'
 
 /** A week is the unit a plan is written in, so it is the unit a plan is made of. */
 export const DAYS_PER_WEEK = 7
 
 /** Longer than this and it stops being a plan and becomes a calendar. */
 export const MAX_PLAN_WEEKS = 26
-
-/**
- * Local midnight for a moment. Plans are counted in days you lived through, not in
- * 24-hour blocks from whenever you pressed the button, so every date in a plan is
- * pinned to the start of its local day.
- */
-export function startOfDay(ms: number): number {
-  const date = new Date(ms)
-  date.setHours(0, 0, 0, 0)
-  return date.getTime()
-}
 
 /* ------------------------------------------------------------------- reading */
 
@@ -107,8 +104,7 @@ export function dayOffset(
  * normalises over month ends, year ends and clock changes alike.
  */
 export function dateAt(plan: Pick<StudyPlan, 'startDate'>, offset: number): number {
-  const start = new Date(startOfDay(plan.startDate))
-  return new Date(start.getFullYear(), start.getMonth(), start.getDate() + offset).getTime()
+  return addDays(startOfDay(plan.startDate), offset)
 }
 
 /** The date of one day of one week. */
@@ -120,54 +116,9 @@ export function dayDate(
   return dateAt(plan, dayOffset(plan, weekIndex, dayIndex))
 }
 
-/** `YYYY-MM-DD` in local time, which is what makes two moments the same day. */
-export function dayKey(ms: number): string {
-  const date = new Date(ms)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
-
-/**
- * When a chess day starts. A game at one in the morning belongs to the evening it came
- * out of, not to the day that has just started — so a late session counts against the
- * day you sat down to play, which is the day the plan asked you to.
- */
-export const DAY_START_HOUR = 6
-
-/**
- * Which day a *game* belongs to, which is not always the calendar day it was played on.
- *
- * Stepping back a calendar day rather than subtracting six hours of milliseconds keeps
- * this right across a clock change, for the same reason `dateAt` counts on the calendar.
- */
-export function chessDayKey(ms: number): string {
-  const date = new Date(ms)
-  if (date.getHours() >= DAY_START_HOUR) return dayKey(ms)
-
-  return dayKey(new Date(date.getFullYear(), date.getMonth(), date.getDate() - 1).getTime())
-}
-
-const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-
-/**
- * "Mon 29 Sep", written out rather than handed to `toLocaleDateString`.
- *
- * The locale version renders differently on the server and in the browser — 04/10/2026
- * against 10/4/2026 — which React reports as a hydration mismatch. Spelling the month
- * also removes the question of which number is the month.
- */
-export function formatDay(ms: number): string {
-  const date = new Date(ms)
-  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]}`
-}
-
 /** "28 Sep – 4 Oct", the span a week or a plan covers. */
 function rangeLabel(from: number, to: number): string {
-  const a = new Date(from)
-  const b = new Date(to)
-  return `${a.getDate()} ${MONTHS[a.getMonth()]} – ${b.getDate()} ${MONTHS[b.getMonth()]}`
+  return `${formatShortDay(from)} – ${formatShortDay(to)}`
 }
 
 export function weekRange(plan: Pick<StudyPlan, 'startDate' | 'weeks'>, weekIndex: number): string {
@@ -286,89 +237,6 @@ export function gamesOn(games: GameRecord[], ms: number): GameRecord[] {
 /** How many of a day's games you have taken apart, for the day's own heading. */
 export function reviewedCount(games: GameRecord[]): number {
   return games.filter(hasReview).length
-}
-
-/* ------------------------------------------------------------------ ratings */
-
-export interface TrackedPool {
-  /** Stable key for the stored record. */
-  id: string
-  source: Source
-  timeClass: TimeClass
-  label: string
-}
-
-/**
- * The pools a plan tracks. A rating only means something against the pool it was earned
- * in — a site keeps one per time class — so these are named pairs rather than a single
- * number, and the list is short because tracking everything tracks nothing.
- */
-export const TRACKED_POOLS: TrackedPool[] = [
-  { id: 'chesscom:rapid', source: 'chesscom', timeClass: 'rapid', label: 'chess.com rapid' },
-  { id: 'chesscom:blitz', source: 'chesscom', timeClass: 'blitz', label: 'chess.com blitz' },
-  { id: 'lichess:classical', source: 'lichess', timeClass: 'classical', label: 'lichess classical' },
-]
-
-/**
- * Your rating in a pool going into a given moment: the rating after the last game you
- * played in it at or before then.
- *
- * Stored ratings are POST-game on both providers, which is exactly right here — the
- * rating after your last game before the week began is the rating you started it with.
- * Engine games are skipped, as they are everywhere else.
- */
-export function ratingAt(games: GameRecord[], pool: TrackedPool, ms: number): number | null {
-  let best: GameRecord | null = null
-
-  for (const game of games) {
-    if (game.opponentIsBot) continue
-    if (game.source !== pool.source || game.timeClass !== pool.timeClass) continue
-    if (game.userRating === null || game.playedAt > ms) continue
-    if (!best || game.playedAt > best.playedAt) best = game
-  }
-
-  return best?.userRating ?? null
-}
-
-/** Every tracked rating as a week began, for the button that fills the table. */
-export function ratingsAt(games: GameRecord[], ms: number): Record<string, number | null> {
-  return Object.fromEntries(TRACKED_POOLS.map(pool => [pool.id, ratingAt(games, pool, ms)]))
-}
-
-/** What a week records for one pool, or null when it has never been filled in. */
-export function weekRating(week: PlanWeek, poolId: string): number | null {
-  const value = week.ratings?.[poolId]
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-export interface RatingSeries {
-  pool: TrackedPool
-  /** One entry per week, in order; null where nothing is recorded. */
-  points: (number | null)[]
-  first: number | null
-  last: number | null
-  /** last − first across the weeks that have a number, or null with fewer than two. */
-  change: number | null
-}
-
-/**
- * One series per pool across the plan's weeks, which is what makes a plan comparable to
- * itself. The change spans the weeks that actually carry a number, so a gap in the middle
- * does not make the whole thing unreadable.
- */
-export function ratingSeries(plan: Pick<StudyPlan, 'weeks'>): RatingSeries[] {
-  return TRACKED_POOLS.map(pool => {
-    const points = plan.weeks.map(week => weekRating(week, pool.id))
-    const known = points.filter((value): value is number => value !== null)
-
-    return {
-      pool,
-      points,
-      first: known[0] ?? null,
-      last: known[known.length - 1] ?? null,
-      change: known.length >= 2 ? known[known.length - 1] - known[0] : null,
-    }
-  })
 }
 
 /* ------------------------------------------------------------------ building */

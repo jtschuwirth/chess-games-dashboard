@@ -30,9 +30,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
 7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
-   Each week records what you were rated going into it, filled from your games with a
-   button, and the plan draws each tracked rating across its weeks. Weeks fold, and more
-   can be added as the plan runs on.
+   Each week shows what you were rated going into it, read from the rating history with
+   nothing to press. Weeks fold, and more can be added as the plan runs on.
 8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
@@ -71,7 +70,7 @@ src/
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
-│                               # HomeNav
+│                               # HomeNav, RatingPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -97,7 +96,9 @@ src/
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
+│   ├── days.ts                 # day keys, the 6am rule, calendar arithmetic
 │   ├── plan.ts                 # study plans: weeks, dates, counted tasks, progress
+│   ├── rating-history.ts       # daily closing ratings, the tracked pools, series
 │   ├── version.ts              # which build this is, from Vercel's commit env var
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
@@ -529,23 +530,39 @@ src/
   apart on Tuesday morning would file itself under Tuesday, away from the task it answers.
   Reviewing a game later does not move it; the day shows every game played and marks which have
   been reviewed. The same habit as the variation tree and the pre-game ratings.
-- **A week's ratings are stored, which almost nothing else here is.** Everything else a plan
-  shows is derived, but a rating is read off the last game before the week began — and the games
-  from before you started syncing are not in the app, so a derived figure would be blank for
-  exactly the early weeks a plan is measured against. So the button fills the table and the table
-  is editable by hand: a number typed from memory beats a blank. Re-filling is idempotent, since
-  it only ever reads the games.
+- **The rating history is derived and then stored, which almost nothing else here is.** Every
+  other figure is computed on read, but this one has to outlive the games it came from: the app
+  holds the last N games you synced, so once older games age out, the only record that you were
+  1550 in March is this. `closingRatings` takes the rating after the last game of each chess day
+  per pool — the 6am rule again, so a session past midnight closes the day it started in — and
+  `saveGames` rebuilds and merges it on every write, so no caller can forget. A rebuild only ever
+  *adds*: merging from games that no longer include March must not erase March.
+- **Stored per year, not per day.** A document per day would be a read per day on the dashboard,
+  which is the cost model this whole app is built around avoiding; one document for all time would
+  eventually meet Firestore's 1MB ceiling. A year is a few thousand small entries and one read.
+- **Only days you played are written, and the rest carry forward.** A rating does not change on a
+  day you did not play, so writing it again would be the same number on a thousand rows. `ratingOn`
+  carries the last close forward, and `seriesInRange` puts a point on *every* day in the window
+  rather than only the days with games — a gap drawn as a straight line between two distant games
+  reads as volatility that never happened, where a flat stretch is the truth.
 - **Three pools, named pairs, because a rating only means something against its own.** A site
   keeps one rating per time class, so `TRACKED_POOLS` holds `chesscom:rapid`, `chesscom:blitz` and
-  `lichess:classical` rather than one number. Stored ratings being POST-game is exactly right
-  here: the rating after your last game before the week began is the rating you started it with,
-  which is the one case where the post-game figure needs no reconstruction. Engine games are
-  skipped, as everywhere else.
-- **Each rating gets its own line, not a shared chart.** 1251 and 1624 on one set of axes
-  flattens both into the same wiggle, and the question a plan asks is "which way is each going",
-  not "which is higher". Each line is scaled to its own range with the figures beside it, so the
-  shape carries the trend and the numbers carry the size. A gap in the middle does not break a
-  series — the change spans the weeks that carry a number.
+  `lichess:classical` rather than one number. Uploads and engine games are left out, as everywhere
+  else.
+- **A plan week reads its rating; it does not keep one.** It is the close of the day before day
+  one, straight out of the history. It used to be stored on the week and filled by a button, which
+  meant a figure that could be out of date and a button that had to be remembered — both
+  unnecessary once the history exists.
+- **Each pool gets its own vertical scale, even on one chart.** Rapid at 1690 and blitz at 1244 are
+  450 points apart, so a shared axis flattens each pool's own hundred-point swing into a straight
+  line — which is the whole thing you came to look at. The rows share the x axis so they line up
+  in time, and the figures beside each carry the size. The panel says so, rather than letting the
+  drawing imply the heights are comparable.
+- **The rating chart follows the date window and the site, and says that is all it follows.**
+  There is no such thing as your rating "in the Caro-Kann as Black", so letting the opening,
+  colour or tag filters appear to narrow it would be inventing a number. It also ends on the last
+  day the history knows rather than on today, which keeps `Date.now` out of render — the purity
+  rule catches that — and is the honest end of the data.
 - **A chess day runs 6am to 6am.** A game at one in the morning belongs to the evening it came
   out of, not to the day that has just started, so a late session counts against the day you sat
   down to play — which is the day the plan asked you to. `chessDayKey` files a game, and

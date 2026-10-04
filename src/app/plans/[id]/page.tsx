@@ -4,22 +4,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
-import { RatingProgress } from '@/components/PlanRatings'
 import PlanWeekCard from '@/components/PlanWeekCard'
-import { deletePlan, getGames, getPlans, updatePlan } from '@/lib/firestore'
+import { deletePlan, getGames, getPlans, getRatingHistory, updatePlan } from '@/lib/firestore'
 import {
   MAX_PLAN_WEEKS,
   buildWeek,
-  dayDate,
   planBody,
   planProgress,
   planRange,
-  ratingsAt,
   templateFrom,
   todayPosition,
   weekLabel,
   weekProgress,
 } from '@/lib/plan'
+import type { RatingHistory } from '@/lib/rating-history'
 import type { GameRecord, StudyPlan } from '@/types/chess'
 
 /**
@@ -42,6 +40,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
   const router = useRouter()
   const [plan, setPlan] = useState<StudyPlan | null>(null)
   const [games, setGames] = useState<GameRecord[]>([])
+  const [history, setHistory] = useState<RatingHistory>({})
   const [missing, setMissing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
@@ -49,13 +48,14 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
   useEffect(() => {
     let live = true
 
-    Promise.all([getPlans(userId), getGames(userId)])
-      .then(([plans, loadedGames]) => {
+    Promise.all([getPlans(userId), getGames(userId), getRatingHistory(userId)])
+      .then(([plans, loadedGames, loadedHistory]) => {
         if (!live) return
         const found = plans.find(entry => entry.id === planId) ?? null
         setPlan(found)
         setMissing(found === null)
         setGames(loadedGames)
+        setHistory(loadedHistory)
         setError(null)
       })
       .catch(caught => {
@@ -171,25 +171,6 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <RatingProgress plan={plan} />
-      </div>
-
-      <button
-        onClick={() =>
-          save(current => ({
-            ...current,
-            weeks: current.weeks.map((week, index) => ({
-              ...week,
-              ratings: ratingsAt(games, dayDate(current, index, 0)),
-            })),
-          }))
-        }
-        className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-      >
-        Fill every week&apos;s ratings from games
-      </button>
-
       <div className="flex flex-col gap-2">
         {plan.weeks.map((week, index) => (
           <PlanWeekCard
@@ -198,6 +179,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
             index={index}
             games={games}
             today={today}
+            history={history}
             startOpen={index === openWeek}
             onChange={update =>
               save(current => ({

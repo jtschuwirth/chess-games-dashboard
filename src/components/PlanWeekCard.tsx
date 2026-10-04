@@ -3,14 +3,8 @@
 import { useState } from 'react'
 import PlanDayCard from '@/components/PlanDayCard'
 import { WeekRatings } from '@/components/PlanRatings'
-import {
-  dayDate,
-  ratingsAt,
-  weekLabel,
-  weekProgress,
-  weekRange,
-  type PlanPosition,
-} from '@/lib/plan'
+import { dayDate, weekLabel, weekProgress, weekRange, type PlanPosition } from '@/lib/plan'
+import type { RatingHistory } from '@/lib/rating-history'
 import type { GameRecord, PlanWeek, StudyPlan } from '@/types/chess'
 
 /**
@@ -26,6 +20,7 @@ export default function PlanWeekCard({
   index,
   games,
   today,
+  history,
   startOpen,
   onChange,
   onRemove,
@@ -35,6 +30,8 @@ export default function PlanWeekCard({
   games: GameRecord[]
   /** Where today sits in the plan, so the right day is badged. Null when it is outside. */
   today: PlanPosition | null
+  /** Daily closes, which is where the week's rating comes from. */
+  history: RatingHistory
   /** Whether this is the week to open on arrival — today's, or the first unfinished one. */
   startOpen: boolean
   onChange: (update: (current: PlanWeek) => PlanWeek) => void
@@ -94,18 +91,7 @@ export default function PlanWeekCard({
 
       {open && (
         <div className="px-3 pb-3 flex flex-col gap-3">
-          <WeekRatings
-            week={week}
-            previous={index > 0 ? plan.weeks[index - 1] : null}
-            onChange={onChange}
-            onSync={() =>
-              onChange(current => ({
-                ...current,
-                // the rating going in is the one after your last game before day one
-                ratings: ratingsAt(games, dayDate(plan, index, 0)),
-              }))
-            }
-          />
+          <WeekRatings plan={plan} index={index} history={history} />
 
           {week.days.map((day, dayIndex) => (
             <PlanDayCard

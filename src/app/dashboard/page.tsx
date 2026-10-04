@@ -8,13 +8,16 @@ import GameRow from '@/components/GameRow'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ClockPanel from '@/components/ClockPanel'
 import AccuracyPanel from '@/components/AccuracyPanel'
+import RatingPanel from '@/components/RatingPanel'
 import ReviewPanel from '@/components/ReviewPanel'
 import { FoldButton, useFolded } from '@/components/Section'
 import StatBlockCard from '@/components/StatBlockCard'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
-import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
+import { getGames, getOpenings, getPatterns, getRatingHistory } from '@/lib/firestore'
 import { patternTags } from '@/lib/pattern'
+import { sinceTimestamp } from '@/lib/game-filters'
+import type { RatingHistory } from '@/lib/rating-history'
 import {
   buildOpeningTree,
   findPath,
@@ -87,6 +90,7 @@ function DashboardBody({ userId }: { userId: string }) {
   const [games, setGames] = useState<GameRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [patterns, setPatterns] = useState<PatternRecord[]>([])
+  const [history, setHistory] = useState<RatingHistory>({})
   const searchParams = useSearchParams()
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
   const [limit, setLimit] = useState(PAGE_SIZE)
@@ -124,11 +128,13 @@ function DashboardBody({ userId }: { userId: string }) {
         getGames(userId, options),
         getOpenings(userId, options),
         getPatterns(userId, options),
+        getRatingHistory(userId, options),
       ])
-        .then(([loadedGames, loadedOpenings, loadedPatterns]) => {
+        .then(([loadedGames, loadedOpenings, loadedPatterns, loadedHistory]) => {
           setGames(loadedGames)
           setOpenings(loadedOpenings)
           setPatterns(loadedPatterns)
+          setHistory(loadedHistory)
           setLoadError(null)
         })
         .catch(caught => {
@@ -551,6 +557,12 @@ function DashboardBody({ userId }: { userId: string }) {
       </section>
 
       <ClockPanel stats={clock} totalGames={scoped.length} />
+
+      <RatingPanel
+        history={history}
+        from={sinceTimestamp(filters.since)}
+        source={filters.source}
+      />
 
       <AccuracyPanel games={scoped} />
 

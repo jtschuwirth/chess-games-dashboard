@@ -17,6 +17,13 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 import { normalizePlan } from './plan'
+import {
+  closingRatings,
+  joinYears,
+  mergeHistory,
+  splitByYear,
+  type RatingHistory,
+} from './rating-history'
 import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
   DrillStat,
@@ -152,6 +159,21 @@ export async function saveGames(userId: string, games: SyncedGame[]): Promise<Sa
       )
     }
     await batch.commit()
+  }
+
+  /*
+    The rating history is kept current here rather than by each caller, so no write path
+    can forget it. It is rebuilt from every stored game rather than from this batch
+    alone: the batch's last game of a day is not necessarily the day's last game, and
+    merging a stale close over a real one would quietly corrupt the series. Reading the
+    games back is cache-first and the writes above went through that cache.
+  */
+  try {
+    const all = await getGames(userId)
+    const stored = await getRatingHistory(userId)
+    await saveRatingHistory(userId, mergeHistory(stored, closingRatings(all)))
+  } catch {
+    // a sync that stored its games has done its job; the history catches up next time
   }
 
   return { added, updated: records.length - added.length }
@@ -315,4 +337,39 @@ export async function updatePlan(
 
 export async function deletePlan(userId: string, planId: string): Promise<void> {
   await deleteDoc(doc(db, 'users', userId, PLANS, planId))
+}
+
+/* ----------------------------------------------------------- rating history */
+
+/**
+ * Daily closing ratings, one document per year.
+ *
+ * A document per day would be a read per day on the dashboard, which is the cost model
+ * this app is built around avoiding; a single document for all time would eventually
+ * meet Firestore's 1MB ceiling. A year is a few thousand small entries and one read.
+ */
+const RATINGS = 'ratingHistory'
+
+export async function getRatingHistory(
+  userId: string,
+  options?: ReadOptions,
+): Promise<RatingHistory> {
+  const ref = collection(db, 'users', userId, RATINGS)
+  const snapshot = await readDocs(query(ref), options)
+
+  return joinYears(
+    snapshot.docs.map(d => ({ year: d.id, days: (d.data().days ?? {}) as RatingHistory })),
+  )
+}
+
+/** Writes only the years that changed, which after a sync is usually one. */
+export async function saveRatingHistory(userId: string, history: RatingHistory): Promise<void> {
+  const years = splitByYear(history)
+  if (years.length === 0) return
+
+  const batch = writeBatch(db)
+  for (const year of years) {
+    batch.set(doc(db, 'users', userId, RATINGS, year.year), { days: year.days }, { merge: true })
+  }
+  await batch.commit()
 }
