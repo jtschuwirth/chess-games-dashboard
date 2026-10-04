@@ -70,7 +70,8 @@ src/
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
-│                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings
+│                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
+│                               # HomeNav
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -97,6 +98,7 @@ src/
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
 │   ├── plan.ts                 # study plans: weeks, dates, counted tasks, progress
+│   ├── version.ts              # which build this is, from Vercel's commit env var
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
 └── types/chess.ts              # shared types
@@ -600,6 +602,16 @@ src/
   first into the second on the way out of Firestore — one week holding the old days, `done: true`
   becoming one of one — and since `updatePlan` replaces the document, a plan rewrites itself the
   first time you touch it. Same habit as `betterMovesOf` and the pre-game ratings.
+- **The deployed commit is on screen, signed in or not.** `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA` is
+  inlined into the browser bundle at build time, so `lib/version.ts` is a literal in the shipped
+  JavaScript rather than a lookup and cannot drift from the code around it. It reads
+  `production · df3cda7`, and `local · dev` when there is no deployment to name — which is the
+  honest answer rather than a fake build number. It sits on the sign-in screen too, so a deploy
+  can be checked without an account.
+- **The home page scrolls and lays out in two columns.** It used to centre six cards in an
+  `h-screen` box, which clipped the last one on a short window with no way to reach it, and the
+  Sign out control sat inline against the title with nothing holding it off. It is now a bordered
+  button with its own space, the page scrolls, and the cards go two across from `sm` up.
 - **Dashboard filters live in the query string** (`readFilters` / `writeFilters`), seeded from
   `useSearchParams` and mirrored with `history.replaceState` so chip clicks stay instant and the
   back button is not flooded.
