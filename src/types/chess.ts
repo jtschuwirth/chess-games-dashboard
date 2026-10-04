@@ -227,10 +227,17 @@ export type NewPattern = Omit<PatternRecord, 'id'>
 /**
  * One thing to do on one day. No id: the array is rewritten whole on every change, and
  * a task is identified by where it sits in its day, the way a line in a list is.
+ *
+ * Counted rather than ticked, because most of what a plan asks for comes in quantities —
+ * five puzzles, two rapid games — and three of five is neither done nor not done.
+ * `target: 1` is an ordinary tick-box and is what a task without a count becomes.
  */
 export interface PlanTask {
   text: string
-  done: boolean
+  /** How many are needed. */
+  target: number
+  /** How many are done, from 0 to `target`. */
+  done: number
 }
 
 /** A day of a study plan: what to do, how it went, and what you wrote up. */
@@ -240,17 +247,24 @@ export interface PlanDay {
   note: string
 }
 
+/** A week of one. Named when you want to; "week 3" when you do not. */
+export interface PlanWeek {
+  name: string
+  days: PlanDay[]
+}
+
 /**
- * A week (or any stretch) of deliberate practice. Days are positional: day `i` is `i`
- * days after `startDate`, which is what lets a day find the reviews you wrote on it
- * without either of them storing a link to the other.
+ * A stretch of deliberate practice, in weeks of days. Positions carry the dates: the
+ * first day is `startDate` and every day after is one more, counted across weeks — which
+ * is what lets a day find the reviews you wrote on it without either storing a link to
+ * the other.
  */
 export interface StudyPlan {
   id: string
   name: string
   /** Local midnight of day one, as epoch ms. */
   startDate: number
-  days: PlanDay[]
+  weeks: PlanWeek[]
   createdAt: number
 }
 

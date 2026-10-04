@@ -6,20 +6,20 @@ import Chip from '@/components/Chip'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { getPlans, savePlan } from '@/lib/firestore'
 import {
-  DEFAULT_PLAN_DAYS,
-  MAX_PLAN_DAYS,
+  MAX_PLAN_WEEKS,
   buildPlan,
   planProgress,
   planRange,
   startOfDay,
-  todayIndex,
+  todayPosition,
+  weekLabel,
 } from '@/lib/plan'
 import type { StudyPlan } from '@/types/chess'
 
 const INPUT =
   'bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600'
 
-const LENGTHS = [3, 5, 7, 14, 30]
+const LENGTHS = [1, 2, 4, 8, 12]
 
 /** `YYYY-MM-DD` for a date input, in local time rather than UTC. */
 function dateValue(ms: number): string {
@@ -46,8 +46,10 @@ function NewPlanForm({
 }) {
   const [name, setName] = useState('')
   const [start, setStart] = useState(() => dateValue(Date.now()))
-  const [days, setDays] = useState(DEFAULT_PLAN_DAYS)
-  const [tasks, setTasks] = useState('daily game\nsolve 5 puzzles\nplay 2 rapid 15+10 games\nanalyse the games')
+  const [weeks, setWeeks] = useState(4)
+  const [tasks, setTasks] = useState(
+    'daily game\nsolve puzzles ×5\nplay rapid 15+10 games ×2\nanalyse the games',
+  )
   const [error, setError] = useState<string | null>(null)
 
   function submit() {
@@ -69,7 +71,7 @@ function NewPlanForm({
       buildPlan({
         name: trimmed,
         startDate: startOfDay(new Date(year, month - 1, day).getTime()),
-        days,
+        weeks,
         tasks: tasks.split('\n'),
       }),
     )
@@ -101,13 +103,16 @@ function NewPlanForm({
 
       <div className="flex flex-col gap-1.5">
         <span className="text-xs uppercase tracking-wide text-zinc-500">
-          How many days
-          <span className="normal-case tracking-normal text-zinc-700"> — up to {MAX_PLAN_DAYS}</span>
+          How many weeks
+          <span className="normal-case tracking-normal text-zinc-700">
+            {' '}
+            — seven days each, up to {MAX_PLAN_WEEKS}; you can add more later
+          </span>
         </span>
         <div className="flex gap-1 flex-wrap">
           {LENGTHS.map(value => (
-            <Chip key={value} active={days === value} onClick={() => setDays(value)}>
-              {value} days
+            <Chip key={value} active={weeks === value} onClick={() => setWeeks(value)}>
+              {value} week{value === 1 ? '' : 's'}
             </Chip>
           ))}
         </div>
@@ -118,7 +123,8 @@ function NewPlanForm({
           Each day
           <span className="normal-case tracking-normal text-zinc-700">
             {' '}
-            — one task per line, copied onto every day
+            — one per line, on every day. End a line with ×5 for something you do five
+            times
           </span>
         </span>
         <textarea
@@ -227,7 +233,7 @@ function PlansBody({ userId }: { userId: string }) {
         <div className="flex flex-col gap-2">
           {plans.map(plan => {
             const { done, total } = planProgress(plan)
-            const today = todayIndex(plan)
+            const today = todayPosition(plan)
 
             return (
               <Link
@@ -238,13 +244,16 @@ function PlansBody({ userId }: { userId: string }) {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-sm font-medium text-zinc-100">{plan.name}</span>
-                    {today !== null && (
+                    {today && (
                       <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/30">
-                        day {today + 1} today
+                        {weekLabel(plan.weeks[today.week], today.week)}, day {today.day + 1}
                       </span>
                     )}
                   </div>
-                  <span className="text-xs text-zinc-500">{planRange(plan)}</span>
+                  <span className="text-xs text-zinc-500">
+                    {planRange(plan)} · {plan.weeks.length} week
+                    {plan.weeks.length === 1 ? '' : 's'}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-3 shrink-0">
@@ -254,7 +263,7 @@ function PlansBody({ userId }: { userId: string }) {
                       style={{ width: total === 0 ? '0%' : `${(done / total) * 100}%` }}
                     />
                   </div>
-                  <span className="text-xs font-mono text-zinc-500 w-14 text-right">
+                  <span className="text-xs font-mono text-zinc-500 w-14 text-right tabular-nums">
                     {done}/{total}
                   </span>
                 </div>

@@ -27,9 +27,10 @@ win/draw/loss splits for all games or for the games that followed one of those l
    games showing the same thing. Each pattern's name becomes a tag in the review form,
    so a mistake can point at the idea you should have played, and the pattern's own page
    lists the games where you did that.
-7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and the
-   same list of tasks copied onto every day, editable from there. Tick things off, write a
-   note on the day, and read the reviews you wrote that day beside it.
+7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
+   of days carrying the same tasks, editable from there. Count things off — three of five
+   puzzles — write a note on the day, and read the reviews you wrote that day beside it.
+   Weeks fold, and more can be added as the plan runs on.
 8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
@@ -55,7 +56,7 @@ src/
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
 │   ├── patterns/[id]/page.tsx  # One pattern: conditions, lines, where you wanted it
 │   ├── plans/page.tsx          # Study plans: list + create
-│   ├── plans/[id]/page.tsx     # One plan: days, tasks, notes, that day's reviews
+│   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's reviews
 │   ├── learn/page.tsx          # Drill over the reviewed positions
 │   └── api/
 │       ├── chesscom/games/route.ts
@@ -67,7 +68,7 @@ src/
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
-│                               # PlanDayCard
+│                               # PlanDayCard, PlanWeekCard
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -93,7 +94,7 @@ src/
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
-│   ├── plan.ts                 # study plans: days, dates, progress, that day's reviews
+│   ├── plan.ts                 # study plans: weeks, dates, counted tasks, progress
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
 └── types/chess.ts              # shared types
@@ -524,15 +525,36 @@ src/
   removes the question of which number is which. (`GameRow` still uses the locale version and is
   the one place left that could trip on this — it only renders after a client-side read, so the
   server never emits those rows.)
-- **A plan edit is a function of the plan, not a finished plan.** Both the day card and the page
-  take an updater. Handing back a built object meant two boxes ticked in the same React batch were
-  both computed from the same rendered snapshot and the second silently undid the first — three
-  quick clicks landed as one. A ref carries the newest plan forward synchronously, so edits in one
-  batch compose.
-- **A finished day folds on arrival, and never under your hand.** Whether a day starts open is
-  decided once, in a lazy `useState` initialiser; after that it is plain state. Deriving it every
-  render would fold the card away as you ticked its last box, which is exactly how the review
-  form's tag picker once closed itself when you picked the first tag.
+- **A plan is weeks of days, and the weeks are the unit you work in.** One plan covers months —
+  "ChessGoals Yusupov Intermediate" is a dozen weeks — so a flat list of days is a page you scroll
+  past rather than read. Weeks fold, the one holding today opens on arrival, and `+ Add a week`
+  copies whatever the last week asks for. Dates are still counted straight through: day one is
+  `startDate` and `dayOffset` walks the weeks before it, so nothing stores a date and no two days
+  can disagree about which one they are.
+- **A task is a count, not a tick.** Most of what a plan asks for comes in quantities — five
+  puzzles, two rapid games — and three of five is neither done nor not done. `target: 1` is an
+  ordinary checkbox and is what a task without a count becomes, so the common case keeps its
+  single click and the stepper only appears where there is something to step. The box completes
+  or clears the whole task; the stepper moves one at a time. Progress counts the *things*, so a
+  day of "5 puzzles" and "1 game" reads 3/6 — counting lines instead would leave a day looking
+  untouched until a whole task was finished. A template line ending `×5` sets the count, which is
+  why the count has to be at the end: "play 2 rapid 15+10 games" keeps its numbers.
+- **Every plan edit is a function of the current value, at every level.** The page, the week, the
+  day and the task all take an updater rather than a finished object. This was got wrong twice and
+  each time the symptom was the same: handlers in one React batch all read from the same rendered
+  snapshot, so the last won. Three quick ticks landed as one, and after that was fixed at the day
+  level, three clicks on a `+` still moved a count from 0 to 1 because the row was computing
+  `task.done + 1` from its own stale prop. A ref carries the newest plan forward synchronously, so
+  edits in one batch compose all the way down.
+- **A finished day or week folds on arrival, and never under your hand.** Whether one starts open
+  is decided once, in a lazy `useState` initialiser; after that it is plain state. Deriving it
+  every render would fold the card away as you ticked its last box, which is exactly how the
+  review form's tag picker once closed itself when you picked the first tag.
+- **A stored plan is normalised on read, not migrated.** Two shapes have existed: a flat `days`
+  array of ticked tasks, and weeks of days whose tasks are counted. `normalizePlan` converts the
+  first into the second on the way out of Firestore — one week holding the old days, `done: true`
+  becoming one of one — and since `updatePlan` replaces the document, a plan rewrites itself the
+  first time you touch it. Same habit as `betterMovesOf` and the pre-game ratings.
 - **Dashboard filters live in the query string** (`readFilters` / `writeFilters`), seeded from
   `useSearchParams` and mirrored with `history.replaceState` so chip clicks stay instant and the
   back button is not flooded.

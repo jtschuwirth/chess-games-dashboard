@@ -3,12 +3,159 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import StatusTag from '@/components/StatusTag'
-import { dayProgress, formatDay, isDayComplete, reviewsOn } from '@/lib/plan'
+import { dayProgress, formatDay, isDayComplete, reviewsOn, taskComplete } from '@/lib/plan'
 import { trainableMistakes } from '@/lib/review'
-import type { GameRecord, PlanDay } from '@/types/chess'
+import type { GameRecord, PlanDay, PlanTask } from '@/types/chess'
 
 /** How long after the last keystroke a note is written. */
 const NOTE_DEBOUNCE_MS = 800
+
+function StepButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  disabled: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className="w-5 h-5 shrink-0 flex items-center justify-center rounded border border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-200 transition-colors disabled:opacity-25 disabled:hover:border-zinc-800 leading-none text-xs"
+    >
+      {children}
+    </button>
+  )
+}
+
+/**
+ * One task, which is a count rather than a tick.
+ *
+ * Most of what a plan asks for comes in quantities — five puzzles, two rapid games — and
+ * three of five is neither done nor not done. A task of one is still an ordinary
+ * checkbox, so the common case keeps its single click and the stepper only appears where
+ * there is something to step through.
+ *
+ * The box completes or clears the whole thing and the stepper moves one at a time.
+ * Having the box advance by one instead would make finishing a five-puzzle task five
+ * clicks and leave no way to say "all of it, done".
+ */
+function TaskRow({
+  task,
+  onPatch,
+  onRemove,
+}: {
+  task: PlanTask
+  /**
+   * A function of the current task, not a finished one. Three clicks on `+` in the same
+   * React batch would otherwise all read `done` from the same render and all set it to
+   * one — which is exactly what they did: three clicks moved a count from 0 to 1.
+   */
+  onPatch: (update: (current: PlanTask) => PlanTask) => void
+  onRemove: () => void
+}) {
+  const complete = taskComplete(task)
+  const counted = task.target > 1
+
+  return (
+    <div className="flex items-center gap-2.5 group/task">
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={complete}
+        aria-label={task.text || 'Task'}
+        onClick={() => onPatch(current => ({ ...current, done: taskComplete(current) ? 0 : current.target }))}
+        title={counted ? (complete ? 'Clear all of it' : 'Mark all of it done') : undefined}
+        className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[10px] leading-none transition-colors ${
+          complete
+            ? 'bg-emerald-500/80 border-emerald-500/80 text-zinc-950'
+            : task.done > 0
+              ? 'border-emerald-600/60 text-emerald-500/80'
+              : 'border-zinc-700 hover:border-zinc-500'
+        }`}
+      >
+        {complete ? '✓' : task.done > 0 ? '•' : ''}
+      </button>
+
+      <input
+        value={task.text}
+        onChange={event => {
+          const text = event.target.value
+          onPatch(current => ({ ...current, text }))
+        }}
+        placeholder="what to do"
+        className={`flex-1 min-w-0 bg-transparent outline-none text-sm placeholder:text-zinc-700 ${
+          complete ? 'text-zinc-600 line-through' : 'text-zinc-200'
+        }`}
+      />
+
+      {counted && (
+        <div className="flex items-center gap-1 shrink-0">
+          <StepButton
+            label="One fewer done"
+            onClick={() => onPatch(current => ({ ...current, done: Math.max(0, current.done - 1) }))}
+            disabled={task.done === 0}
+          >
+            −
+          </StepButton>
+          <span
+            className={`text-xs font-mono w-9 text-center tabular-nums ${
+              complete ? 'text-emerald-400' : 'text-zinc-400'
+            }`}
+          >
+            {task.done}/{task.target}
+          </span>
+          <StepButton
+            label="One more done"
+            onClick={() =>
+              onPatch(current => ({
+                ...current,
+                done: Math.min(current.target, current.done + 1),
+              }))
+            }
+            disabled={complete}
+          >
+            +
+          </StepButton>
+        </div>
+      )}
+
+      {/* how many there are of this task — muted, because it is set once and then read */}
+      <label className="flex items-center gap-0.5 shrink-0" title="How many of these">
+        <span className="text-[10px] text-zinc-700">×</span>
+        <input
+          type="number"
+          min={1}
+          max={999}
+          value={task.target}
+          onChange={event => {
+            const target = Math.max(1, Math.min(999, Math.round(Number(event.target.value) || 1)))
+            onPatch(current => ({ ...current, target, done: Math.min(current.done, target) }))
+          }}
+          aria-label="How many of this task"
+          className="w-8 bg-transparent text-xs text-zinc-600 focus:text-zinc-200 outline-none text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+        />
+      </label>
+
+      <button
+        type="button"
+        onClick={onRemove}
+        title="Remove this task"
+        aria-label="Remove this task"
+        className="text-xs text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover/task:opacity-100 focus:opacity-100 shrink-0"
+      >
+        ✕
+      </button>
+    </div>
+  )
+}
 
 /**
  * One day of a plan: what to do, whether you did it, what you thought, and what you
@@ -67,10 +214,10 @@ export default function PlanDayCard({
     return () => clearTimeout(id)
   }, [note, day.note, onChange])
 
-  function patchTask(taskIndex: number, change: Partial<PlanDay['tasks'][number]>) {
+  function patchTask(taskIndex: number, update: (current: PlanTask) => PlanTask) {
     onChange(current => ({
       ...current,
-      tasks: current.tasks.map((task, i) => (i === taskIndex ? { ...task, ...change } : task)),
+      tasks: current.tasks.map((task, i) => (i === taskIndex ? update(task) : task)),
     }))
   }
 
@@ -116,46 +263,17 @@ export default function PlanDayCard({
               into the text to edit it tick the box instead.
             */}
             {day.tasks.map((task, taskIndex) => (
-              <div key={taskIndex} className="flex items-center gap-2.5 group/task">
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={task.done}
-                  aria-label={task.text || `Task ${taskIndex + 1}`}
-                  onClick={() => patchTask(taskIndex, { done: !task.done })}
-                  className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[10px] leading-none transition-colors ${
-                    task.done
-                      ? 'bg-emerald-500/80 border-emerald-500/80 text-zinc-950'
-                      : 'border-zinc-700 hover:border-zinc-500'
-                  }`}
-                >
-                  {task.done ? '✓' : ''}
-                </button>
-
-                <input
-                  value={task.text}
-                  onChange={event => patchTask(taskIndex, { text: event.target.value })}
-                  placeholder="what to do"
-                  className={`flex-1 min-w-0 bg-transparent outline-none text-sm placeholder:text-zinc-700 ${
-                    task.done ? 'text-zinc-600 line-through' : 'text-zinc-200'
-                  }`}
-                />
-
-                <button
-                  type="button"
-                  onClick={() =>
-                    onChange(current => ({
-                      ...current,
-                      tasks: current.tasks.filter((_, i) => i !== taskIndex),
-                    }))
-                  }
-                  title="Remove this task"
-                  aria-label={`Remove ${task.text || 'this task'}`}
-                  className="text-xs text-zinc-700 hover:text-red-400 transition-colors opacity-0 group-hover/task:opacity-100 focus:opacity-100 shrink-0"
-                >
-                  ✕
-                </button>
-              </div>
+              <TaskRow
+                key={taskIndex}
+                task={task}
+                onPatch={update => patchTask(taskIndex, update)}
+                onRemove={() =>
+                  onChange(current => ({
+                    ...current,
+                    tasks: current.tasks.filter((_, i) => i !== taskIndex),
+                  }))
+                }
+              />
             ))}
 
             <button
@@ -163,7 +281,7 @@ export default function PlanDayCard({
               onClick={() =>
                 onChange(current => ({
                   ...current,
-                  tasks: [...current.tasks, { text: '', done: false }],
+                  tasks: [...current.tasks, { text: '', target: 1, done: 0 }],
                 }))
               }
               className="self-start text-xs text-zinc-600 hover:text-zinc-300 transition-colors mt-1"

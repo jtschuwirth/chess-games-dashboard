@@ -16,6 +16,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from './firebase'
+import { normalizePlan } from './plan'
 import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
   DrillStat,
@@ -288,7 +289,8 @@ const PLANS = 'studyPlans'
 export async function getPlans(userId: string, options?: ReadOptions): Promise<StudyPlan[]> {
   const ref = collection(db, 'users', userId, PLANS)
   const snapshot = await readDocs(query(ref, orderBy('startDate', 'desc')), options)
-  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as StudyPlan)
+  // the one place a stored plan becomes the shape the rest of the code expects
+  return snapshot.docs.map(d => normalizePlan({ ...d.data(), id: d.id } as StudyPlan))
 }
 
 export async function savePlan(userId: string, plan: NewStudyPlan): Promise<string> {

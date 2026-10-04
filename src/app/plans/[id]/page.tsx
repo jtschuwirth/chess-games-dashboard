@@ -4,10 +4,36 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
-import PlanDayCard from '@/components/PlanDayCard'
+import PlanWeekCard from '@/components/PlanWeekCard'
 import { deletePlan, getGames, getPlans, updatePlan } from '@/lib/firestore'
-import { dayDate, planBody, planProgress, todayIndex } from '@/lib/plan'
+import {
+  MAX_PLAN_WEEKS,
+  buildWeek,
+  planBody,
+  planProgress,
+  planRange,
+  templateFrom,
+  todayPosition,
+  weekLabel,
+  weekProgress,
+} from '@/lib/plan'
 import type { GameRecord, StudyPlan } from '@/types/chess'
+
+/**
+ * Which week to open on arrival: the one today falls in, or failing that the first with
+ * anything still to do. A plan you have finished opens on its last week rather than on
+ * nothing.
+ */
+function weekToOpen(plan: StudyPlan): number {
+  const today = todayPosition(plan)
+  if (today) return today.week
+
+  const unfinished = plan.weeks.findIndex(week => {
+    const { done, total } = weekProgress(week)
+    return total === 0 || done < total
+  })
+  return unfinished === -1 ? Math.max(0, plan.weeks.length - 1) : unfinished
+}
 
 function PlanBody({ userId, planId }: { userId: string; planId: string }) {
   const router = useRouter()
@@ -40,14 +66,14 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
   }, [userId, planId, reload])
 
   /**
-   * Every edit writes the whole plan. It is a small document, a write is a write
-   * whatever its size, and rewriting it removes every question about two edits racing.
-   * The screen updates first and the write follows, so ticking a box never waits.
+   * Every edit writes the whole plan. It is a small document, a write is a write whatever
+   * its size, and rewriting it removes every question about two edits racing. The screen
+   * updates first and the write follows, so ticking a box never waits.
    *
    * `latest` is what makes two changes in one React batch compose instead of clobbering:
    * each edit is a function of the plan as it stands, and the ref moves on synchronously,
-   * so the second click sees the first. Deriving from the rendered `plan` meant ticking
-   * two boxes quickly left only the second ticked.
+   * so the second click sees the first. Deriving from the rendered `plan` meant three
+   * quick clicks landed as one.
    */
   const latest = useRef<StudyPlan | null>(null)
 
@@ -69,7 +95,6 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
   )
 
   async function remove() {
-    if (!plan) return
     try {
       await deletePlan(userId, planId)
       router.push('/plans')
@@ -102,7 +127,8 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
   }
 
   const { done, total } = planProgress(plan)
-  const today = todayIndex(plan)
+  const today = todayPosition(plan)
+  const openWeek = weekToOpen(plan)
 
   return (
     <div className="flex flex-col gap-4">
@@ -114,8 +140,10 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
         <div className="min-w-0">
           <h2 className="text-xl font-semibold text-zinc-100">{plan.name}</h2>
           <p className="text-xs text-zinc-500">
-            {done} of {total} done
-            {today !== null ? ` · day ${today + 1} is today` : ''}
+            {planRange(plan)} · {plan.weeks.length} week{plan.weeks.length === 1 ? '' : 's'}
+            {today
+              ? ` · ${weekLabel(plan.weeks[today.week], today.week)}, day ${today.day + 1} is today`
+              : ''}
           </p>
         </div>
 
@@ -126,6 +154,9 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
               style={{ width: total === 0 ? '0%' : `${(done / total) * 100}%` }}
             />
           </div>
+          <span className="text-xs font-mono text-zinc-500 tabular-nums">
+            {done}/{total}
+          </span>
           <button
             onClick={remove}
             className="text-xs text-zinc-600 hover:text-red-400 transition-colors"
@@ -138,23 +169,44 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
       {error && <p className="text-xs text-red-400">{error}</p>}
 
       <div className="flex flex-col gap-2">
-        {plan.days.map((day, index) => (
-          <PlanDayCard
+        {plan.weeks.map((week, index) => (
+          <PlanWeekCard
             key={index}
+            plan={plan}
             index={index}
-            day={day}
-            date={dayDate(plan, index)}
-            isToday={today === index}
             games={games}
+            today={today}
+            startOpen={index === openWeek}
             onChange={update =>
               save(current => ({
                 ...current,
-                days: current.days.map((entry, i) => (i === index ? update(entry) : entry)),
+                weeks: current.weeks.map((entry, i) => (i === index ? update(entry) : entry)),
+              }))
+            }
+            onRemove={() =>
+              save(current => ({
+                ...current,
+                weeks: current.weeks.filter((_, i) => i !== index),
               }))
             }
           />
         ))}
       </div>
+
+      {plan.weeks.length < MAX_PLAN_WEEKS && (
+        <button
+          onClick={() =>
+            save(current => ({
+              ...current,
+              // a new week asks for whatever the last one asks for
+              weeks: [...current.weeks, buildWeek(templateFrom(current))],
+            }))
+          }
+          className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+        >
+          + Add a week
+        </button>
+      )}
     </div>
   )
 }
@@ -163,7 +215,7 @@ export default function PlanPage() {
   const params = useParams<{ id: string }>()
 
   return (
-    <PageShell title="Study plan">
+    <PageShell title="Study plan" wide>
       {user => <PlanBody key={params.id} userId={user.uid} planId={params.id} />}
     </PageShell>
   )
