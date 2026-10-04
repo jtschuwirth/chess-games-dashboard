@@ -82,6 +82,11 @@ export interface ReviewedMistake {
   san: string
   /** Your own move number, the one the phase ranges count. */
   moveNumber: number
+  /**
+   * What you were trying to do when you played it. Optional: it was added after
+   * reviews had already been written, and those entries are not wrong for lacking it.
+   */
+  intent?: string
   /** Why the move is a mistake. */
   cause: string
   /** What was visible in the position that should have redirected you. */

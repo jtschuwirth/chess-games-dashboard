@@ -252,14 +252,19 @@ export default function DrillCardView({
                   )
                 )}
 
+                {card.intent && (
+                  <p className="text-sm text-zinc-400">
+                    <span className="text-zinc-600">What I was going for:</span> {card.intent}
+                  </p>
+                )}
                 {card.cause && (
                   <p className="text-sm text-zinc-400">
-                    <span className="text-zinc-600">Why it went wrong:</span> {card.cause}
+                    <span className="text-zinc-600">Why it is a mistake:</span> {card.cause}
                   </p>
                 )}
                 {card.signal && (
                   <p className="text-sm text-zinc-400">
-                    <span className="text-zinc-600">What was there to see:</span> {card.signal}
+                    <span className="text-zinc-600">What I could have seen:</span> {card.signal}
                   </p>
                 )}
 

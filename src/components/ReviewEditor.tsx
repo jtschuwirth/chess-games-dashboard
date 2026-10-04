@@ -40,6 +40,7 @@ interface Draft {
   ply: number
   san: string
   moveNumber: number
+  intent: string
   cause: string
   signal: string
   better: ProposedRow[]
@@ -54,6 +55,7 @@ function draftFrom(mistake: ReviewedMistake): Draft {
     ply: mistake.ply,
     san: mistake.san,
     moveNumber: mistake.moveNumber,
+    intent: mistake.intent ?? '',
     cause: mistake.cause,
     signal: mistake.signal,
     better: betterMovesOf(mistake).map(move => ({ input: move.line.join(' '), why: move.why })),
@@ -249,6 +251,7 @@ export default function ReviewEditor({
           ply,
           san: move.san,
           moveNumber: move.moveNumber,
+          intent: '',
           cause: '',
           signal: '',
           better: [EMPTY_ROW],
@@ -321,6 +324,7 @@ export default function ReviewEditor({
       ply: draft.ply,
       san: draft.san,
       moveNumber: draft.moveNumber,
+      intent: draft.intent.trim(),
       cause: draft.cause.trim(),
       signal: draft.signal.trim(),
       betterMoves,
@@ -374,9 +378,10 @@ export default function ReviewEditor({
       <div>
         <h2 className="font-semibold text-sm">Root cause analysis</h2>
         <p className="text-xs text-zinc-500 mt-0.5">
-          Up to {MAX_REVIEW_MISTAKES} moves per game. Naming every slip explains nothing — pick
-          the ones that decided it, then say why each happened. The tags build up into your
-          record of what keeps going wrong.
+          Up to {MAX_REVIEW_MISTAKES} moves per game — blaming every move explains nothing.
+          Each one asks four questions: why you played it, why it is a mistake, what would have
+          changed your mind, and what you would play instead. The tags build up into your record
+          of what keeps going wrong.
         </p>
       </div>
 
@@ -502,8 +507,21 @@ export default function ReviewEditor({
             {!draft.unreasonable && (
               <>
                 <div className="flex flex-col gap-1.5">
-                  <Label hint="What does the move actually give away?">
-                    Why was this a mistake?
+                  <Label hint="The idea at the time, even if it turned out to be wrong.">
+                    Why did I play it?
+                  </Label>
+                  <textarea
+                    value={draft.intent}
+                    onChange={event => patch(draft.ply, { intent: event.target.value })}
+                    rows={3}
+                    placeholder="I thought it won the b2 pawn and I could get back in time…"
+                    className={`${FIELD} resize-y`}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <Label hint="What it costs — material, king safety, the initiative.">
+                    Why is it a mistake?
                   </Label>
                   <textarea
                     value={draft.cause}
@@ -515,8 +533,8 @@ export default function ReviewEditor({
                 </div>
 
                 <div className="flex flex-col gap-1.5">
-                  <Label hint="The feature in the position that should have redirected you.">
-                    What was there to see?
+                  <Label hint="Something already on the board, or a line that stopped too early.">
+                    What could I have seen or worked out?
                   </Label>
                   <textarea
                     value={draft.signal}
@@ -531,11 +549,11 @@ export default function ReviewEditor({
 
             <div className="flex flex-col gap-2">
               <Label
-                hint={`Not the engine's best — anything that holds, and what makes it hold. A whole line is fine, up to ${
+                hint={`Any move that holds, and what makes it hold — it does not have to be the engine's best. A line is fine, up to ${
                   MAX_LINE_PLIES / 2
-                } moves each; only the first is judged, since the rest is the opponent's to choose.`}
+                } moves each side; only the first is judged, since the rest is the opponent's to choose.`}
               >
-                What would you play instead?
+                What would I play instead?
               </Label>
 
               {draft.better.map((row, index) => {

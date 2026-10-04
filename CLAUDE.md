@@ -185,15 +185,25 @@ src/
   analysed game, including a clean one: without it a game the engine found nothing in looks
   exactly like a game the engine has never seen, which is the one thing the badge is for. The
   Engine filter has a matching `Not analysed yet` to list what is still missing.
-- **A review is three questions about at most three moves.** The method is borrowed from
-  incident root-cause analysis: name what failed, why it failed, and what would have caught it.
-  `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every move explains nothing,
-  so the cap forces a choice. Each entry asks why the move is a mistake, what was visible in the
-  position that should have redirected you, and what you would play instead; proposed moves are
-  validated against the position with chess.js and only the legal ones are stored, since the
-  point is a move you could actually have played. Each proposed move is a row of its own with
-  its own reasoning: a bare move is a line to memorise, while the reason is the part that
-  transfers to the next game.
+- **A review is four questions about at most three moves.** The method is borrowed from
+  incident root-cause analysis: what you were doing, what failed, what would have caught it, and
+  what to do instead. `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every
+  move explains nothing, so the cap forces a choice. Each entry asks, in order: **why you played
+  it**, why it is a mistake, what you could have seen or worked out, and what you would play
+  instead. Proposed moves are validated against the position with chess.js and only the legal
+  ones are stored, since the point is a move you could actually have played. Each proposed move
+  is a row of its own with its own reasoning: a bare move is a line to memorise, while the reason
+  is the part that transfers to the next game.
+- **The first question is what you were trying to do, and it came last.** Without it a review
+  records that a move was bad and never records the thinking that produced it, which is the part
+  that repeats — the same faulty idea reaches for a different move next game. `intent` is
+  optional in the type and in `missingFrom`, because reviews were written before it existed and
+  they are not wrong for lacking it; an entry still needs a cause and a tag, and nothing else
+  changed. Old entries open with the field blank.
+- **The labels are first person and the hints are not.** The questions are the ones you ask
+  yourself, so they read "Why did I play it?"; the hint under each is a noun phrase rather than
+  the form addressing you as "you", because a question in one voice answered by a prompt in
+  another is what made the old wording read oddly.
 - **An alternative is a line, not a move** — up to ten moves each side (`MAX_LINE_PLIES`), typed
   as "Nd5 Bxe7 Qxe7" with move numbers tolerated and stripped. Only the *first* move is judged by
   the engine, and only the first is what a drill asks for, because the rest depends on the

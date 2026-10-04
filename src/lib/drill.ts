@@ -30,6 +30,7 @@ export interface DrillCard {
   /** Moves you proposed in review, with your reasoning. Empty for an unreviewed position. */
   proposed: ProposedMove[]
   /** Why you said it went wrong, shown once you have answered. */
+  intent: string
   cause: string
   signal: string
   tags: string[]
@@ -102,6 +103,7 @@ export function buildDrillCards(games: GameRecord[], source: DrillSource): Drill
         played: mistake?.san ?? game.moves[ply] ?? '',
         playedTag: tags.get(ply) ?? null,
         proposed: betterMovesOf(mistake ?? ({ betterMoves: [] } as unknown as ReviewedMistake)),
+        intent: mistake?.intent ?? '',
         cause: mistake?.cause ?? '',
         signal: mistake?.signal ?? '',
         tags: mistake?.tags ?? [],

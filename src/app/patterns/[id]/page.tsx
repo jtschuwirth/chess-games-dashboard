@@ -241,11 +241,11 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
 
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
         <h3 className="text-xs uppercase tracking-wide text-zinc-500">
-          Games where you wanted this
+          Games where this could have been used
         </h3>
         {flagged.length === 0 ? (
           <p className="text-sm text-zinc-500">
-            Nothing tagged with this yet. It shows up in the review form under Patterns.
+            Nothing tagged with this yet — it shows up in the review form under Patterns.
           </p>
         ) : (
           <div className="flex flex-col divide-y divide-zinc-800">
