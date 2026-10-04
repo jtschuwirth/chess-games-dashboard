@@ -139,12 +139,22 @@ export interface TimeBucket {
   blunders: number
 }
 
+/**
+ * The bands, in seconds. The long end is split three ways rather than one because in a
+ * slow control most moves land past a minute — a single "over 60s" bucket held more of
+ * the game than every other band put together, which tells you nothing about the game.
+ *
+ * Labels switch to minutes past a minute: "1–3m" is read at a glance where "60–180s"
+ * has to be converted first.
+ */
 const BUCKETS: { label: string; from: number; to: number | null }[] = [
   { label: 'under 5s', from: 0, to: 5 },
   { label: '5–15s', from: 5, to: 15 },
   { label: '15–30s', from: 15, to: 30 },
   { label: '30–60s', from: 30, to: 60 },
-  { label: 'over 60s', from: 60, to: null },
+  { label: '1–3m', from: 60, to: 180 },
+  { label: '3–5m', from: 180, to: 300 },
+  { label: 'over 5m', from: 300, to: null },
 ]
 
 /**

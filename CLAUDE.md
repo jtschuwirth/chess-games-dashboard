@@ -430,6 +430,12 @@ src/
   position. It is derived on read from the stored `cpBefore`/`cpAfter`, so nothing needs
   re-analysing. Per-move losses are also floored at zero: a move the engine likes more afterwards
   is not credit against a blunder elsewhere.
+- **The long end of think time is three bands, not one.** In a slow control most moves land past
+  a minute, and a single "over 60s" bucket held more of the game than every other band together —
+  which says nothing about when things go wrong. It splits at 180 and 300 seconds, and the labels
+  turn into minutes there, because "1–3m" is read at a glance where "60–180s" has to be converted
+  first. Each band owns its lower bound and not its upper, so there is no second where a move
+  belongs to two.
 - **Think time is a comparison with yourself, and says so.** A hard position takes longer *and*
   goes wrong more often, so the bands cannot prove that thinking fast causes mistakes. The panel
   states that where the numbers are, rather than letting the bar chart imply otherwise.
