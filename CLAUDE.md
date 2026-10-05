@@ -76,6 +76,7 @@ src/
 │                               # PatternLineCard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
+│                               # AnalysisSettingsPanel,
 │                               # HomeNav, RatingPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
@@ -94,6 +95,7 @@ src/
 │   ├── engine-protocol.ts      # what an evaluation is, shared by both engines
 │   ├── server-engine.ts        # the same engine under Node, behind /api/engine
 │   ├── analysis.ts             # move classification and the annotated PGN
+│   ├── settings.ts             # the thresholds the analysis is a judgement about
 │   ├── verdict.ts              # the second pass: what kind of mistake a marked move was
 │   ├── termination.ts          # one ending vocabulary across the two providers
 │   ├── auth.ts                 # signInWithGoogle / signOut
@@ -425,16 +427,33 @@ src/
   Changing a band is now a constant and a deploy. (`annotatedPgn` is the exception: it is
   a copy of the game written once, and carries the marks of the analysis that produced it
   until the game is analysed again.)
-- **Where you stood is four symmetric bands, not "winning or not".** Read from your own
-  side: `-300..-100` from worse, `-100..+100` from level, `+100..+300` from better, and
-  `+300` upward is a position with something in it to throw. Below `-300` a move is not
-  marked at all, so `from worse` covers the whole band where you are worse and still
-  playing. It began as one cut at two pawns, which called `+1.9` "level" — no description
-  of a position you are a pawn and a half down in — and called `+2.2` a thrown win, which
-  is a claim about a position you had actually won. Three of the four share the muted
-  badge: they agree nothing was won here, and where you stood is the word rather than the
-  colour. Moving `WINNING` to three pawns is what gives `threw it` and `lost the thread`
-  their meaning back; at two they were the commonest verdicts and the least informative.
+- **The verdict is two axes and a name for the pair.** One label was answering two
+  questions at once — `concrete line` said how many moves held, `from better` said where
+  you stood — and they are not alternatives, so the panel read as a muddle. **Standing**
+  is where you were: `winning`, `better`, `level`, `worse`, `losing`, symmetric around
+  even. **Breadth** is what the position asked for: `concrete` when a move or two held,
+  `stable` when several did. The descriptor is simply the name of that pair, and each
+  column is a different failure with a different cure — a concrete position was a line to
+  find, a stable one a choice to get right.
+
+  | | concrete | stable |
+  |---|---|---|
+  | winning | lost the thread | threw it |
+  | better | missed the follow-up | let the edge go |
+  | level | missed the line | a careless move |
+  | worse | missed the defence | made it worse |
+  | losing | missed the save | already lost |
+
+  The badge is coloured by standing, which is the axis that says how much was at stake;
+  the breadth is a word beside it, because two hues is two things to decode on a row you
+  scan.
+- **A move holds when it keeps your band, not when it stays within a mistake of the
+  best.** The old rule asked a centipawn question where the question is a band one. From a
+  won or better position a candidate must leave you at least better, from level at least
+  level, from worse at least worse — so four pawns given away out of nine still holds,
+  because it is still a won game, while half a pawn given away at level does not, because
+  it crossed out of level. Winning and better share a floor: coming down from +6 to +2 is
+  not losing something you were holding.
 - **The engine says how much a move cost; the second pass says what kind of mistake it
   was.** "You dropped four pawns" does not distinguish being a rook up and giving it back
   from failing to find the only move that held a position worth four pawns — different
@@ -802,6 +821,21 @@ src/
 - **A date range keeps its year when the ends differ.** Without it a three-year span renders as
   "7 Oct – 3 Oct", which reads as four days backwards; that is exactly what the rating panel
   showed. `formatRange` adds both years when they differ and stays short inside one year.
+- **The numbers the analysis is a judgement about are set per account.** Every one of
+  them — the level band, the winning cut, how few moves make a position concrete, the
+  mistake and blunder thresholds, how many candidates to ask for — began as a constant in
+  the file that used it, and every one of them moved at least once, each time as a code
+  change for a matter of taste. They live on the user document now, in `lib/settings.ts`,
+  and the screen that sets them is the screen that shows what they produce: the bands as
+  they will fall, and the table of what every pair is called. Nothing is re-analysed when
+  one changes, because the marks and the verdicts are derived as the games are read.
+  `normalizeSettings` keeps the pairs in order — a level band wider than the winning one
+  would make `better` an empty band.
+- **The settings are a module value, set when the account's games are read.** Every pure
+  function takes them as an argument defaulting to `settings()`, the same shape as the
+  engine mode toggle. `getGames` awaits them before it normalises, because a mark derived
+  from the defaults and then shown under your own bands would be two answers to one
+  question. It costs one document read, shared with the profile.
 - **The screen explains itself, or the screen is wrong.** Every field had a hint, every panel a
   paragraph, every tag group a gloss — each one reasonable alone and together an essay wrapped
   round a tool. The rule now: text earns its place only if it says something the control cannot,

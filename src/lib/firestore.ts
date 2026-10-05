@@ -18,6 +18,11 @@ import {
 import { db } from './firebase'
 import { normalizeAnalysis } from './analysis'
 import { normalizePattern } from './pattern'
+import {
+  normalizeSettings,
+  applySettings,
+  type AnalysisSettings,
+} from './settings'
 import { normalizePlan } from './plan'
 import {
   closingRatings,
@@ -84,7 +89,11 @@ export function gameDocId(source: Source, sourceId: string): string {
 
 /* ---------------------------------------------------------------- profile */
 
-export async function getProfile(userId: string, options?: ReadOptions): Promise<UserProfile> {
+/** The raw user document, cache-first. The profile and the settings both live in it. */
+async function getProfileDoc(
+  userId: string,
+  options?: ReadOptions,
+): Promise<Record<string, unknown> | null> {
   const ref = doc(db, 'users', userId)
   let snapshot = null
 
@@ -97,8 +106,12 @@ export async function getProfile(userId: string, options?: ReadOptions): Promise
   }
 
   if (!snapshot || !snapshot.exists()) snapshot = await getDoc(ref)
-  if (!snapshot.exists()) return { ...EMPTY_PROFILE }
-  const data = snapshot.data()
+  return snapshot.exists() ? snapshot.data() : null
+}
+
+export async function getProfile(userId: string, options?: ReadOptions): Promise<UserProfile> {
+  const data = (await getProfileDoc(userId, options)) as Partial<UserProfile> | null
+  if (!data) return { ...EMPTY_PROFILE }
   return {
     chesscomUsername: data.chesscomUsername ?? null,
     lichessUsername: data.lichessUsername ?? null,
@@ -112,7 +125,45 @@ export async function saveProfile(userId: string, profile: Partial<UserProfile>)
 
 /* ------------------------------------------------------------------ games */
 
+/**
+ * The account's analysis settings, cached for the session.
+ *
+ * Read before the games are, because the marks are re-derived as they are read and a
+ * mark derived from the defaults and then shown under your own bands would be two
+ * answers to one question. One extra document read, once.
+ */
+const settingsCache = new Map<string, Promise<AnalysisSettings>>()
+
+export function getSettings(userId: string): Promise<AnalysisSettings> {
+  const cached = settingsCache.get(userId)
+  if (cached) return cached
+
+  const loading = getProfileDoc(userId)
+    .then(data => normalizeSettings((data as { analysis?: Partial<AnalysisSettings> })?.analysis))
+    .catch(() => normalizeSettings(undefined))
+    .then(loaded => {
+      applySettings(loaded)
+      return loaded
+    })
+
+  settingsCache.set(userId, loading)
+  return loading
+}
+
+export async function saveSettings(
+  userId: string,
+  analysis: AnalysisSettings,
+): Promise<AnalysisSettings> {
+  const next = normalizeSettings(analysis)
+  await setDoc(doc(db, 'users', userId), { analysis: next }, { merge: true })
+
+  applySettings(next)
+  settingsCache.set(userId, Promise.resolve(next))
+  return next
+}
+
 export async function getGames(userId: string, options?: ReadOptions): Promise<GameRecord[]> {
+  const thresholds = await getSettings(userId)
   const ref = collection(db, 'users', userId, 'games')
   const snapshot = await readDocs(query(ref, orderBy('playedAt', 'desc')), options)
 
@@ -120,7 +171,9 @@ export async function getGames(userId: string, options?: ReadOptions): Promise<G
   // marks are re-derived here, so moving a threshold never means re-analysing anything
   return snapshot.docs.map(d => {
     const game = { ...d.data(), id: d.id } as GameRecord
-    return game.analysis ? { ...game, analysis: normalizeAnalysis(game.analysis) } : game
+    return game.analysis
+      ? { ...game, analysis: normalizeAnalysis(game.analysis, thresholds) }
+      : game
   })
 }
 

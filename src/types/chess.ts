@@ -186,10 +186,14 @@ export type NewOpeningLine = Omit<OpeningLine, 'id'>
 export type VerdictKind =
   | 'threw-it'
   | 'lost-the-thread'
-  | 'concrete-line'
-  | 'from-level'
-  | 'from-worse'
-  | 'from-better'
+  | 'let-the-edge-go'
+  | 'missed-the-follow-up'
+  | 'careless'
+  | 'missed-the-line'
+  | 'made-it-worse'
+  | 'missed-the-defence'
+  | 'already-lost'
+  | 'missed-the-save'
 
 /**
  * The second pass's reading of one marked move, kept beside the analysis because it is

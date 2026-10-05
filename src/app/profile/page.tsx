@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import AnalysisSettingsPanel from '@/components/AnalysisSettingsPanel'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import UploadPanel from '@/components/UploadPanel'
-import { getProfile, saveProfile } from '@/lib/firestore'
+import { getProfile, getSettings, saveProfile } from '@/lib/firestore'
+import { DEFAULT_SETTINGS, type AnalysisSettings } from '@/lib/settings'
 import type { UserProfile } from '@/types/chess'
 
 function ProfileBody({ userId }: { userId: string }) {
   const [profile, setProfile] = useState<UserProfile | null>(null)
+  const [analysis, setAnalysis] = useState<AnalysisSettings>(DEFAULT_SETTINGS)
   const [chesscom, setChesscom] = useState('')
   const [lichess, setLichess] = useState('')
   const [saving, setSaving] = useState(false)
@@ -17,9 +20,10 @@ function ProfileBody({ userId }: { userId: string }) {
 
   const load = useCallback(
     () =>
-      getProfile(userId)
-        .then(loaded => {
+      Promise.all([getProfile(userId), getSettings(userId)])
+        .then(([loaded, loadedSettings]) => {
           setProfile(loaded)
+          setAnalysis(loadedSettings)
           setChesscom(loaded.chesscomUsername ?? '')
           setLichess(loaded.lichessUsername ?? '')
           setError(null)
@@ -128,6 +132,8 @@ function ProfileBody({ userId }: { userId: string }) {
           Your user id: <code className="text-zinc-400 break-all">{userId}</code>
         </p>
       </section>
+
+      <AnalysisSettingsPanel userId={userId} settings={analysis} onSaved={setAnalysis} />
 
       <UploadPanel userId={userId} profile={profile} onUploaded={() => {}} />
     </>

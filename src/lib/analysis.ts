@@ -1,19 +1,14 @@
 import { Chess } from 'chess.js'
 import { analyzePosition, MATE_SCORE } from './engine'
 import { isFault } from './review'
+import { settings, type AnalysisSettings } from './settings'
 import type { GameRecord, StoredAnalysis } from '@/types/chess'
 
 /** Annotation symbols, as used in the chess-courses annotator. */
 export type MoveTag = '??' | '?' | '?!' | '!' | '!!'
 
-export interface Thresholds {
-  /** Centipawn loss above which a move is a blunder. */
-  blunder: number
-  /** Centipawn loss above which a move is a mistake. */
-  mistake: number
-}
-
-export const DEFAULT_THRESHOLDS: Thresholds = { blunder: 300, mistake: 100 }
+/** Kept as a name for the pair; the values live on the account — see `lib/settings.ts`. */
+export type Thresholds = Pick<AnalysisSettings, 'blunder' | 'mistake' | 'winning'>
 
 /**
  * One depth for everything the app evaluates itself: a single game's analysis, the
@@ -29,24 +24,11 @@ export const DEFAULT_THRESHOLDS: Thresholds = { blunder: 300, mistake: 100 }
 export const ENGINE_DEPTH = 21
 
 /**
- * Beyond this the position is already decided, so a further slip is not the move
- * that lost the game, and below the negative of it you were already losing.
- */
-/**
- * Where a position stops being worth marking a move in.
- *
- * Three pawns down is not a game you were going to save, so a slip there explains
- * nothing; three pawns up is not a game you were going to lose. Between one pawn and
- * three you are worse but still playing, and a mistake there is the one worth having.
- */
-const DECIDED = 300
-
-/**
  * The chess-courses rule, which is context-sensitive by design:
  *
- * - `cpBefore > -DECIDED` — no blunder mark when you were already lost; nothing
+ * - `cpBefore > -winning` — no blunder mark when you were already lost; nothing
  *   left to throw away.
- * - `cpAfter < DECIDED` — no blunder mark when you are still clearly winning after
+ * - `cpAfter < winning` — no blunder mark when you are still clearly winning after
  *   it; the game is not in danger.
  * - Otherwise a big loss is only `?!`: careless, but the context softens it.
  *
@@ -57,10 +39,11 @@ export function classifyMove(
   cpBefore: number,
   cpAfter: number,
   wasBestMove: boolean,
-  thresholds: Thresholds = DEFAULT_THRESHOLDS,
+  thresholds: Thresholds = settings(),
 ): MoveTag {
   const cpLoss = cpBefore - cpAfter
-  const stillInPlay = cpAfter < DECIDED && cpBefore > -DECIDED
+  // the same cut that makes a position won or lost: past it there is nothing to throw
+  const stillInPlay = cpAfter < thresholds.winning && cpBefore > -thresholds.winning
 
   if (cpLoss > thresholds.blunder && stillInPlay) return '??'
   if (cpLoss > thresholds.mistake && stillInPlay) return '?'
@@ -188,11 +171,14 @@ export async function analyzeGame(game: GameRecord, options: AnalyzeOptions): Pr
  * Note `annotatedPgn` is NOT rebuilt here — it is a copy of the game, written once, and
  * carries the marks of the analysis that produced it until the game is analysed again.
  */
-export function normalizeAnalysis(analysis: StoredAnalysis): StoredAnalysis {
+export function normalizeAnalysis(
+  analysis: StoredAnalysis,
+  thresholds: Thresholds = settings(),
+): StoredAnalysis {
   const moves = analysis.moves.map(move => ({
     ...move,
     cpLoss: move.cpBefore - move.cpAfter,
-    tag: classifyMove(move.cpBefore, move.cpAfter, move.tag === '!!'),
+    tag: classifyMove(move.cpBefore, move.cpAfter, move.tag === '!!', thresholds),
   }))
 
   return {

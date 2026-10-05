@@ -15,14 +15,17 @@ import { terminateEngine } from '@/lib/engine'
 import { dismissVerdict, saveAnalysis, saveVerdicts } from '@/lib/firestore'
 import { formatEval, isFault } from '@/lib/review'
 import {
-  VERDICT_BADGE,
-  VERDICT_HINT,
+  STANDING_BADGE,
+  STANDING_LABEL,
   VERDICT_LABEL,
+  breadthOf,
   imbalanceAt,
   judgeGame,
   materialGlyphs,
   materialLabel,
   pendingPlies,
+  standingOf,
+  verdictHint,
   verdictsOf,
 } from '@/lib/verdict'
 import type { Color, GameRecord, MoveVerdict } from '@/types/chess'
@@ -262,6 +265,8 @@ function VerdictRow({
   const [open, setOpen] = useState(false)
   const dismissed = verdict?.dismissed === true
   const imbalance = verdict ? imbalanceAt(verdict) : undefined
+  const standing = standingOf(move.cpBefore)
+  const breadth = breadthOf(verdict?.holds ?? 0)
 
   return (
     <div className={`flex items-center gap-3 py-1.5 flex-wrap ${dismissed ? 'opacity-40' : ''}`}>
@@ -277,21 +282,25 @@ function VerdictRow({
       {verdict ? (
         <>
           <span
-            title={VERDICT_HINT[verdict.verdict]}
+            title={verdictHint(standing, breadth)}
             className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
-              VERDICT_BADGE[verdict.verdict]
+              STANDING_BADGE[standing]
             }`}
           >
             {VERDICT_LABEL[verdict.verdict]}
           </span>
 
+          {/* the two axes the descriptor is the name of, so the badge can be checked */}
+          <span className="text-xs text-zinc-500">
+            {STANDING_LABEL[standing]} · {breadth}{' '}
+            <span className="text-zinc-600">
+              {verdict.holds}/{verdict.looked}
+            </span>
+          </span>
+
           {/* figurines to scan, the sentence on hover */}
           <span className="text-xs text-zinc-400" title={materialLabel(imbalance)}>
             {materialGlyphs(imbalance)}
-          </span>
-
-          <span className="text-xs text-zinc-600">
-            {verdict.holds} of {verdict.looked} held
           </span>
 
           {(verdict.candidates?.length ?? 0) > 0 && (

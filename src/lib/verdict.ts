@@ -1,7 +1,8 @@
 import { Chess } from 'chess.js'
-import { ENGINE_DEPTH, classifyMove } from './analysis'
+import { ENGINE_DEPTH } from './analysis'
 import { analyzeLines } from './engine'
 import { isFault } from './review'
+import { settings } from './settings'
 import type { GameRecord, MoveVerdict, VerdictKind } from '@/types/chess'
 
 /**
@@ -29,60 +30,41 @@ import type { GameRecord, MoveVerdict, VerdictKind } from '@/types/chess'
 const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
 
 /**
- * The two cuts, read symmetrically from your own side:
+ * Where you stood before the move, from your own side.
  *
  * ```
- *   -300 .. -100   from worse    you were defending
- *   -100 ..  +100  from level    nothing in it either way
- *   +100 ..  +300  from better   an edge, not a win
- *   +300 ..        won           there was something here to throw
+ *   losing   <= -winning
+ *   worse     -winning .. -level
+ *   level        -level .. +level
+ *   better       +level .. +winning
+ *   winning   >= +winning
  * ```
- *
- * Below -300 a move is not marked at all — see `DECIDED` — so `from worse` covers the
- * whole band where you are worse and still playing.
- *
- * `WINNING` is three pawns rather than two because "threw it" and "lost the thread" are
- * claims about a *won* position, and +2.2 is an edge. Letting them start at two pawns
- * made them the commonest verdicts and the least informative.
  */
-export const WINNING = 300
+export type Standing = 'losing' | 'worse' | 'level' | 'better' | 'winning'
 
-/** A pawn either way. Beyond it you are not playing an even game. */
-export const LEVEL = 100
+/** Worst first, so two standings can be compared. */
+export const STANDINGS: Standing[] = ['losing', 'worse', 'level', 'better', 'winning']
 
-/**
- * How far the score may run ahead of the material before the advantage stops being the
- * material. Two pawns up scoring +2.6 is a material advantage; one pawn up scoring +6.0
- * is a rook ending you still have to win.
- */
-export const MATERIAL_SLACK = 150
+export function standingOf(cp: number, config = settings()): Standing {
+  if (cp >= config.winning) return 'winning'
+  if (cp > config.level) return 'better'
+  if (cp >= -config.level) return 'level'
+  if (cp > -config.winning) return 'worse'
+  return 'losing'
+}
 
 /**
- * Material that is decisive on its own, whatever else the score is made of.
+ * What the position asked of you: a line to find, or a choice to get right.
  *
- * A piece up is a piece up: the attack that takes the score from +3 to +6.8 is a bonus,
- * and losing it is still losing something you were holding. Without this, every
- * advantage with an attack on top of it read as positional — including the one game in
- * this data that was unarguably thrown.
+ * These are the two things the old single label was trying to say at once, which is why
+ * it read as a muddle — "concrete line" answered how many moves held and "from better"
+ * answered where you stood, and they are not alternatives to each other.
  */
-export const DECISIVE_MATERIAL = 3
+export type Breadth = 'concrete' | 'stable'
 
-/**
- * How few moves may hold before the position counts as having a line rather than a plan.
- *
- * Two, not one: the same idea often has two move orders, or a check that can be given
- * from either of two squares, and a position with one answer written two ways is still a
- * position with one answer.
- */
-export const NARROW = 2
-
-/**
- * How many candidate moves to ask the engine for.
- *
- * The question is only "one answer or several", so five is plenty and each extra line
- * costs search. When all five hold, `holds` is reported as five and read as "at least".
- */
-export const LINES = 5
+export function breadthOf(holds: number, config = settings()): Breadth {
+  return holds <= config.narrow ? 'concrete' : 'stable'
+}
 
 /** Your material minus theirs, in pawns, in a position. */
 export function materialBalance(fen: string, you: 'white' | 'black'): number {
@@ -214,82 +196,106 @@ export function materialLabel(by: Record<string, number> | undefined): string {
 }
 
 /**
- * How many of the engine's candidates would not have been a fault.
+ * Whether a candidate keeps you where you were.
+ *
+ * Not "within a mistake of the best move" — that asked a question about centipawns when
+ * the question is about bands. A move holds when it does not drop you out of your
+ * standing: from a won or better position it must leave you at least better, from level
+ * at least level, from worse at least worse. Winning and better share a floor because
+ * coming down from +6 to +2 is not losing anything you were holding; it is still a
+ * better game.
  *
  * Measured against the best line of the *same* search, never against the stored
- * `cpBefore`. A MultiPV search prunes less than a plain one and comes back with
- * different numbers for the same position — comparing across the two would be the depth
- * trap in another costume. Within one search the lines are all comparable, which is the
- * whole reason for asking this way.
+ * `cpBefore`. A MultiPV search prunes less than a plain one and comes back with different
+ * numbers for the same position — comparing across the two would be the depth trap in
+ * another costume.
  */
-export function countHolding(scores: number[]): number {
-  if (scores.length === 0) return 0
+export function holdsFrom(best: number, score: number, config = settings()): boolean {
+  const standing = standingOf(best, config)
+  const floor: Standing = standing === 'winning' ? 'better' : standing
 
-  const best = scores[0]
-  return scores.filter(score => !isFault(classifyMove(best, score, false))).length
+  return STANDINGS.indexOf(standingOf(score, config)) >= STANDINGS.indexOf(floor)
+}
+
+/** How many of the engine's candidates held. Never zero: the best move always holds. */
+export function countHolding(scores: number[], config = settings()): number {
+  if (scores.length === 0) return 0
+  return scores.filter(score => holdsFrom(scores[0], score, config)).length
 }
 
 /**
- * What kind of mistake this was.
+ * The descriptor, read off the two axes.
  *
- * The order matters, and "hardly anything held" comes first whether or not you were
- * winning. A position with one line in it is a position where the mistake was failing to
- * find that line — that is true at +6 and it is true at level, and it is a different
- * failure from picking the worst of five playable moves.
+ * One label could not carry both and the panel read as a muddle because of it. Now the
+ * standing says how much was at stake and the breadth says what the position asked for,
+ * and the word in the badge is simply the name of that pair. Each column is a different
+ * failure with a different cure: a concrete position was a line to find, a stable one was
+ * a choice to get right.
  */
-export function readVerdict(input: {
-  cpBefore: number
-  material: number
-  holds: number
-}): VerdictKind {
-  if (input.holds <= NARROW) return 'concrete-line'
+export const DESCRIPTOR: Record<Standing, Record<Breadth, VerdictKind>> = {
+  winning: { concrete: 'lost-the-thread', stable: 'threw-it' },
+  better: { concrete: 'missed-the-follow-up', stable: 'let-the-edge-go' },
+  level: { concrete: 'missed-the-line', stable: 'careless' },
+  worse: { concrete: 'missed-the-defence', stable: 'made-it-worse' },
+  losing: { concrete: 'missed-the-save', stable: 'already-lost' },
+}
 
-  if (input.cpBefore < WINNING) {
-    if (input.cpBefore < -LEVEL) return 'from-worse'
-    if (input.cpBefore > LEVEL) return 'from-better'
-    return 'from-level'
-  }
-
-  const material = input.material >= DECISIVE_MATERIAL
-  const backed = input.cpBefore - input.material * 100 <= MATERIAL_SLACK
-
-  return material || backed ? 'threw-it' : 'lost-the-thread'
+export function readVerdict(
+  input: { cpBefore: number; holds: number },
+  config = settings(),
+): VerdictKind {
+  return DESCRIPTOR[standingOf(input.cpBefore, config)][breadthOf(input.holds, config)]
 }
 
 export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'threw-it': 'threw it',
   'lost-the-thread': 'lost the thread',
-  'concrete-line': 'concrete line',
-  'from-level': 'from level',
-  'from-worse': 'from worse',
-  'from-better': 'from better',
+  'let-the-edge-go': 'let the edge go',
+  'missed-the-follow-up': 'missed the follow-up',
+  careless: 'a careless move',
+  'missed-the-line': 'missed the line',
+  'made-it-worse': 'made it worse',
+  'missed-the-defence': 'missed the defence',
+  'already-lost': 'already lost',
+  'missed-the-save': 'missed the save',
 }
 
-/** What each one means. The badge is short; this is the sentence behind it. */
-export const VERDICT_HINT: Record<VerdictKind, string> = {
-  'threw-it': 'You were materially ahead and more than one move kept it.',
-  'lost-the-thread':
-    'The advantage was the position rather than material, and more than one move kept it. A plan, not a shot.',
-  'concrete-line':
-    'One or two of the moves looked at held. The position had a line in it to find, not a plan to follow.',
-  'from-level':
-    'Within a pawn of even, so nothing was won here to lose, and more than one move was playable.',
-  'from-worse':
-    'You were already worse before this move — defending, not playing an even game — and more than one move was playable.',
-  'from-better':
-    'An edge rather than a win, between one pawn and three, and more than one move kept it.',
+export const STANDING_LABEL: Record<Standing, string> = {
+  winning: 'winning',
+  better: 'better',
+  level: 'level',
+  worse: 'worse',
+  losing: 'losing',
 }
 
-/** Following the app: red is a thrown win, violet is the engine's own finding. */
-export const VERDICT_BADGE: Record<VerdictKind, string> = {
-  'threw-it': 'bg-red-500/15 text-red-300 border-red-500/30',
-  'lost-the-thread': 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-  'concrete-line': 'bg-violet-500/15 text-violet-300 border-violet-500/30',
-  'from-level': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
-  // the same muted treatment for all three: they agree nothing was won here, and where
-  // you stood is the word rather than the colour
-  'from-worse': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
-  'from-better': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
+const STANDING_HINT: Record<Standing, string> = {
+  winning: 'You were winning.',
+  better: 'You had an edge rather than a win.',
+  level: 'There was nothing in it either way.',
+  worse: 'You were already defending.',
+  losing: 'The game was already gone.',
+}
+
+const BREADTH_HINT: Record<Breadth, string> = {
+  concrete: 'Only a move or two held, so this was a line to find.',
+  stable: 'Several moves held, so this was a choice to get right.',
+}
+
+/** The sentence behind a badge, composed from the pair it is the name of. */
+export function verdictHint(standing: Standing, breadth: Breadth): string {
+  return `${STANDING_HINT[standing]} ${BREADTH_HINT[breadth]}`
+}
+
+/**
+ * Coloured by standing, which is the axis that says how much was at stake. The breadth
+ * is a word beside it — two hues would be two things to decode on a row you scan.
+ */
+export const STANDING_BADGE: Record<Standing, string> = {
+  winning: 'bg-red-500/15 text-red-300 border-red-500/30',
+  better: 'bg-amber-500/15 text-amber-200 border-amber-500/30',
+  level: 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
+  worse: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
+  losing: 'bg-zinc-800 text-zinc-500 border-zinc-700',
 }
 
 /** The plies this pass has something to say about: the ones the engine marked. */
@@ -311,7 +317,7 @@ export function judgeable(game: GameRecord): number[] {
  * `cpBefore` lives on the analysed move rather than the verdict, so it is looked up; a
  * verdict whose move has gone keeps whatever it was last given.
  */
-export function verdictsOf(game: GameRecord): Record<string, MoveVerdict> {
+export function verdictsOf(game: GameRecord, config = settings()): Record<string, MoveVerdict> {
   const stored = game.verdicts ?? {}
   const analysed = new Map((game.analysis?.moves ?? []).map(move => [move.ply, move]))
 
@@ -320,15 +326,25 @@ export function verdictsOf(game: GameRecord): Record<string, MoveVerdict> {
       const move = analysed.get(verdict.ply)
       if (!move) return [ply, verdict]
 
+      /*
+        The count is re-derived too, from the candidate scores the search stored. It is a
+        reading of where the bands fall, and the bands are a setting — a verdict judged
+        under one `level` and shown under another would be two different answers wearing
+        one number. Older verdicts kept no candidates and keep the count they were given.
+      */
+      const scores = verdict.candidates?.map(candidate => candidate.cp)
+      const holds = scores ? countHolding(scores, config) : verdict.holds
+
       return [
         ply,
         {
           ...verdict,
-          verdict: readVerdict({
-            cpBefore: move.cpBefore,
-            material: verdict.material,
-            holds: verdict.holds,
-          }),
+          holds,
+          candidates: verdict.candidates?.map(candidate => ({
+            ...candidate,
+            holds: holdsFrom(verdict.candidates![0].cp, candidate.cp, config),
+          })),
+          verdict: readVerdict({ cpBefore: move.cpBefore, holds }, config),
         },
       ]
     }),
@@ -366,7 +382,8 @@ export async function judgeGame(
     onProgress?: (done: number, total: number) => void
   } = {},
 ): Promise<Record<string, MoveVerdict>> {
-  const stored = verdictsOf(game)
+  const config = settings()
+  const stored = verdictsOf(game, config)
   const marked = (game.analysis?.moves ?? []).filter(move => isFault(move.tag))
   const pending = options.force ? marked : marked.filter(move => !stored[String(move.ply)])
 
@@ -389,11 +406,11 @@ export async function judgeGame(
     if (!reached) continue
 
     const fen = chess.fen()
-    const candidates = await analyzeLines(fen, ENGINE_DEPTH, LINES)
+    const candidates = await analyzeLines(fen, ENGINE_DEPTH, config.lines)
     const edge = materialEdge(fen, game.color)
     const material = edge.pawns
     const scores = candidates.moves.map(candidate => candidate.cp)
-    const holds = countHolding(scores)
+    const holds = countHolding(scores, config)
 
     /*
       The candidates are kept, not just counted. The search has already done the work of
@@ -413,11 +430,7 @@ export async function judgeGame(
       } catch {
         // an unreadable move keeps its coordinates rather than dropping the line
       }
-      return {
-        san,
-        cp: candidate.cp,
-        holds: !isFault(classifyMove(best, candidate.cp, false)),
-      }
+      return { san, cp: candidate.cp, holds: holdsFrom(best, candidate.cp, config) }
     })
 
     const reading: MoveVerdict = {
@@ -429,7 +442,7 @@ export async function judgeGame(
       best: candidates.moves[0].cp,
       holds,
       looked: candidates.moves.length,
-      verdict: readVerdict({ cpBefore: move.cpBefore, material, holds }),
+      verdict: readVerdict({ cpBefore: move.cpBefore, holds }, config),
       depth: candidates.depth,
       judgedAt: Date.now(),
     }
