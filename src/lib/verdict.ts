@@ -287,7 +287,7 @@ export async function judgeGame(
     const material = edge.pawns
     const holds = countHolding(candidates.moves.map(candidate => candidate.cp))
 
-    judged[String(move.ply)] = {
+    const reading: MoveVerdict = {
       ply: move.ply,
       material,
       materialBy: edge.by,
@@ -297,9 +297,16 @@ export async function judgeGame(
       verdict: readVerdict({ cpBefore: move.cpBefore, material, holds }),
       depth: candidates.depth,
       judgedAt: Date.now(),
-      // a re-read refreshes the reading; it does not argue with you about it
-      dismissed: stored[String(move.ply)]?.dismissed,
     }
+
+    /*
+      A re-read refreshes the reading; it does not argue with you about it. The flag is
+      only added when it is true: Firestore rejects an `undefined` field value outright,
+      so carrying a missing one forward fails the whole write.
+    */
+    if (stored[String(move.ply)]?.dismissed) reading.dismissed = true
+
+    judged[String(move.ply)] = reading
 
     options.onProgress?.(index + 1, pending.length)
   }

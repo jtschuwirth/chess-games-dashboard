@@ -437,6 +437,25 @@ src/
   `analyzeLines(fen, depth, count)` is the entry point for both engines, `analyzePosition`
   is the one-line reading of it, and the cache records how many lines were asked for so a
   position with three legal moves does not look uncached for ever.
+- **A multi-line search clears the hash first, and that is what makes a verdict
+  reproducible.** The second pass turns small differences between candidates into a
+  category, and a hash carrying the rest of the game moves those differences: one position
+  in this data came back 5 of 5 holding on a cold engine and 2 of 5 after the first pass
+  had swept the game — a different verdict for the same move, decided by what happened to
+  run before it. `ucinewgame` before each MultiPV search makes every reading depend on the
+  position alone. A single-line search keeps its hash, where the answer is one number and
+  the first pass depends on the speed. It also means a stored `holds` from before this is
+  not comparable with one after it, which is what the re-read button is for.
+- **`holds` is at its least certain where the candidates cluster.** The count asks whether
+  a move loses more than a mistake's worth, so five moves sitting within a few centipawns
+  of the threshold all flip together: a move at +1.12 against four at ~0.0 is a 110cp gap
+  against a 100cp rule, and a 15cp wobble takes `holds` from 1 to 5. The reading is sound
+  where the field is spread and brittle where it is tight, which is one of the things the
+  `×` is for.
+- **Nothing written to Firestore may be `undefined`.** It rejects the whole document, not
+  the field — so carrying a dismissal forward through a re-read as
+  `dismissed: previous?.dismissed` failed every save with "Unsupported field value". The
+  flag is added only when it is true. Optional fields are set, never assigned undefined.
 - **The second pass runs on the marked moves only, and that is the whole reason it is
   affordable.** A MultiPV search costs five times a plain one — 6.2s against 1.3s at depth
   21, measured on real positions — so running it over a whole game would be four minutes

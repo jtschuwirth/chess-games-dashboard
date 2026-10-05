@@ -158,6 +158,19 @@ export async function analyzeOnServer(
     }
 
     send(instance, `setoption name MultiPV value ${count}`)
+    /*
+    A multi-line search starts from a cleared hash. The second pass turns small
+    differences between candidates into a category, and a hash carrying the rest of the
+    game moves those differences: the same position came back 5-of-5 cold and 2-of-5
+    after the first pass had swept the game, which is a different verdict for the same
+    move. Reproducibility is worth more here than the reuse, and each judged position is
+    unrelated to the last anyway. A single-line search keeps the hash, where the answer is
+    one number and the whole first pass depends on the speed.
+    */
+    if (count > 1) {
+      send(instance, 'ucinewgame')
+      send(instance, 'isready')
+    }
     send(instance, `position fen ${fen}`)
     send(instance, `go depth ${depth}`)
   })
