@@ -33,7 +33,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
    The plan says what it has been worth — your rating going in against where it stands
-   now — and each week what you were rated going into it, both read from the rating
+   now — and every week says the same over its own seven days, read from the rating
    history with nothing to press. Weeks fold, and more can be added as the plan runs on.
 8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
@@ -642,18 +642,26 @@ src/
   keeps one rating per time class, so `TRACKED_POOLS` holds `chesscom:rapid`, `chesscom:blitz` and
   `lichess:classical` rather than one number. Uploads and engine games are left out, as everywhere
   else.
-- **A plan says what it has been worth, start against now.** The start is your close the
-  day before day one, the same figure a week reads; the end stops at the plan's own last
-  day once that day is behind you, because a plan that ran in March answers for March and
+- **A plan and each of its weeks are measured the same way, start against now.** The
+  start is your close the day before the first day; the end stops at the stretch's own last
+  day once that day is behind you, because a week that ran in March answers for March and
   not for everything played since. While it is still running the end is simply today. Both
   ends are read from the history rather than the clock — `ratingOn` carries the last close
   forward, so asking for today and asking for the history's own end give the same number,
-  and using the history keeps `Date.now()` out of a render. `planRatingWindow` picks the
-  two days and is the only thing that decides this; the panel reads ratings on them.
-- **A plan week reads its rating; it does not keep one.** It is the close of the day before day
-  one, straight out of the history. It used to be stored on the week and filled by a button, which
-  meant a figure that could be out of date and a button that had to be remembered — both
-  unnecessary once the history exists.
+  and using the history keeps `Date.now()` out of a render. `ratingWindow` picks the two
+  days and `planRatingWindow` / `weekRatingWindow` are the two spans it is asked for; one
+  table renders both, because a week answering the question differently from the plan above
+  it is the kind of inconsistency you have to stop and work out. It also makes the weeks
+  join up: a finished week's end is the close the next week reads as its start, so the
+  plan's whole movement is the sum of theirs.
+- **A week still ahead of you shows no rating at all.** Read from the history alone it would
+  show today's number at both ends and a change of zero — true, and reading as a measurement
+  of something that has not happened. The plan page already works out which week today falls
+  in, so the card is given that rather than reaching for the clock itself.
+- **A plan week reads its rating; it does not keep one.** It used to be stored on the week and
+  filled by a button, which meant a figure that could be out of date and a button that had to be
+  remembered — both unnecessary once the history exists. It also showed only the figure going in
+  and what the *previous* week had done, so every week reported its neighbour's result.
 - **One pool at a time, full height.** Three stacked strips of 48 pixels each was three charts
   too small to read, and stacking them invited the question of whether the heights compared, which
   they cannot — rapid at 1690 and blitz at 1244 share no scale. Chips switch pools, the chart gets

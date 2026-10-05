@@ -91,7 +91,7 @@ export default function PlanWeekCard({
 
       {open && (
         <div className="px-3 pb-3 flex flex-col gap-3">
-          <WeekRatings plan={plan} index={index} history={history} />
+          <WeekRatings plan={plan} index={index} today={today} history={history} />
 
           {week.days.map((day, dayIndex) => (
             <PlanDayCard

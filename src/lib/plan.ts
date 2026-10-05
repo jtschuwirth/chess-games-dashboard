@@ -138,30 +138,63 @@ export function weekLabel(week: PlanWeek, index: number): string {
   return week.name.trim() || `week ${index + 1}`
 }
 
-/**
- * The two days a plan's rating is read on: what you were rated going into it, and where
- * it stands now.
- *
- * "Now" stops at the plan's own last day once that day is behind you — a plan that ran in
- * March answers for March, not for everything you have played since. While it is still
- * running, the end is simply the last day anything is known about, which is today's
- * rating: the history carries the last close forward, so asking for today and asking for
- * its own end give the same number, and using its end keeps the clock out of a render.
- *
- * Null when the plan has no days, or when nothing is known yet.
- */
-export function planRatingWindow(
-  plan: Pick<StudyPlan, 'startDate' | 'weeks'>,
-  lastKnownDay: string | undefined,
-): { start: string; end: string; over: boolean } | null {
-  const length = plan.weeks.reduce((count, week) => count + week.days.length, 0)
-  if (!lastKnownDay || length === 0) return null
+export interface RatingWindow {
+  /** The day the stretch is measured from: the close before its first day. */
+  start: string
+  /** The day it is measured to. */
+  end: string
+  /** Whether the stretch is behind you, so the end is its own rather than today's. */
+  over: boolean
+}
 
-  const start = dayKey(addDays(dateAt(plan, 0), -1))
-  const finish = dayKey(dateAt(plan, length - 1))
+/**
+ * The two days a stretch of a plan is read between: what you were rated going into it,
+ * and where it stands now.
+ *
+ * "Now" stops at the stretch's own last day once that day is behind you — a week that ran
+ * in March answers for March, not for everything played since, and its end is therefore
+ * the same number the week after it reads as its start. While a stretch is still running
+ * the end is the last day anything is known about, which is today's rating: the history
+ * carries the last close forward, so asking for today and asking for its own end give the
+ * same number, and using its end keeps the clock out of a render.
+ *
+ * Null when nothing is known yet.
+ */
+function ratingWindow(
+  from: number,
+  to: number,
+  lastKnownDay: string | undefined,
+): RatingWindow | null {
+  if (!lastKnownDay) return null
+
+  const start = dayKey(addDays(from, -1))
+  const finish = dayKey(to)
   const over = finish < lastKnownDay
 
   return { start, end: over ? finish : lastKnownDay, over }
+}
+
+/** The whole plan, day one to its last day. Null when it has no days. */
+export function planRatingWindow(
+  plan: Pick<StudyPlan, 'startDate' | 'weeks'>,
+  lastKnownDay: string | undefined,
+): RatingWindow | null {
+  const length = plan.weeks.reduce((count, week) => count + week.days.length, 0)
+  if (length === 0) return null
+
+  return ratingWindow(dateAt(plan, 0), dateAt(plan, length - 1), lastKnownDay)
+}
+
+/** One week of it, on the same rule, so a week's end is the next week's start. */
+export function weekRatingWindow(
+  plan: Pick<StudyPlan, 'startDate' | 'weeks'>,
+  weekIndex: number,
+  lastKnownDay: string | undefined,
+): RatingWindow | null {
+  const days = plan.weeks[weekIndex]?.days.length ?? 0
+  if (days === 0) return null
+
+  return ratingWindow(dayDate(plan, weekIndex, 0), dayDate(plan, weekIndex, days - 1), lastKnownDay)
 }
 
 /* ------------------------------------------------------------------ progress */
