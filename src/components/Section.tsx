@@ -23,26 +23,41 @@ import { useSyncExternalStore } from 'react'
  */
 const KEY = 'dashboard-folded'
 
-let folded: Set<string> | null = null
+/**
+ * What each panel has been set to, by id. A panel with no entry has never been touched
+ * and falls back to its own default.
+ *
+ * It was a plain set of the folded ids, which could only say "folded", and so could not
+ * express a panel that starts folded and has been opened. The old array is converted on
+ * read rather than migrated — the same habit as every stored shape here — and the first
+ * fold rewrites the key.
+ */
+let state: Record<string, boolean> | null = null
 const listeners = new Set<() => void>()
 
-function read(): Set<string> {
-  if (folded) return folded
+function read(): Record<string, boolean> {
+  if (state) return state
 
-  folded = new Set()
+  state = {}
   try {
     const stored = window.localStorage.getItem(KEY)
-    if (stored) folded = new Set(JSON.parse(stored) as string[])
+    const parsed: unknown = stored ? JSON.parse(stored) : null
+
+    if (Array.isArray(parsed)) {
+      for (const id of parsed) if (typeof id === 'string') state[id] = true
+    } else if (parsed && typeof parsed === 'object') {
+      state = parsed as Record<string, boolean>
+    }
   } catch {
     // private window, blocked storage, or something else wrote nonsense under the key
   }
-  return folded
+  return state
 }
 
-function write(next: Set<string>): void {
-  folded = next
+function write(next: Record<string, boolean>): void {
+  state = next
   try {
-    window.localStorage.setItem(KEY, JSON.stringify([...next]))
+    window.localStorage.setItem(KEY, JSON.stringify(next))
   } catch {
     // the choice just will not outlive the tab
   }
@@ -54,28 +69,23 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener)
 }
 
-function toggleId(id: string): void {
-  const next = new Set(read())
-  if (next.has(id)) next.delete(id)
-  else next.add(id)
-  write(next)
-}
-
 /**
  * Whether this panel is folded, and how to turn it over.
  *
- * The snapshot is a boolean rather than the Set, which is what keeps
- * `useSyncExternalStore` stable: the Set is only replaced on a toggle, and a fresh
- * object out of the snapshot would loop for ever.
+ * `startFolded` is what a panel does before anyone has an opinion about it. Most start
+ * open; one that is there for the times you need it rather than for reading starts shut.
+ *
+ * The snapshot is a boolean rather than the record, which is what keeps
+ * `useSyncExternalStore` stable: a fresh object out of the snapshot would loop for ever.
  */
-export function useFolded(id: string): [boolean, () => void] {
+export function useFolded(id: string, startFolded = false): [boolean, () => void] {
   const isFolded = useSyncExternalStore(
     subscribe,
-    () => (typeof window === 'undefined' ? false : read().has(id)),
-    () => false,
+    () => (typeof window === 'undefined' ? startFolded : (read()[id] ?? startFolded)),
+    () => startFolded,
   )
 
-  return [isFolded, () => toggleId(id)]
+  return [isFolded, () => write({ ...read(), [id]: !isFolded })]
 }
 
 /** The `+`/`−` itself, so every panel's reads and behaves the same. */
@@ -122,6 +132,7 @@ export default function Panel({
   title,
   meta,
   actions,
+  startFolded,
   children,
 }: {
   /** Stable key for the remembered fold state. */
@@ -129,9 +140,11 @@ export default function Panel({
   title: string
   meta?: React.ReactNode
   actions?: React.ReactNode
+  /** What it does until someone folds or opens it themselves. */
+  startFolded?: boolean
   children: React.ReactNode
 }) {
-  const [folded, toggle] = useFolded(id)
+  const [folded, toggle] = useFolded(id, startFolded)
 
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl">

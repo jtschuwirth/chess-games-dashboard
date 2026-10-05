@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
-import SyncPanel from '@/components/SyncPanel'
 import UploadPanel from '@/components/UploadPanel'
 import { getProfile, saveProfile } from '@/lib/firestore'
 import type { UserProfile } from '@/types/chess'
@@ -14,7 +13,6 @@ function ProfileBody({ userId }: { userId: string }) {
   const [lichess, setLichess] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
-  const [addedCount, setAddedCount] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(
@@ -114,11 +112,9 @@ function ProfileBody({ userId }: { userId: string }) {
           </button>
           {saved && <span className="text-xs text-emerald-400">Saved</span>}
           {error && <span className="text-xs text-red-400">{error}</span>}
-          {profile.lastSyncAt && (
-            <span className="text-xs text-zinc-500 ml-auto">
-              Last sync {new Date(profile.lastSyncAt).toLocaleString()}
-            </span>
-          )}
+          <Link href="/dashboard" className="text-xs text-zinc-500 hover:text-zinc-200 ml-auto">
+            Sync games →
+          </Link>
         </div>
       </section>
 
@@ -133,27 +129,11 @@ function ProfileBody({ userId }: { userId: string }) {
         </p>
       </section>
 
-      <SyncPanel
-        userId={userId}
-        profile={profile}
-        onSynced={added => setAddedCount(added.length)}
-      />
-
       <UploadPanel userId={userId} profile={profile} onUploaded={() => {}} />
-
-      {addedCount !== null && (
-        <p className="text-sm text-zinc-400">
-          Head to the{' '}
-          <Link href="/dashboard" className="underline text-zinc-200">
-            dashboard
-          </Link>{' '}
-          to see the numbers.
-        </p>
-      )}
     </>
   )
 }
 
 export default function ProfilePage() {
-  return <PageShell title="Profile & Sync">{user => <ProfileBody userId={user.uid} />}</PageShell>
+  return <PageShell title="Profile">{user => <ProfileBody userId={user.uid} />}</PageShell>
 }

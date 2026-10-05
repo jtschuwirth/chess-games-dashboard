@@ -6,8 +6,8 @@ import { VERSION } from '@/lib/version'
 const NAV_ITEMS = [
   {
     icon: '🔗',
-    title: 'Profile & Sync',
-    description: 'Link your chess.com and lichess accounts, pull in games',
+    title: 'Profile',
+    description: 'Link your chess.com and lichess accounts, upload a PGN',
     href: '/profile',
   },
   {

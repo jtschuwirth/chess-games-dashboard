@@ -338,7 +338,7 @@ export default function PlanDayCard({
               <p className="text-xs text-zinc-600">
                 Nothing played on {formatDay(date)}.{' '}
                 <Link
-                  href="/profile"
+                  href="/dashboard"
                   className="underline decoration-zinc-700 hover:decoration-zinc-400"
                 >
                   Sync your games

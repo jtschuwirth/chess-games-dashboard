@@ -1,8 +1,11 @@
 'use client'
 
 import { useState } from 'react'
+import Link from 'next/link'
 import Chip from '@/components/Chip'
 import { Spinner } from '@/components/PageShell'
+import Panel from '@/components/Section'
+import { formatDay } from '@/lib/days'
 import { saveGames, saveProfile } from '@/lib/firestore'
 import { fetchProviderGames } from '@/lib/sync'
 import { SOURCE_LABEL, TIME_CLASSES } from '@/types/chess'
@@ -15,13 +18,34 @@ function toggle<T>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter(v => v !== value) : [...values, value]
 }
 
+/**
+ * "Sun 5 Oct, 14:20", spelled out rather than handed to `toLocaleString`, which renders
+ * differently on the server and in the browser.
+ */
+function formatMoment(ms: number): string {
+  const date = new Date(ms)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${formatDay(ms)}, ${hours}:${minutes}`
+}
+
+/**
+ * Bringing games in, where you notice they are missing.
+ *
+ * It lived on the profile page, which meant leaving the dashboard, syncing, and coming
+ * back — for the one thing you do most often. It starts folded because it is a control
+ * you reach for rather than something to read, and the line it folds down to is the one
+ * question you actually have: when did this last run.
+ */
 export default function SyncPanel({
   userId,
   profile,
+  startFolded,
   onSynced,
 }: {
   userId: string
   profile: UserProfile
+  startFolded?: boolean
   onSynced: (added: GameRecord[]) => void
 }) {
   const usernames: Record<ProviderSource, string | null> = {
@@ -76,15 +100,12 @@ export default function SyncPanel({
   }
 
   return (
-    <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-5">
-      <div>
-        <h2 className="font-semibold">Sync games</h2>
-        <p className="text-sm text-zinc-500 mt-0.5">
-          Pulls your most recent games. Anything already stored is rewritten with fresh data, so
-          re-syncing also backfills fields added since the last sync.
-        </p>
-      </div>
-
+    <Panel
+      id="sync"
+      title="Sync games"
+      startFolded={startFolded}
+      meta={profile.lastSyncAt ? `last run ${formatMoment(profile.lastSyncAt)}` : 'never run'}
+    >
       <div className="flex flex-col gap-2">
         <span className="text-xs uppercase tracking-wide text-zinc-500">Accounts</span>
         <div className="flex gap-2 flex-wrap">
@@ -135,13 +156,19 @@ export default function SyncPanel({
         <button
           onClick={handleSync}
           disabled={!canSync}
+          title="Games already stored are rewritten, so a re-sync also backfills anything added since"
           className="px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {running ? 'Syncing…' : 'Sync games'}
         </button>
         {running && <Spinner size="w-4 h-4" />}
         {!running && active.length === 0 && (
-          <span className="text-xs text-zinc-500">Save a username above first.</span>
+          <span className="text-xs text-zinc-500">
+            <Link href="/profile" className="underline text-zinc-300">
+              Link an account
+            </Link>{' '}
+            first.
+          </span>
         )}
       </div>
 
@@ -154,6 +181,6 @@ export default function SyncPanel({
           ))}
         </ul>
       )}
-    </section>
+    </Panel>
   )
 }

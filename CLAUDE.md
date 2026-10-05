@@ -7,11 +7,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
 
 ## Core User Flow
 1. Sign in with Google (`/`)
-2. `/profile` — save chess.com / lichess usernames, then sync the last N games in the selected time
-   formats
+2. `/profile` — save chess.com / lichess usernames, and paste in a PGN to study. Syncing
+   itself lives on the dashboard.
 3. `/openings` — paste an opening line, name it, optionally tie it to a colour; a line that
    continues an existing one nests under it as a sub-variation. Saved lines can be edited.
-4. `/dashboard` — the Opening dropdown picks "All games", any saved line, or "Not in a saved
+4. `/dashboard` — Sync games sits at the top, folded, so bringing in new games does not
+   mean leaving the page. The Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
    own rating band — the Control chips list the clocks you have actually played. Read overall / as White / as Black stats, the clock KPI, and the game phase
    analysis, plus a table breaking the slice down by sub-variation. The "Ended in" dropdown scopes
@@ -575,13 +576,24 @@ src/
   that is usually the line you folded it down to; `actions` holds the controls that act on it.
   The two wide tables sit flush in the body with `-mx-5` rather than keeping their own border —
   a bordered box inside a bordered box reads as a mistake.
+- **Sync lives where you notice games are missing.** It was on the profile page, which
+  meant leaving the dashboard, syncing and coming back — for the thing you do most often.
+  It is now the first panel on the dashboard, folded, because it is a control you reach for
+  rather than something to read; the line it folds down to is the one question you have
+  about it, which is when it last ran. It opens itself when there are no games at all,
+  since then it is the only thing on the page worth doing. Pasting a PGN stays on the
+  profile page: an upload is a game you brought in to study, not your record, and it is not
+  something you do weekly.
 - **Every dashboard panel folds, and stays folded.** The page is long and most visits are about
   one thing, so each panel carries the same `+`/`−` a review entry has. One difference decides the
   implementation: a review is a form you fill once, while the dashboard is a page you open daily,
   so the state outlives the visit. It lives in localStorage under one key, read through
-  `useSyncExternalStore` with a server snapshot of "open" — the same reasoning as the engine mode
-  toggle, and the reason it is not a `useState` set from an effect, which would flash and trip
-  `set-state-in-effect`. `useFolded` is a hook and a button rather than a wrapper component
+  `useSyncExternalStore` with a server snapshot of the panel's own default — the same reasoning as
+  the engine mode toggle, and the reason it is not a `useState` set from an effect, which would
+  flash and trip `set-state-in-effect`. The key holds `id → folded` rather than a list of the
+  folded ids: a list can only say "folded", so it could not express a panel that starts folded and
+  has been opened, which is what Sync needs. The old array is converted on read, the same habit as
+  every other stored shape here. `useFolded` is a hook and a button rather than a wrapper component
   because every panel already owns its box and heading; a wrapper would have had to duplicate
   those or strip them out of five files. A folded panel keeps its heading and whatever figure
   reads at a glance — the clock keeps "40 of 40 games have move times" — and drops the prose

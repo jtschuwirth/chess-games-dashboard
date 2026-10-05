@@ -12,9 +12,10 @@ import RatingPanel from '@/components/RatingPanel'
 import ReviewPanel from '@/components/ReviewPanel'
 import Panel from '@/components/Section'
 import StatBlockCard from '@/components/StatBlockCard'
+import SyncPanel from '@/components/SyncPanel'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
-import { getGames, getOpenings, getPatterns, getRatingHistory } from '@/lib/firestore'
+import { getGames, getOpenings, getPatterns, getProfile, getRatingHistory } from '@/lib/firestore'
 import { patternTags } from '@/lib/pattern'
 import { sinceTimestamp } from '@/lib/game-filters'
 import type { RatingHistory } from '@/lib/rating-history'
@@ -40,7 +41,14 @@ import { SINCE_OPTIONS } from '@/lib/game-filters'
 import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL } from '@/types/chess'
-import type { Color, GameRecord, OpeningLine, PatternRecord, Source } from '@/types/chess'
+import type {
+  Color,
+  GameRecord,
+  OpeningLine,
+  PatternRecord,
+  Source,
+  UserProfile,
+} from '@/types/chess'
 
 const PAGE_SIZE = 50
 
@@ -91,6 +99,7 @@ function DashboardBody({ userId }: { userId: string }) {
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const [history, setHistory] = useState<RatingHistory>({})
+  const [profile, setProfile] = useState<UserProfile | null>(null)
   const searchParams = useSearchParams()
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
   const [limit, setLimit] = useState(PAGE_SIZE)
@@ -129,12 +138,15 @@ function DashboardBody({ userId }: { userId: string }) {
         getOpenings(userId, options),
         getPatterns(userId, options),
         getRatingHistory(userId, options),
+        // the sync panel lives here now, and it needs to know which accounts are linked
+        getProfile(userId, options),
       ])
-        .then(([loadedGames, loadedOpenings, loadedPatterns, loadedHistory]) => {
+        .then(([loadedGames, loadedOpenings, loadedPatterns, loadedHistory, loadedProfile]) => {
           setGames(loadedGames)
           setOpenings(loadedOpenings)
           setPatterns(loadedPatterns)
           setHistory(loadedHistory)
+          setProfile(loadedProfile)
           setLoadError(null)
         })
         .catch(caught => {
@@ -276,15 +288,26 @@ function DashboardBody({ userId }: { userId: string }) {
     )
   }
 
+  /**
+   * Sync sits at the top of the dashboard, folded, because this is the page you are on
+   * when you notice games are missing. It opens itself when there are none at all — then
+   * it is the only thing on the page worth doing.
+   */
+  const sync = profile && (
+    <SyncPanel
+      userId={userId}
+      profile={profile}
+      startFolded={games.length > 0}
+      onSynced={() => load()}
+    />
+  )
+
   if (games.length === 0) {
     return (
-      <div className="py-16 text-center text-zinc-500">
-        No games stored yet — link an account and sync from{' '}
-        <Link href="/profile" className="underline text-zinc-200">
-          Profile &amp; Sync
-        </Link>
-        .
-      </div>
+      <>
+        {sync}
+        <p className="py-12 text-center text-zinc-500">No games stored yet.</p>
+      </>
     )
   }
 
@@ -299,6 +322,8 @@ function DashboardBody({ userId }: { userId: string }) {
 
   return (
     <>
+      {sync}
+
       <Panel
         id="filters"
         title="Filters"
