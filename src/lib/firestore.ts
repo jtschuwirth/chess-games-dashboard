@@ -16,6 +16,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from './firebase'
+import { normalizeAnalysis } from './analysis'
 import { normalizePattern } from './pattern'
 import { normalizePlan } from './plan'
 import {
@@ -114,7 +115,13 @@ export async function saveProfile(userId: string, profile: Partial<UserProfile>)
 export async function getGames(userId: string, options?: ReadOptions): Promise<GameRecord[]> {
   const ref = collection(db, 'users', userId, 'games')
   const snapshot = await readDocs(query(ref, orderBy('playedAt', 'desc')), options)
-  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as GameRecord)
+
+  // the one place a stored game becomes the shape the rest of the code expects: the
+  // marks are re-derived here, so moving a threshold never means re-analysing anything
+  return snapshot.docs.map(d => {
+    const game = { ...d.data(), id: d.id } as GameRecord
+    return game.analysis ? { ...game, analysis: normalizeAnalysis(game.analysis) } : game
+  })
 }
 
 /** Ids of every stored game, used to skip games a previous sync already wrote. */

@@ -32,6 +32,15 @@ const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
 export const WINNING = 200
 
 /**
+ * How far from even a position may stand and still be called level.
+ *
+ * A pawn either way. Beyond that on the wrong side you are not playing an even game,
+ * you are defending one — and a mistake made while already worse is a different event
+ * from one made with everything to play for, however much it costs.
+ */
+export const LEVEL = 100
+
+/**
  * How far the score may run ahead of the material before the advantage stops being the
  * material. Two pawns up scoring +2.6 is a material advantage; one pawn up scoring +6.0
  * is a rook ending you still have to win.
@@ -224,7 +233,10 @@ export function readVerdict(input: {
   holds: number
 }): VerdictKind {
   if (input.holds <= NARROW) return 'concrete-line'
-  if (input.cpBefore < WINNING) return 'from-level'
+
+  if (input.cpBefore < WINNING) {
+    return input.cpBefore < -LEVEL ? 'from-worse' : 'from-level'
+  }
 
   const material = input.material >= DECISIVE_MATERIAL
   const backed = input.cpBefore - input.material * 100 <= MATERIAL_SLACK
@@ -237,6 +249,7 @@ export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'lost-the-thread': 'lost the thread',
   'concrete-line': 'concrete line',
   'from-level': 'from level',
+  'from-worse': 'from worse',
 }
 
 /** What each one means. The badge is short; this is the sentence behind it. */
@@ -246,7 +259,10 @@ export const VERDICT_HINT: Record<VerdictKind, string> = {
     'The advantage was the position rather than material, and more than one move kept it. A plan, not a shot.',
   'concrete-line':
     'One or two of the moves looked at held. The position had a line in it to find, not a plan to follow.',
-  'from-level': 'Nothing was won here to lose, and more than one move was playable.',
+  'from-level':
+    'Within a pawn of even, so nothing was won here to lose, and more than one move was playable.',
+  'from-worse':
+    'You were already worse before this move — defending, not playing an even game — and more than one move was playable.',
 }
 
 /** Following the app: red is a thrown win, violet is the engine's own finding. */
@@ -255,6 +271,8 @@ export const VERDICT_BADGE: Record<VerdictKind, string> = {
   'lost-the-thread': 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   'concrete-line': 'bg-violet-500/15 text-violet-300 border-violet-500/30',
   'from-level': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
+  // the same muted treatment: both say nothing was won here, and the word is the difference
+  'from-worse': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
 }
 
 /** The plies this pass has something to say about: the ones the engine marked. */
@@ -265,22 +283,38 @@ export function judgeable(game: GameRecord): number[] {
 }
 
 /**
- * Verdicts as stored, with the one renamed kind read forward.
+ * Verdicts as stored, with the judgement re-made from the measurements.
  *
- * `only-move` became `concrete-line` once the rule widened from one move to two — two
- * move orders of the same idea is still one idea. Converted on read rather than
- * migrated, the same habit as every other stored shape here.
+ * The split is the point: what the search cost is kept — how many held, what was on the
+ * board, which moves it looked at — and the opinion drawn from it is not. Bands move as
+ * the reading of them sharpens (level became a pawn either way; `only-move` became
+ * `concrete-line` at two), and re-reading every game to apply a changed opinion would be
+ * hours of engine time for numbers already on disk.
+ *
+ * `cpBefore` lives on the analysed move rather than the verdict, so it is looked up; a
+ * verdict whose move has gone keeps whatever it was last given.
  */
 export function verdictsOf(game: GameRecord): Record<string, MoveVerdict> {
   const stored = game.verdicts ?? {}
+  const analysed = new Map((game.analysis?.moves ?? []).map(move => [move.ply, move]))
 
   return Object.fromEntries(
-    Object.entries(stored).map(([ply, verdict]) => [
-      ply,
-      (verdict.verdict as string) === 'only-move'
-        ? { ...verdict, verdict: 'concrete-line' as const }
-        : verdict,
-    ]),
+    Object.entries(stored).map(([ply, verdict]) => {
+      const move = analysed.get(verdict.ply)
+      if (!move) return [ply, verdict]
+
+      return [
+        ply,
+        {
+          ...verdict,
+          verdict: readVerdict({
+            cpBefore: move.cpBefore,
+            material: verdict.material,
+            holds: verdict.holds,
+          }),
+        },
+      ]
+    }),
   )
 }
 

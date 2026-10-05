@@ -1,7 +1,7 @@
 import { Chess } from 'chess.js'
 import { analyzePosition, MATE_SCORE } from './engine'
 import { isFault } from './review'
-import type { GameRecord } from '@/types/chess'
+import type { GameRecord, StoredAnalysis } from '@/types/chess'
 
 /** Annotation symbols, as used in the chess-courses annotator. */
 export type MoveTag = '??' | '?' | '?!' | '!' | '!!'
@@ -32,12 +32,19 @@ export const ENGINE_DEPTH = 21
  * Beyond this the position is already decided, so a further slip is not the move
  * that lost the game, and below the negative of it you were already losing.
  */
-const DECIDED = 200
+/**
+ * Where a position stops being worth marking a move in.
+ *
+ * Three pawns down is not a game you were going to save, so a slip there explains
+ * nothing; three pawns up is not a game you were going to lose. Between one pawn and
+ * three you are worse but still playing, and a mistake there is the one worth having.
+ */
+const DECIDED = 300
 
 /**
  * The chess-courses rule, which is context-sensitive by design:
  *
- * - `cpBefore > -DECIDED` — no blunder mark when you were already losing; nothing
+ * - `cpBefore > -DECIDED` — no blunder mark when you were already lost; nothing
  *   left to throw away.
  * - `cpAfter < DECIDED` — no blunder mark when you are still clearly winning after
  *   it; the game is not in danger.
@@ -158,6 +165,38 @@ export async function analyzeGame(game: GameRecord, options: AnalyzeOptions): Pr
   return {
     depth: options.depth,
     analyzedAt: Date.now(),
+    moves,
+    blunders: moves.filter(move => move.tag === '??').length,
+    mistakes: moves.filter(move => move.tag === '?').length,
+    inaccuracies: moves.filter(move => move.tag === '?!').length,
+  }
+}
+
+/**
+ * A stored analysis with its marks re-derived from the evaluations it holds.
+ *
+ * The thresholds are a judgement and judgements change: `DECIDED` moved from two pawns
+ * to three, which silently makes every stored mark the answer to an older question.
+ * Re-analysing fifty games to ask the new one would be hours of engine time for numbers
+ * that are already on disk — `cpBefore` and `cpAfter` are what `classifyMove` reads, and
+ * both are stored, so the mark is derived rather than kept. Same habit as the pre-game
+ * ratings and the variation tree.
+ *
+ * `wasBestMove` is the one input not stored, and it only ever separates `!!` from `!`,
+ * neither of which is a fault; the old tag carries it forward.
+ *
+ * Note `annotatedPgn` is NOT rebuilt here — it is a copy of the game, written once, and
+ * carries the marks of the analysis that produced it until the game is analysed again.
+ */
+export function normalizeAnalysis(analysis: StoredAnalysis): StoredAnalysis {
+  const moves = analysis.moves.map(move => ({
+    ...move,
+    cpLoss: move.cpBefore - move.cpAfter,
+    tag: classifyMove(move.cpBefore, move.cpAfter, move.tag === '!!'),
+  }))
+
+  return {
+    ...analysis,
     moves,
     blunders: moves.filter(move => move.tag === '??').length,
     mistakes: moves.filter(move => move.tag === '?').length,

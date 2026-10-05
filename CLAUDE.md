@@ -127,11 +127,15 @@ src/
   original sketch had 16-30 and 30+ both containing move 30.
 - **Move classification follows the chess-courses standard**, which is context-sensitive on
   purpose. With `cpLoss = cpBefore - cpAfter` from your own perspective:
-  `??` when the loss clears the blunder threshold *and* `cpAfter < 200` *and* `cpBefore > -200`;
+  `??` when the loss clears the blunder threshold *and* `cpAfter < 300` *and* `cpBefore > -300`;
   `?` likewise at the mistake threshold; a big loss failing either guard is only `?!`. So a slip
   while already lost is not a blunder — there was nothing left to lose — and one while still
   clearly winning is only careless. Going from winning back to level *does* get the full mark,
-  because `cpAfter` has fallen inside the decided band. Defaults are 300 / 100 centipawns.
+  because `cpAfter` has fallen inside the decided band. Defaults are 300 / 100 centipawns,
+  and `DECIDED` is 300 too: three pawns down is not a game you were going to save, so a
+  slip there explains nothing, while between one pawn and three you are worse and still
+  playing — which is the mistake worth having. It was two pawns, which cut off the band
+  where most of the instructive defending happens.
   **`?!` is recorded but never shown.** It is by definition the mark for a costly move the
   context excused — +12.4 to +9.8 earns one — so putting it on screen or offering it up for
   review would argue against the rule that produced it. `FAULT_TAGS` in `lib/review.ts` is the
@@ -409,6 +413,24 @@ src/
   alternative against the move you played, and two depths in one card make the comparison
   meaningless. A quiet middlegame position costs about 1.3s at 21, so a 40-move game runs about a
   minute and a half.
+- **The measurement is stored; the judgement is derived.** This is the rule the whole
+  analysis layer now follows. What costs engine time is kept — `cpBefore`/`cpAfter` on
+  every move, and on a verdict how many candidates held, what was on the board, which
+  moves were looked at. What is only an opinion about those numbers is recomputed on
+  read: `normalizeAnalysis` re-derives every `??`/`?` and the counts, and `verdictsOf`
+  re-derives the verdict kind. Thresholds are judgements and judgements move — `DECIDED`
+  went from two pawns to three, `only-move` became `concrete-line` at two moves, level
+  narrowed to a pawn either way — and each of those would otherwise have meant re-running
+  the engine over every stored game to ask the new question with the old answers on disk.
+  Changing a band is now a constant and a deploy. (`annotatedPgn` is the exception: it is
+  a copy of the game written once, and carries the marks of the analysis that produced it
+  until the game is analysed again.)
+- **Level is a pawn either way, and below that you were defending.** `+1.9` read as "from
+  level", which is not a description of a position you are a pawn and a half down in: the
+  mistake you make while already worse is a different event from the one you make with
+  everything to play for, however much each costs. `LEVEL` is 100 and `from worse` is its
+  own verdict. Both keep the muted badge — they agree that nothing was won here, and the
+  word is the whole difference.
 - **The engine says how much a move cost; the second pass says what kind of mistake it
   was.** "You dropped four pawns" does not distinguish being a rook up and giving it back
   from failing to find the only move that held a position worth four pawns — different
