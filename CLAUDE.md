@@ -19,7 +19,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
    to games that finished in one phase (`?phase=11-15`); clicking a phase's *ended* count sets the
    same filter, the way clicking a variation row sets the opening.
 5. `/games/{id}` — one game: a board you can step through, the engine's marks on the move list,
-   and your own root-cause analysis of the one to three moves that decided it. Reached from any
+   and your own root-cause analysis of the one to three moves that decided it. A second
+   pass over the marked moves says what *kind* of mistake each was — an only move missed,
+   a material advantage thrown, a plan lost — and any reading can be thrown out. Reached from any
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
@@ -92,6 +94,7 @@ src/
 │   ├── engine-protocol.ts      # what an evaluation is, shared by both engines
 │   ├── server-engine.ts        # the same engine under Node, behind /api/engine
 │   ├── analysis.ts             # move classification and the annotated PGN
+│   ├── verdict.ts              # the second pass: what kind of mistake a marked move was
 │   ├── termination.ts          # one ending vocabulary across the two providers
 │   ├── auth.ts                 # signInWithGoogle / signOut
 │   ├── firestore.ts            # profile, games, openings CRUD
@@ -406,6 +409,43 @@ src/
   alternative against the move you played, and two depths in one card make the comparison
   meaningless. A quiet middlegame position costs about 1.3s at 21, so a 40-move game runs about a
   minute and a half.
+- **The engine says how much a move cost; the second pass says what kind of mistake it
+  was.** "You dropped four pawns" does not distinguish being a rook up and giving it back
+  from failing to find the only move that held a position worth four pawns — different
+  mistakes, different training, and a tag table that cannot tell them apart sends you to
+  the wrong one. `lib/verdict.ts` reads three things off the position before each marked
+  move: your **material**, the engine's **score**, and **how many moves held it**. The
+  verdicts are `only move`, `threw it`, `lost the thread` and `from level`, and the order
+  they are tested in matters: one move holding comes first whether or not you were
+  winning, because a position with a single answer is a failure to find it at +6 and at
+  level alike.
+- **"How many moves held it" is one MultiPV search, not one search per move.** Asking the
+  engine about each legal move separately would be forty searches and — worse — forty
+  separate searches, which cannot be compared with each other any more than two depths
+  can. One `MultiPV 5` search returns five lines scored against each other, and a move
+  "holds" when `classifyMove` would not call it a fault, which is the same rule that
+  marked the move in the first place. The reference is `moves[0].cp` from *that* search,
+  never the stored `cpBefore`: MultiPV prunes less, so the two disagree — by 2.5 pawns on
+  one position in testing — and mixing them would be the depth trap in another costume.
+  `analyzeLines(fen, depth, count)` is the entry point for both engines, `analyzePosition`
+  is the one-line reading of it, and the cache records how many lines were asked for so a
+  position with three legal moves does not look uncached for ever.
+- **Material is the thing the eval is not.** A score runs ahead of the material when the
+  advantage is an attack, two bishops, a passed pawn — something you have to keep playing
+  for. So `threw it` needs either a decisive material edge (`DECISIVE_MATERIAL`, a piece)
+  or a score that is simply the material (`MATERIAL_SLACK`), and everything else winning
+  is `lost the thread`. Both halves were needed: without the first, a piece up with an
+  attack on top read as positional — including the one game in the data that was
+  unarguably thrown; without the second, two pawns up scoring +2.6 read the same way.
+- **A verdict can be thrown out, and the rejection is stored.** `dismissed` is a flag
+  rather than a delete, because running the pass again must not hand back a reading you
+  have already rejected — and the row stays on screen, greyed, so it is on record as
+  rejected rather than quietly gone. The ingredients sit beside the verdict on the row
+  (`+1 material · 2 of 5 held`) for the same reason: it is a judgement, and you should be
+  able to see what it was made from before accepting it.
+- **Verdicts live in `verdicts` on the game, keyed by ply**, like `drills` — a `merge`
+  write on a map field merges keys, so judging two more moves never clears the rest, and
+  keying by ply survives a re-analysis.
 - **Analysis is one game at a time, from that game's own page.** A batch panel over the filtered
   slice used to sit on the dashboard, and the trouble with it was how easy it was to point at two
   hundred games — hours of compute for games you were never going to read. `EnginePanel` gathers

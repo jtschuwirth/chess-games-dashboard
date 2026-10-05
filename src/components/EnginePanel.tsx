@@ -6,8 +6,17 @@ import { Spinner } from '@/components/PageShell'
 import { formatDuration } from '@/lib/clocks'
 import { AnalysisStopped, ENGINE_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
 import { terminateEngine } from '@/lib/engine'
-import { saveAnalysis } from '@/lib/firestore'
-import type { GameRecord } from '@/types/chess'
+import { dismissVerdict, saveAnalysis, saveVerdicts } from '@/lib/firestore'
+import { formatEval, isFault } from '@/lib/review'
+import {
+  VERDICT_BADGE,
+  VERDICT_HINT,
+  VERDICT_LABEL,
+  judgeGame,
+  pendingPlies,
+  verdictsOf,
+} from '@/lib/verdict'
+import type { Color, GameRecord, MoveVerdict } from '@/types/chess'
 
 /**
  * Everything the engine does to this one game, in one place: what it found, where it
@@ -30,6 +39,7 @@ export default function EnginePanel({
   const [running, setRunning] = useState(false)
   const [progress, setProgress] = useState<{ done: number; elapsedMs: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [judging, setJudging] = useState<{ done: number; total: number } | null>(null)
 
   const analysed = game.analysis
   const shallower = analysed ? analysed.depth < ENGINE_DEPTH : false
@@ -64,6 +74,52 @@ export default function EnginePanel({
       setRunning(false)
     }
   }
+
+  /**
+   * The second pass: for each move the engine marked, what kind of mistake it was.
+   *
+   * One MultiPV search per marked move, at the same depth as everything else, so the
+   * candidates it counts are comparable with each other and with the first pass.
+   */
+  async function judge() {
+    setError(null)
+    setJudging({ done: 0, total: pendingPlies(game).length })
+
+    try {
+      const judged = await judgeGame(game, {
+        onProgress: (done, count) => setJudging({ done, total: count }),
+      })
+
+      await saveVerdicts(userId, game.id, judged)
+      onDone({ ...game, verdicts: { ...verdictsOf(game), ...judged } })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'That pass failed.')
+    } finally {
+      terminateEngine()
+      setJudging(null)
+    }
+  }
+
+  async function setDismissed(ply: number, dismissed: boolean) {
+    const stored = verdictsOf(game)[String(ply)]
+    if (!stored) return
+
+    // on screen first, then the write, the same as every other edit here
+    onDone({
+      ...game,
+      verdicts: { ...verdictsOf(game), [String(ply)]: { ...stored, dismissed } },
+    })
+
+    try {
+      await dismissVerdict(userId, game.id, ply, dismissed)
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'That did not save.')
+    }
+  }
+
+  const marked = (game.analysis?.moves ?? []).filter(move => isFault(move.tag))
+  const stored = verdictsOf(game)
+  const pending = pendingPlies(game)
 
   // two evaluations per move of yours, which is what the progress counts against
   const total = game.moves.length
@@ -119,11 +175,108 @@ export default function EnginePanel({
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
+      {marked.length > 0 && (
+        <div className="flex flex-col gap-2 border-t border-zinc-800 pt-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h3 className="text-xs uppercase tracking-wide text-zinc-500">
+              What each one was
+            </h3>
+            {pending.length > 0 && (
+              <button
+                onClick={judge}
+                disabled={judging !== null || running}
+                className="px-3 py-1 text-xs font-medium border border-zinc-700 text-zinc-200 rounded-lg hover:border-zinc-500 hover:text-white transition-colors disabled:opacity-40"
+              >
+                {judging
+                  ? `Reading… ${judging.done}/${judging.total}`
+                  : `Read ${pending.length} marked move${pending.length === 1 ? '' : 's'}`}
+              </button>
+            )}
+          </div>
+
+          <div className="flex flex-col divide-y divide-zinc-800/70">
+            {marked.map(move => (
+              <VerdictRow
+                key={move.ply}
+                move={move}
+                color={game.color}
+                verdict={stored[String(move.ply)]}
+                onDismiss={dismissed => setDismissed(move.ply, dismissed)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="flex items-center justify-between gap-3 flex-wrap border-t border-zinc-800 pt-3">
         <EngineModeToggle />
         {game.annotatedPgn && <CopyPgn pgn={game.annotatedPgn} />}
       </div>
     </section>
+  )
+}
+
+/**
+ * One marked move and what the second pass made of it.
+ *
+ * The ingredients are on the row beside the verdict — material, and how many of the
+ * candidates held — because the verdict is a judgement and you should be able to see
+ * what it was made from before you accept it. `×` says you do not; the row stays, greyed,
+ * so the reading is on record as rejected rather than quietly gone.
+ */
+function VerdictRow({
+  move,
+  color,
+  verdict,
+  onDismiss,
+}: {
+  /** The stored shape, whose tag is a plain string — see `StoredAnalysis`. */
+  move: NonNullable<GameRecord['analysis']>['moves'][number]
+  color: Color
+  verdict?: MoveVerdict
+  onDismiss: (dismissed: boolean) => void
+}) {
+  const dismissed = verdict?.dismissed === true
+
+  return (
+    <div className={`flex items-center gap-3 py-1.5 flex-wrap ${dismissed ? 'opacity-40' : ''}`}>
+      <span className="font-mono text-xs text-zinc-300 w-24 shrink-0">
+        {move.moveNumber}. {move.san}
+        <span className={move.tag === '??' ? 'text-red-400' : 'text-amber-400'}> {move.tag}</span>
+      </span>
+
+      <span className="font-mono text-xs text-zinc-500 w-28 shrink-0">
+        {formatEval(move.cpBefore, color)} → {formatEval(move.cpAfter, color)}
+      </span>
+
+      {verdict ? (
+        <>
+          <span
+            title={VERDICT_HINT[verdict.verdict]}
+            className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+              VERDICT_BADGE[verdict.verdict]
+            }`}
+          >
+            {VERDICT_LABEL[verdict.verdict]}
+          </span>
+
+          <span className="text-xs text-zinc-600 font-mono">
+            {verdict.material >= 0 ? '+' : ''}
+            {verdict.material} material · {verdict.holds} of {verdict.looked} held
+          </span>
+
+          <button
+            onClick={() => onDismiss(!dismissed)}
+            title={dismissed ? 'Put this reading back' : 'This reading is wrong'}
+            className="ml-auto text-xs text-zinc-700 hover:text-zinc-300 transition-colors shrink-0"
+          >
+            {dismissed ? '↺' : '✕'}
+          </button>
+        </>
+      ) : (
+        <span className="text-xs text-zinc-700">not read yet</span>
+      )}
+    </div>
   )
 }
 

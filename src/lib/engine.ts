@@ -11,12 +11,18 @@
  * exists for phones, where doing the work locally is slow and the browser suspends the
  * tab the moment you look away.
  */
-import { MATE_SCORE, type Evaluation } from './engine-protocol'
+import {
+  MATE_SCORE,
+  bestOf,
+  type Candidate,
+  type Candidates,
+  type Evaluation,
+} from './engine-protocol'
 
 const WORKER_PATH = '/stockfish-19-lite-single.js'
 
-export { MATE_SCORE }
-export type { Evaluation }
+export { MATE_SCORE, bestOf }
+export type { Candidate, Candidates, Evaluation }
 
 /** Where the work happens. */
 export type EngineMode = 'browser' | 'server'
@@ -26,7 +32,9 @@ const MODE_KEY = 'engine-mode'
 interface Job {
   fen: string
   depth: number
-  resolve: (value: Evaluation) => void
+  /** How many candidate moves to ask for. 1 is an ordinary evaluation. */
+  count: number
+  resolve: (value: Candidates) => void
   reject: (error: Error) => void
 }
 
@@ -49,25 +57,42 @@ let ready: Promise<void> | null = null
 const queue: Job[] = []
 let running: Job | null = null
 
-// parsed from the `info` lines as the search deepens
-let bestCp: number | null = null
-let bestMove = ''
-let reachedDepth = 0
+/**
+ * The best line of each rank so far, rebuilt as the search deepens.
+ *
+ * A plain search labels nothing and is read as rank 1; a MultiPV one tags every `info`
+ * line with its rank. Each rank keeps the deepest line seen, so the map holds the final
+ * answer by the time `bestmove` arrives.
+ */
+const lines = new Map<number, Candidate & { depth: number }>()
 
-const cache = new Map<string, Evaluation>()
+const cache = new Map<string, { asked: number; result: Candidates }>()
+
+/** One cache entry per position and depth, holding the richest answer asked for so far. */
+function cacheKey(fen: string, depth: number): string {
+  return `${fen}@${depth}`
+}
 
 function parseInfo(line: string): void {
-  const cp = /score cp (-?\d+)/.exec(line)
-  if (cp) bestCp = Number(cp[1])
+  // an `info` line with no score - currmove, hashfull, nps - says nothing we want
+  let cp: number | null = null
+
+  const score = /score cp (-?\d+)/.exec(line)
+  if (score) cp = Number(score[1])
 
   const mate = /score mate (-?\d+)/.exec(line)
-  if (mate) bestCp = Number(mate[1]) > 0 ? MATE_SCORE : -MATE_SCORE
+  if (mate) cp = Number(mate[1]) > 0 ? MATE_SCORE : -MATE_SCORE
 
+  if (cp === null) return
+
+  const rank = Number(/\bmultipv\s+(\d+)/.exec(line)?.[1] ?? 1)
+  const depth = Number(/\bdepth\s+(\d+)/.exec(line)?.[1] ?? 0)
   const pv = /\bpv\s+(\S+)/.exec(line)
-  if (pv) bestMove = pv[1]
 
-  const depth = /\bdepth\s+(\d+)/.exec(line)
-  if (depth) reachedDepth = Number(depth[1])
+  const seen = lines.get(rank)
+  if (seen && seen.depth > depth) return
+
+  lines.set(rank, { rank, cp, uci: pv ? pv[1] : (seen?.uci ?? ''), depth })
 }
 
 function finishJob(line: string): void {
@@ -75,23 +100,25 @@ function finishJob(line: string): void {
 
   const best = /^bestmove\s+(\S+)/.exec(line)
   const job = running
-
   running = null
-  const result =
-    bestCp === null
-      ? null
-      : { cp: bestCp, depth: reachedDepth, bestMoveUci: best ? best[1] : bestMove }
 
-  bestCp = null
-  bestMove = ''
-  reachedDepth = 0
+  const found = [...lines.values()].sort((a, b) => a.rank - b.rank)
+  const depth = found.reduce((deepest, entry) => Math.max(deepest, entry.depth), 0)
+  lines.clear()
 
-  if (result) {
-    cache.set(`${job.fen}@${job.depth}`, result)
-    job.resolve(result)
-  } else {
+  if (found.length === 0) {
     job.reject(new Error('Engine returned no score'))
+    pump()
+    return
   }
+
+  const moves = found.map(({ rank, cp, uci }) => ({ rank, cp, uci }))
+  // the engine's own answer wins for the first line, since a pv can arrive truncated
+  if (best?.[1]) moves[0] = { ...moves[0], uci: best[1] }
+
+  const result: Candidates = { depth, moves }
+  cache.set(cacheKey(job.fen, job.depth), { asked: job.count, result })
+  job.resolve(result)
 
   pump()
 }
@@ -107,6 +134,9 @@ function pump(): void {
   if (running || queue.length === 0 || !worker) return
 
   running = queue.shift() as Job
+  // set every time rather than only on a change: one message, and no way for a previous
+  // job's setting to leak into this one
+  worker.postMessage(`setoption name MultiPV value ${running.count}`)
   worker.postMessage(`position fen ${running.fen}`)
   worker.postMessage(`go depth ${running.depth}`)
 }
@@ -194,7 +224,7 @@ export function getEngineMode(): EngineMode {
 }
 
 /** Asks `/api/engine`, which runs the same build with the same contract. */
-async function analyzeOnServer(fen: string, depth: number): Promise<Evaluation> {
+async function searchOnServer(fen: string, depth: number, count: number): Promise<Candidates> {
   const token = await idToken()
   const response = await fetch('/api/engine', {
     method: 'POST',
@@ -202,7 +232,7 @@ async function analyzeOnServer(fen: string, depth: number): Promise<Evaluation> 
       'content-type': 'application/json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ fen, depth }),
+    body: JSON.stringify({ fen, depth, multipv: count }),
   })
 
   if (!response.ok) {
@@ -210,30 +240,40 @@ async function analyzeOnServer(fen: string, depth: number): Promise<Evaluation> 
     throw new Error(body.error ?? `The engine service answered ${response.status}.`)
   }
 
-  return (await response.json()) as Evaluation
+  return (await response.json()) as Candidates
 }
 
 /**
  * Queued, so callers can request thousands of positions without coordinating, and
  * cached by position so the two engines share one answer for the same question.
  */
-export async function analyzePosition(fen: string, depth: number): Promise<Evaluation> {
-  const key = `${fen}@${depth}`
+export async function analyzeLines(
+  fen: string,
+  depth: number,
+  count = 1,
+): Promise<Candidates> {
+  const key = cacheKey(fen, depth)
   const cached = cache.get(key)
-  if (cached) return cached
+  // a search that asked for more lines also answers a request for fewer
+  if (cached && cached.asked >= count) return cached.result
 
   if (getEngineMode() === 'server') {
-    const result = await analyzeOnServer(fen, depth)
-    cache.set(key, result)
+    const result = await searchOnServer(fen, depth, count)
+    cache.set(key, { asked: count, result })
     return result
   }
 
   await initEngine()
 
-  return new Promise<Evaluation>((resolve, reject) => {
-    queue.push({ fen, depth, resolve, reject })
+  return new Promise<Candidates>((resolve, reject) => {
+    queue.push({ fen, depth, count, resolve, reject })
     pump()
   })
+}
+
+/** One position, one answer — what every caller but the second pass wants. */
+export async function analyzePosition(fen: string, depth: number): Promise<Evaluation> {
+  return bestOf(await analyzeLines(fen, depth))
 }
 
 /** Positions repeat heavily across games of the same opening, so this saves real time. */
@@ -250,7 +290,5 @@ export function terminateEngine(): void {
   worker?.terminate()
   worker = null
   ready = null
-  bestCp = null
-  bestMove = ''
-  reachedDepth = 0
+  lines.clear()
 }

@@ -15,6 +15,12 @@ export const maxDuration = 60
 const MAX_DEPTH = 24
 
 /**
+ * The second pass asks for a handful of candidate moves; more than this is both slower
+ * and no more informative, since the question is only whether one move held or several.
+ */
+const MAX_LINES = 8
+
+/**
  * Evaluates a position server-side, so a phone does not have to.
  *
  * Restricted to `ADMIN_IDS`, not merely to anyone signed in. This is the one endpoint
@@ -28,19 +34,25 @@ export async function POST(request: Request) {
 
   let fen: string
   let depth: number
+  let lines: number
   try {
-    const body = (await request.json()) as { fen?: unknown; depth?: unknown }
+    const body = (await request.json()) as {
+      fen?: unknown
+      depth?: unknown
+      multipv?: unknown
+    }
     if (typeof body.fen !== 'string' || body.fen.trim().length === 0) {
       return deny('Give me a position to look at.', 400)
     }
     fen = body.fen
     depth = Math.min(Math.max(Math.floor(Number(body.depth) || 0), 1), MAX_DEPTH)
+    lines = Math.min(Math.max(Math.floor(Number(body.multipv) || 1), 1), MAX_LINES)
   } catch {
     return deny('That request was not JSON.', 400)
   }
 
   try {
-    return NextResponse.json(await analyzeOnServer(fen, depth))
+    return NextResponse.json(await analyzeOnServer(fen, depth, lines))
   } catch (error) {
     console.error('engine failed', error)
     return deny(error instanceof Error ? error.message : 'The engine failed.', 500)

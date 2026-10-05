@@ -63,6 +63,12 @@ export interface GameRecord extends SyncedGame {
    * engine flagged but you never wrote up can still be drilled.
    */
   drills?: Record<string, DrillStat>
+  /**
+   * The second pass's reading of each marked move, keyed by ply. Beside the analysis
+   * rather than inside it because it is produced separately, on request, and because a
+   * re-analysis should not silently throw these away.
+   */
+  verdicts?: Record<string, MoveVerdict>
 }
 
 /** Your record on one position in the drill. */
@@ -173,6 +179,39 @@ export type NewOpeningLine = Omit<OpeningLine, 'id'>
  * What kind of idea a pattern is. Deliberately short: a pattern you cannot file
  * under one of these is usually two patterns.
  */
+/**
+ * What kind of mistake a marked move was — not how much it cost, which the engine
+ * already says, but what sort of advantage went with it.
+ */
+export type VerdictKind = 'threw-it' | 'lost-the-thread' | 'only-move' | 'from-level'
+
+/**
+ * The second pass's reading of one marked move, kept beside the analysis because it is
+ * just as expensive to produce: one MultiPV search at full depth per move.
+ *
+ * Keyed by ply in `verdicts` on the game, the same as `drills`, so a re-analysis does
+ * not scramble them and two moves of one game can never overwrite each other.
+ */
+export interface MoveVerdict {
+  ply: number
+  /** Your material minus theirs, in pawns, before the move. */
+  material: number
+  /** The best score in that search, from your side. Not the stored `cpBefore`. */
+  best: number
+  /** How many of the candidates looked at would not have been a fault. */
+  holds: number
+  /** How many were looked at, so `holds` reaching it reads as "at least". */
+  looked: number
+  verdict: VerdictKind
+  depth: number
+  judgedAt: number
+  /**
+   * Set when you have thrown the reading out. Kept rather than deleted, so running the
+   * pass again does not hand you back something you have already rejected.
+   */
+  dismissed?: boolean
+}
+
 export type PatternKind = 'tactics' | 'strategy' | 'development' | 'endgame'
 
 /**

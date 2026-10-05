@@ -1,4 +1,4 @@
-import { MATE_SCORE, type Evaluation } from './engine-protocol'
+import { MATE_SCORE, type Candidate, type Candidates } from './engine-protocol'
 
 /**
  * Stockfish running in the Node process behind `/api/engine`, so a phone can have a
@@ -91,16 +91,21 @@ function send(instance: EngineModule, command: string): void {
 }
 
 /**
- * Evaluates one position, from the point of view of the side to move — the same
- * contract as the browser engine, so callers cannot tell which one answered.
+ * Searches one position, from the point of view of the side to move — the same contract
+ * as the browser engine, so callers cannot tell which one answered.
+ *
+ * `count` above 1 turns on MultiPV, which is how the second pass asks "how many moves
+ * held this?" in a single search rather than one search per candidate move.
  */
-export async function analyzeOnServer(fen: string, depth: number): Promise<Evaluation> {
+export async function analyzeOnServer(
+  fen: string,
+  depth: number,
+  count = 1,
+): Promise<Candidates> {
   const instance = await load()
 
-  return new Promise<Evaluation>((resolve, reject) => {
-    let cp: number | null = null
-    let best = ''
-    let reached = 0
+  return new Promise<Candidates>((resolve, reject) => {
+    const lines = new Map<number, Candidate & { depth: number }>()
 
     const timer = setTimeout(() => {
       listener = () => {}
@@ -110,31 +115,49 @@ export async function analyzeOnServer(fen: string, depth: number): Promise<Evalu
     listener = line => {
       if (typeof line !== 'string') return
 
-      const score = /score cp (-?\d+)/.exec(line)
-      if (score) cp = Number(score[1])
-
-      const mate = /score mate (-?\d+)/.exec(line)
-      if (mate) cp = Number(mate[1]) > 0 ? MATE_SCORE : -MATE_SCORE
-
-      const pv = /\bpv\s+(\S+)/.exec(line)
-      if (pv) best = pv[1]
-
-      const atDepth = /\bdepth\s+(\d+)/.exec(line)
-      if (atDepth) reached = Number(atDepth[1])
-
       const bestmove = /^bestmove\s+(\S+)/.exec(line)
-      if (!bestmove) return
+      if (!bestmove) {
+        let cp: number | null = null
+
+        const score = /score cp (-?\d+)/.exec(line)
+        if (score) cp = Number(score[1])
+
+        const mate = /score mate (-?\d+)/.exec(line)
+        if (mate) cp = Number(mate[1]) > 0 ? MATE_SCORE : -MATE_SCORE
+
+        // an `info` line with no score says nothing we want
+        if (cp === null) return
+
+        const rank = Number(/\bmultipv\s+(\d+)/.exec(line)?.[1] ?? 1)
+        const reached = Number(/\bdepth\s+(\d+)/.exec(line)?.[1] ?? 0)
+        const pv = /\bpv\s+(\S+)/.exec(line)
+
+        const seen = lines.get(rank)
+        if (seen && seen.depth > reached) return
+
+        lines.set(rank, { rank, cp, uci: pv ? pv[1] : (seen?.uci ?? ''), depth: reached })
+        return
+      }
 
       clearTimeout(timer)
       listener = () => {}
 
-      if (cp === null) {
+      const found = [...lines.values()].sort((a, b) => a.rank - b.rank)
+      if (found.length === 0) {
         reject(new Error('The engine returned no score.'))
         return
       }
-      resolve({ cp, depth: reached, bestMoveUci: bestmove[1] || best })
+
+      const moves = found.map(({ rank, cp, uci }) => ({ rank, cp, uci }))
+      if (bestmove[1]) moves[0] = { ...moves[0], uci: bestmove[1] }
+
+      resolve({
+        depth: found.reduce((deepest, entry) => Math.max(deepest, entry.depth), 0),
+        moves,
+      })
     }
 
+    send(instance, `setoption name MultiPV value ${count}`)
     send(instance, `position fen ${fen}`)
     send(instance, `go depth ${depth}`)
   })

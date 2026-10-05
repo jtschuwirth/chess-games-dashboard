@@ -29,6 +29,7 @@ import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
   DrillStat,
   GameRecord,
+  MoveVerdict,
   GameReview,
   StoredAnalysis,
   NewOpeningLine,
@@ -232,6 +233,41 @@ export async function saveDrillResult(
   await setDoc(
     doc(db, 'users', userId, 'games', gameId),
     { drills: { [String(ply)]: stat } },
+    { merge: true },
+  )
+}
+
+/**
+ * The second pass's reading of the marked moves, merged in by ply.
+ *
+ * `merge` on a map field merges keys, so judging two more moves never clears the ones
+ * already judged — the same reason the drill records are stored this way.
+ */
+export async function saveVerdicts(
+  userId: string,
+  gameId: string,
+  verdicts: Record<string, MoveVerdict>,
+): Promise<void> {
+  if (Object.keys(verdicts).length === 0) return
+
+  await setDoc(doc(db, 'users', userId, 'games', gameId), { verdicts }, { merge: true })
+}
+
+/**
+ * Throwing out a reading you disagree with.
+ *
+ * Flagged rather than deleted: running the pass again must not hand you back something
+ * you have already rejected, and the only way it can know is if the rejection is stored.
+ */
+export async function dismissVerdict(
+  userId: string,
+  gameId: string,
+  ply: number,
+  dismissed: boolean,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, 'games', gameId),
+    { verdicts: { [String(ply)]: { dismissed } } },
     { merge: true },
   )
 }
