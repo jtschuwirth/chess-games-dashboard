@@ -28,16 +28,26 @@ import type { GameRecord, MoveVerdict, VerdictKind } from '@/types/chess'
 /** Pawns, for the material count. The king is not material you can win. */
 const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
 
-/** Below this the position was not won, so nothing was thrown away. */
-export const WINNING = 200
-
 /**
- * How far from even a position may stand and still be called level.
+ * The two cuts, read symmetrically from your own side:
  *
- * A pawn either way. Beyond that on the wrong side you are not playing an even game,
- * you are defending one — and a mistake made while already worse is a different event
- * from one made with everything to play for, however much it costs.
+ * ```
+ *   -300 .. -100   from worse    you were defending
+ *   -100 ..  +100  from level    nothing in it either way
+ *   +100 ..  +300  from better   an edge, not a win
+ *   +300 ..        won           there was something here to throw
+ * ```
+ *
+ * Below -300 a move is not marked at all — see `DECIDED` — so `from worse` covers the
+ * whole band where you are worse and still playing.
+ *
+ * `WINNING` is three pawns rather than two because "threw it" and "lost the thread" are
+ * claims about a *won* position, and +2.2 is an edge. Letting them start at two pawns
+ * made them the commonest verdicts and the least informative.
  */
+export const WINNING = 300
+
+/** A pawn either way. Beyond it you are not playing an even game. */
 export const LEVEL = 100
 
 /**
@@ -235,7 +245,9 @@ export function readVerdict(input: {
   if (input.holds <= NARROW) return 'concrete-line'
 
   if (input.cpBefore < WINNING) {
-    return input.cpBefore < -LEVEL ? 'from-worse' : 'from-level'
+    if (input.cpBefore < -LEVEL) return 'from-worse'
+    if (input.cpBefore > LEVEL) return 'from-better'
+    return 'from-level'
   }
 
   const material = input.material >= DECISIVE_MATERIAL
@@ -250,6 +262,7 @@ export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'concrete-line': 'concrete line',
   'from-level': 'from level',
   'from-worse': 'from worse',
+  'from-better': 'from better',
 }
 
 /** What each one means. The badge is short; this is the sentence behind it. */
@@ -263,6 +276,8 @@ export const VERDICT_HINT: Record<VerdictKind, string> = {
     'Within a pawn of even, so nothing was won here to lose, and more than one move was playable.',
   'from-worse':
     'You were already worse before this move — defending, not playing an even game — and more than one move was playable.',
+  'from-better':
+    'An edge rather than a win, between one pawn and three, and more than one move kept it.',
 }
 
 /** Following the app: red is a thrown win, violet is the engine's own finding. */
@@ -271,8 +286,10 @@ export const VERDICT_BADGE: Record<VerdictKind, string> = {
   'lost-the-thread': 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   'concrete-line': 'bg-violet-500/15 text-violet-300 border-violet-500/30',
   'from-level': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
-  // the same muted treatment: both say nothing was won here, and the word is the difference
+  // the same muted treatment for all three: they agree nothing was won here, and where
+  // you stood is the word rather than the colour
   'from-worse': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
+  'from-better': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
 }
 
 /** The plies this pass has something to say about: the ones the engine marked. */

@@ -425,12 +425,16 @@ src/
   Changing a band is now a constant and a deploy. (`annotatedPgn` is the exception: it is
   a copy of the game written once, and carries the marks of the analysis that produced it
   until the game is analysed again.)
-- **Level is a pawn either way, and below that you were defending.** `+1.9` read as "from
-  level", which is not a description of a position you are a pawn and a half down in: the
-  mistake you make while already worse is a different event from the one you make with
-  everything to play for, however much each costs. `LEVEL` is 100 and `from worse` is its
-  own verdict. Both keep the muted badge — they agree that nothing was won here, and the
-  word is the whole difference.
+- **Where you stood is four symmetric bands, not "winning or not".** Read from your own
+  side: `-300..-100` from worse, `-100..+100` from level, `+100..+300` from better, and
+  `+300` upward is a position with something in it to throw. Below `-300` a move is not
+  marked at all, so `from worse` covers the whole band where you are worse and still
+  playing. It began as one cut at two pawns, which called `+1.9` "level" — no description
+  of a position you are a pawn and a half down in — and called `+2.2` a thrown win, which
+  is a claim about a position you had actually won. Three of the four share the muted
+  badge: they agree nothing was won here, and where you stood is the word rather than the
+  colour. Moving `WINNING` to three pawns is what gives `threw it` and `lost the thread`
+  their meaning back; at two they were the commonest verdicts and the least informative.
 - **The engine says how much a move cost; the second pass says what kind of mistake it
   was.** "You dropped four pawns" does not distinguish being a rook up and giving it back
   from failing to find the only move that held a position worth four pawns — different

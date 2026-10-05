@@ -189,6 +189,7 @@ export type VerdictKind =
   | 'concrete-line'
   | 'from-level'
   | 'from-worse'
+  | 'from-better'
 
 /**
  * The second pass's reading of one marked move, kept beside the analysis because it is
