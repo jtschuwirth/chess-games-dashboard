@@ -22,7 +22,14 @@ import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
 import { buildOpeningTree, matchingPath, openingLabel } from '@/lib/opening'
 import { patternTags } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
-import { betterMovesOf, formatEval, hasReview, isFault, knownTags } from '@/lib/review'
+import {
+  betterMovesOf,
+  formatEval,
+  hasReview,
+  isFault,
+  knownTags,
+  markColor,
+} from '@/lib/review'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
 import type {
@@ -609,7 +616,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                 {formatEval(shownMove.cpBefore, game.color)} →{' '}
                 {formatEval(shownMove.cpAfter, game.color)}
                 {isFault(shownMove.tag) && (
-                  <span className="text-amber-400"> {shownMove.tag}</span>
+                  <span className={markColor(shownMove.tag)}> {shownMove.tag}</span>
                 )}
               </span>
             )}

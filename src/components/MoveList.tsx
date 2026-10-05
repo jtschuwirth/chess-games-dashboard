@@ -2,13 +2,8 @@
 
 import { useEffect, useRef } from 'react'
 import { lineTokens, type Ply } from '@/lib/board'
+import { markColor } from '@/lib/review'
 import type { Color, ProposedMove } from '@/types/chess'
-
-/** Engine marks, coloured by how much they cost. Faults only — see `isFault`. */
-const TAG_COLOR: Record<string, string> = {
-  '??': 'text-red-400',
-  '?': 'text-amber-400',
-}
 
 /** Which move of which line is on the board, when one is being played out. */
 export interface ActiveLine {
@@ -104,7 +99,7 @@ export default function MoveList({
                   >
                     {ply.san}
                     {tags.has(ply.index) && (
-                      <span className={TAG_COLOR[tags.get(ply.index) as string] ?? 'text-zinc-500'}>
+                      <span className={markColor(tags.get(ply.index))}>
                         {tags.get(ply.index)}
                       </span>
                     )}

@@ -13,14 +13,10 @@ import {
   candidateMoves,
   formatEval,
   isFault,
+  markColor,
   missingFrom,
 } from '@/lib/review'
 import type { GameRecord, GameReview, ProposedMove, ReviewedMistake } from '@/types/chess'
-
-const TAG_COLOR: Record<string, string> = {
-  '??': 'text-red-400',
-  '?': 'text-amber-400',
-}
 
 /** How a proposed move turned out when the engine looked at it. */
 type Verdict = { cpBefore: number; cpAfter: number; tag: MoveTag } | 'failed'
@@ -397,7 +393,7 @@ export default function ReviewEditor({
               className="px-3 py-1 text-xs rounded-full border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-mono"
             >
               {plyLabel(move.ply, move.san)}
-              <span className={TAG_COLOR[move.tag] ?? 'text-zinc-500'}> {move.tag}</span>
+              <span className={markColor(move.tag)}> {move.tag}</span>
               {/* both ends: where the move left you is meaningless without where it started */}
               <span className="text-zinc-500">
                 {' '}
@@ -596,7 +592,9 @@ export default function ReviewEditor({
                           <span className="text-zinc-600">not checked</span>
                         ) : (
                           <span
-                            className={`font-mono ${TAG_COLOR[verdict.tag] ?? 'text-emerald-400'}`}
+                            className={`font-mono ${
+                              isFault(verdict.tag) ? markColor(verdict.tag) : 'text-emerald-400'
+                            }`}
                             title={
                               isFault(verdict.tag)
                                 ? `${played.line[0]} gives something away too`

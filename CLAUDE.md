@@ -133,6 +133,12 @@ src/
   context excused — +12.4 to +9.8 earns one — so putting it on screen or offering it up for
   review would argue against the rule that produced it. `FAULT_TAGS` in `lib/review.ts` is the
   one list of marks that reach a screen or a PGN: `??` and `?`.
+- **`??` is red and `?` is amber, from one place.** The two marks are a severity scale, and a
+  scale is only a scale if it says the same thing everywhere. The map was copied into two
+  components and hardcoded in two more, and both hardcodes were wrong in opposite directions: the
+  game view's evaluation readout wrote every mark amber, so a blunder read as a mistake, and the
+  drill wrote every one red, so a mistake read as a blunder. `markColor` in `lib/review.ts` is now
+  the only answer, and it returns muted for anything that is not a fault.
 - **The engine runs in the browser by default, and on the server on request.** `setEngineMode`
   picks, per device, and `analyzePosition` hides which one answered — the four callers never know.
   Browser is the default because it is free; the server exists for phones, where the local engine

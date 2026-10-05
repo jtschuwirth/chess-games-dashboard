@@ -307,6 +307,24 @@ export function isFault(tag: string): boolean {
   return FAULT_TAGS.includes(tag)
 }
 
+/**
+ * What colour a mark is written in: `??` red, `?` amber, anything else muted.
+ *
+ * One map, because the two marks are a severity scale and the whole point of a scale is
+ * that it means the same thing everywhere. It was copied into two components and
+ * hardcoded in two more, and both hardcodes were wrong in opposite directions — the
+ * game view's evaluation readout wrote every mark in amber, so a blunder read as a
+ * mistake, and the drill wrote every one in red, so a mistake read as a blunder.
+ */
+const MARK_COLOR: Record<string, string> = {
+  '??': 'text-red-400',
+  '?': 'text-amber-400',
+}
+
+export function markColor(tag: string | null | undefined): string {
+  return (tag && MARK_COLOR[tag]) || 'text-zinc-500'
+}
+
 export interface MistakeCandidate {
   ply: number
   san: string

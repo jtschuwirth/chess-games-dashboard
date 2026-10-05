@@ -7,7 +7,7 @@ import { Spinner } from '@/components/PageShell'
 import { formatLine, playMove, plyLabel, sanFromUci } from '@/lib/board'
 import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
 import { analyzePosition } from '@/lib/engine'
-import { formatEval, isFault } from '@/lib/review'
+import { formatEval, isFault, markColor } from '@/lib/review'
 import { isPass, judgeAttempt, recordAttempt, type DrillCard, type DrillVerdict } from '@/lib/drill'
 import { saveDrillResult } from '@/lib/firestore'
 import type { DrillStat } from '@/types/chess'
@@ -222,7 +222,10 @@ export default function DrillCardView({
                     {plyLabel(card.ply, card.played)}
                   </span>
                   {card.playedTag && isFault(card.playedTag) && (
-                    <span className="text-red-400 font-mono"> {card.playedTag}</span>
+                    <span className={`${markColor(card.playedTag)} font-mono`}>
+                      {' '}
+                      {card.playedTag}
+                    </span>
                   )}
                   .
                 </p>
