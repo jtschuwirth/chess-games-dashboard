@@ -183,7 +183,7 @@ export type NewOpeningLine = Omit<OpeningLine, 'id'>
  * What kind of mistake a marked move was — not how much it cost, which the engine
  * already says, but what sort of advantage went with it.
  */
-export type VerdictKind = 'threw-it' | 'lost-the-thread' | 'only-move' | 'from-level'
+export type VerdictKind = 'threw-it' | 'lost-the-thread' | 'concrete-line' | 'from-level'
 
 /**
  * The second pass's reading of one marked move, kept beside the analysis because it is

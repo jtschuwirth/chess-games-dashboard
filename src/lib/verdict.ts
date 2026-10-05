@@ -49,6 +49,15 @@ export const MATERIAL_SLACK = 150
 export const DECISIVE_MATERIAL = 3
 
 /**
+ * How few moves may hold before the position counts as having a line rather than a plan.
+ *
+ * Two, not one: the same idea often has two move orders, or a check that can be given
+ * from either of two squares, and a position with one answer written two ways is still a
+ * position with one answer.
+ */
+export const NARROW = 2
+
+/**
  * How many candidate moves to ask the engine for.
  *
  * The question is only "one answer or several", so five is plenty and each extra line
@@ -91,17 +100,17 @@ export function countHolding(scores: number[]): number {
 /**
  * What kind of mistake this was.
  *
- * The order matters, and "only one move held" comes first whether or not you were
- * winning. A position with a single answer is a position where the mistake was failing
- * to find it — that is true at +6 and it is true at level, and it is a different failure
- * from picking the worst of five playable moves.
+ * The order matters, and "hardly anything held" comes first whether or not you were
+ * winning. A position with one line in it is a position where the mistake was failing to
+ * find that line — that is true at +6 and it is true at level, and it is a different
+ * failure from picking the worst of five playable moves.
  */
 export function readVerdict(input: {
   cpBefore: number
   material: number
   holds: number
 }): VerdictKind {
-  if (input.holds <= 1) return 'only-move'
+  if (input.holds <= NARROW) return 'concrete-line'
   if (input.cpBefore < WINNING) return 'from-level'
 
   const material = input.material >= DECISIVE_MATERIAL
@@ -113,7 +122,7 @@ export function readVerdict(input: {
 export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'threw-it': 'threw it',
   'lost-the-thread': 'lost the thread',
-  'only-move': 'only move',
+  'concrete-line': 'concrete line',
   'from-level': 'from level',
 }
 
@@ -122,7 +131,8 @@ export const VERDICT_HINT: Record<VerdictKind, string> = {
   'threw-it': 'You were materially ahead and more than one move kept it.',
   'lost-the-thread':
     'The advantage was the position rather than material, and more than one move kept it. A plan, not a shot.',
-  'only-move': 'Exactly one of the moves looked at held. This was a move to find.',
+  'concrete-line':
+    'One or two of the moves looked at held. The position had a line in it to find, not a plan to follow.',
   'from-level': 'Nothing was won here to lose, and more than one move was playable.',
 }
 
@@ -130,7 +140,7 @@ export const VERDICT_HINT: Record<VerdictKind, string> = {
 export const VERDICT_BADGE: Record<VerdictKind, string> = {
   'threw-it': 'bg-red-500/15 text-red-300 border-red-500/30',
   'lost-the-thread': 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-  'only-move': 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+  'concrete-line': 'bg-violet-500/15 text-violet-300 border-violet-500/30',
   'from-level': 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
 }
 
@@ -141,9 +151,24 @@ export function judgeable(game: GameRecord): number[] {
     .map(move => move.ply)
 }
 
-/** Verdicts already stored, minus the ones you have thrown out. */
+/**
+ * Verdicts as stored, with the one renamed kind read forward.
+ *
+ * `only-move` became `concrete-line` once the rule widened from one move to two — two
+ * move orders of the same idea is still one idea. Converted on read rather than
+ * migrated, the same habit as every other stored shape here.
+ */
 export function verdictsOf(game: GameRecord): Record<string, MoveVerdict> {
-  return game.verdicts ?? {}
+  const stored = game.verdicts ?? {}
+
+  return Object.fromEntries(
+    Object.entries(stored).map(([ply, verdict]) => [
+      ply,
+      (verdict.verdict as string) === 'only-move'
+        ? { ...verdict, verdict: 'concrete-line' as const }
+        : verdict,
+    ]),
+  )
 }
 
 export function verdictAt(game: GameRecord, ply: number): MoveVerdict | null {

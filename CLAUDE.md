@@ -20,8 +20,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    same filter, the way clicking a variation row sets the opening.
 5. `/games/{id}` — one game: a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
-   pass over the marked moves says what *kind* of mistake each was — an only move missed,
-   a material advantage thrown, a plan lost — and any reading can be thrown out. Reached from any
+   pass over the marked moves says what *kind* of mistake each was — a concrete line
+   missed, a material advantage thrown, a plan lost — and any reading can be thrown out. Reached from any
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
@@ -415,10 +415,17 @@ src/
   mistakes, different training, and a tag table that cannot tell them apart sends you to
   the wrong one. `lib/verdict.ts` reads three things off the position before each marked
   move: your **material**, the engine's **score**, and **how many moves held it**. The
-  verdicts are `only move`, `threw it`, `lost the thread` and `from level`, and the order
-  they are tested in matters: one move holding comes first whether or not you were
-  winning, because a position with a single answer is a failure to find it at +6 and at
-  level alike.
+  verdicts are `concrete line`, `threw it`, `lost the thread` and `from level`, and the
+  order they are tested in matters: hardly anything holding comes first whether or not you
+  were winning, because a position with one line in it is a failure to find that line at
+  +6 and at level alike.
+- **A concrete line is one or two moves, not one.** `NARROW` is 2 because the same idea
+  often has two move orders, or a check available from either of two squares, and a
+  position with one answer written two ways is still a position with one answer. The name
+  is `concrete line` rather than `only move` for the same reason, and because it is the
+  honest opposite of `lost the thread`: a line to calculate against a plan to follow. The
+  old `only-move` is read forward in `verdictsOf`, the same habit as every other stored
+  shape here.
 - **"How many moves held it" is one MultiPV search, not one search per move.** Asking the
   engine about each legal move separately would be forty searches and — worse — forty
   separate searches, which cannot be compared with each other any more than two depths
@@ -430,6 +437,12 @@ src/
   `analyzeLines(fen, depth, count)` is the entry point for both engines, `analyzePosition`
   is the one-line reading of it, and the cache records how many lines were asked for so a
   position with three legal moves does not look uncached for ever.
+- **The second pass runs on the marked moves only, and that is the whole reason it is
+  affordable.** A MultiPV search costs five times a plain one — 6.2s against 1.3s at depth
+  21, measured on real positions — so running it over a whole game would be four minutes
+  against the first pass's two. Faults are 7% of your moves, about 2.7 a game, which puts
+  the second pass at under twenty seconds. It also skips moves already judged, so it
+  resumes rather than restarting.
 - **Material is the thing the eval is not.** A score runs ahead of the material when the
   advantage is an attack, two bishops, a passed pawn — something you have to keep playing
   for. So `threw it` needs either a decisive material edge (`DECISIVE_MATERIAL`, a piece)
