@@ -209,8 +209,6 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
         </div>
       )}
 
-      <PatternLineCard line={pattern.main} fallbackTitle="The idea" />
-
       {examples.length > 0 && (
         <div className="flex flex-col gap-3">
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Examples</h3>

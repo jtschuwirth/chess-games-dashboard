@@ -105,6 +105,27 @@ export function lineHasContent(line: PatternLine): boolean {
 }
 
 /**
+ * A stored pattern in the shape the code expects, whatever shape it was written in.
+ *
+ * One shape has been replaced: a single `main` line beside a list of `examples`. A
+ * pattern is not an opening, so there was never a main line for the rest to be
+ * variations of — an endgame idea has no main line at all — and what that field actually
+ * held was the first example. So it becomes the first example, converted on read rather
+ * than migrated, the same habit as `normalizePlan` and `betterMovesOf`. The writes drop
+ * the field, so a pattern rewrites itself the first time you edit it.
+ */
+export function normalizePattern(raw: PatternRecord): PatternRecord {
+  const stored = Array.isArray(raw.examples) ? raw.examples : []
+  const normalized: PatternRecord = {
+    ...raw,
+    examples: raw.main && lineHasContent(raw.main) ? [raw.main, ...stored] : stored,
+  }
+
+  delete normalized.main
+  return normalized
+}
+
+/**
  * The tag a pattern contributes to a review. It is simply the name, which is what makes
  * every count, filter and table that already works on tags work on patterns too without
  * knowing patterns exist. The cost is that renaming a pattern leaves the old name behind

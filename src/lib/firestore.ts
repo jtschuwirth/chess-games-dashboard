@@ -16,6 +16,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore'
 import { db } from './firebase'
+import { normalizePattern } from './pattern'
 import { normalizePlan } from './plan'
 import {
   closingRatings,
@@ -283,7 +284,8 @@ export async function getPatterns(
 ): Promise<PatternRecord[]> {
   const ref = collection(db, 'users', userId, PATTERNS)
   const snapshot = await readDocs(query(ref, orderBy('name')), options)
-  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as PatternRecord)
+  // the one place a stored pattern becomes the shape the rest of the code expects
+  return snapshot.docs.map(d => normalizePattern({ ...d.data(), id: d.id } as PatternRecord))
 }
 
 export async function savePattern(userId: string, pattern: NewPattern): Promise<string> {
@@ -297,7 +299,16 @@ export async function updatePattern(
   patternId: string,
   pattern: NewPattern,
 ): Promise<void> {
-  await updateDoc(doc(db, 'users', userId, PATTERNS, patternId), { ...pattern })
+  /*
+    `main` is deleted rather than left alone. An update merges, so a field nobody writes
+    any more simply stays in the document — and `normalizePattern` would keep putting it
+    back at the front of the examples, so the line you just reordered or removed would
+    reappear on the next read.
+  */
+  await updateDoc(doc(db, 'users', userId, PATTERNS, patternId), {
+    ...pattern,
+    main: deleteField(),
+  })
 }
 
 export async function deletePattern(userId: string, patternId: string): Promise<void> {

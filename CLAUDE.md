@@ -24,8 +24,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
 6. `/patterns` — write up the ideas themselves: a name, a kind, the conditions that
-   bring it about, a game that shows it opened on the move where it appears, and more
-   games showing the same thing. Any move of a line can carry its own comment, and they
+   bring it about, and the games showing it, each opened on the move where the idea
+   appears. Any move of a line can carry its own comment, and they
    are listed beside the board to read or to jump to. Each pattern's name becomes a tag
    in the review form, so a mistake can point at the idea you should have played, and the
    pattern's own page lists the games where you did that.
@@ -306,6 +306,16 @@ src/
   there, and `⏮` returns to the pattern's own move rather than to move one, because that
   position is why the line is there at all. A board editor was the alternative and is
   strictly more work for strictly less: these patterns come out of games you played.
+- **A pattern has examples, and none of them is the main line.** It held a `main` line
+  beside a list of `examples`, which quietly borrowed the shape of an opening — where a
+  main line is the one everything else is a variation of. A pattern is not an opening: an
+  endgame idea has no main line at all, and even for an opening pattern the first game you
+  happened to write up is not the canonical one. So there is one list, the first entry is
+  first only because it was added first, and every entry can be removed. `normalizePattern`
+  folds an old `main` in as the first example on read; `updatePattern` has to `deleteField`
+  it, because an update merges and a field nobody writes still sits in the document — it
+  would be put back at the front on the next read, so a line you had just removed would
+  reappear.
 - **A line is annotated move by move, and the annotations are a list.** A pattern's note
   says what the line is for; what is worth saying about one move belongs to that move.
   Comments are keyed by how many half-moves have been played — `7` is the seventh of them,

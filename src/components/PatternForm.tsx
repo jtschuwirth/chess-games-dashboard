@@ -273,8 +273,10 @@ export default function PatternForm({
   const [name, setName] = useState(initial?.name ?? '')
   const [kind, setKind] = useState<PatternKind>(initial?.kind ?? 'tactics')
   const [conditions, setConditions] = useState((initial?.conditions ?? []).join('\n'))
-  const [main, setMain] = useState<PatternLine>(initial?.main ?? emptyLine())
-  const [examples, setExamples] = useState<PatternLine[]>(initial?.examples ?? [])
+  // always one editor on screen: a pattern with nothing in it is still being written
+  const [examples, setExamples] = useState<PatternLine[]>(
+    initial?.examples?.length ? initial.examples : [emptyLine()],
+  )
   const [openingIds, setOpeningIds] = useState<string[]>(initial?.openingIds ?? [])
   const [error, setError] = useState<string | null>(null)
 
@@ -293,7 +295,6 @@ export default function PatternForm({
         .split('\n')
         .map(line => line.trim())
         .filter(line => line.length > 0),
-      main,
       // an example you started and left blank is not worth storing
       examples: examples.filter(lineHasContent),
       openingIds,
@@ -352,11 +353,11 @@ export default function PatternForm({
         </div>
       )}
 
-      <div className="flex flex-col gap-2">
-        <Label>Main line</Label>
-        <LineFields line={main} titlePlaceholder="what this line is called" onChange={setMain} />
-      </div>
-
+      {/*
+        One list, and nothing in it is the "main line". A pattern is not an opening — an
+        endgame idea has no main line for the rest to be variations of. They are games
+        showing the same thing, and the first is first only because it was added first.
+      */}
       <div className="flex flex-col gap-2">
         <Label>Examples</Label>
         {examples.map((example, index) => (
@@ -365,7 +366,11 @@ export default function PatternForm({
             line={example}
             titlePlaceholder={`Example ${index + 1}`}
             onChange={next => setExamples(prev => prev.map((e, i) => (i === index ? next : e)))}
-            onRemove={() => setExamples(prev => prev.filter((_, i) => i !== index))}
+            onRemove={
+              examples.length > 1
+                ? () => setExamples(prev => prev.filter((_, i) => i !== index))
+                : undefined
+            }
           />
         ))}
         <button

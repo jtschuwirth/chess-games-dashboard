@@ -222,16 +222,23 @@ export interface PatternRecord {
   kind: PatternKind
   /** When the pattern applies — one condition per entry. */
   conditions: string[]
-  /** The line that explains the idea; where it opens is the headline diagram. */
-  main: PatternLine
-  /** The same idea in other games. */
+  /**
+   * Games showing the idea, in the order they were added. The first is the one the page
+   * leads with, and that is the only thing that makes it first.
+   */
   examples: PatternLine[]
+  /**
+   * The old single "main line". Read by `normalizePattern` and never written again — a
+   * pattern is not an opening, so there was no main line for the rest to be variations
+   * of, and an endgame idea has no main line at all. They were always examples.
+   */
+  main?: PatternLine
   /** Saved openings this turns up in, by `OpeningLine` id. */
   openingIds: string[]
   createdAt: number
 }
 
-export type NewPattern = Omit<PatternRecord, 'id'>
+export type NewPattern = Omit<PatternRecord, 'id' | 'main'>
 
 /**
  * One thing to do on one day. No id: the array is rewritten whole on every change, and

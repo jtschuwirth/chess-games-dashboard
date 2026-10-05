@@ -126,8 +126,8 @@ function PatternsBody({ userId }: { userId: string }) {
 
               <div className="flex items-center gap-3 text-xs text-zinc-600 mt-auto pt-1">
                 <span>
-                  {pattern.examples.length + 1} line
-                  {pattern.examples.length === 0 ? '' : 's'}
+                  {pattern.examples.length} line
+                  {pattern.examples.length === 1 ? '' : 's'}
                 </span>
                 {times > 0 && <span className="text-amber-400/80">{times} flagged</span>}
               </div>
