@@ -13,6 +13,7 @@ import {
   VERDICT_HINT,
   VERDICT_LABEL,
   judgeGame,
+  materialLabel,
   pendingPlies,
   verdictsOf,
 } from '@/lib/verdict'
@@ -260,9 +261,8 @@ function VerdictRow({
             {VERDICT_LABEL[verdict.verdict]}
           </span>
 
-          <span className="text-xs text-zinc-600 font-mono">
-            {verdict.material >= 0 ? '+' : ''}
-            {verdict.material} material · {verdict.holds} of {verdict.looked} held
+          <span className="text-xs text-zinc-600">
+            {materialLabel(verdict.materialBy)} · {verdict.holds} of {verdict.looked} held
           </span>
 
           <button

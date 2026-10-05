@@ -194,8 +194,15 @@ export type VerdictKind = 'threw-it' | 'lost-the-thread' | 'concrete-line' | 'fr
  */
 export interface MoveVerdict {
   ply: number
-  /** Your material minus theirs, in pawns, before the move. */
+  /** Your material minus theirs, in pawns, before the move. What the rules weigh. */
   material: number
+  /**
+   * What that weight is made of: your count minus theirs per piece type, zeroes left
+   * out. `+3` is a knight to one reader and three pawns to another, and they are not the
+   * same position — this is the half that says which. Absent on verdicts read before it
+   * existed.
+   */
+  materialBy?: Record<string, number>
   /** The best score in that search, from your side. Not the stored `cpBefore`. */
   best: number
   /** How many of the candidates looked at would not have been a fault. */

@@ -67,18 +67,75 @@ export const LINES = 5
 
 /** Your material minus theirs, in pawns, in a position. */
 export function materialBalance(fen: string, you: 'white' | 'black'): number {
+  const edge = materialEdge(fen, you)
+  return edge.pawns
+}
+
+/** What the pieces are called, so a count can say what it is counting. */
+const PIECE_NAME: Record<string, [string, string]> = {
+  p: ['pawn', 'pawns'],
+  n: ['knight', 'knights'],
+  b: ['bishop', 'bishops'],
+  r: ['rook', 'rooks'],
+  q: ['queen', 'queens'],
+}
+
+/** The order they read in, heaviest first — "a rook for a knight", not the other way. */
+const PIECE_ORDER = ['q', 'r', 'b', 'n', 'p']
+
+/**
+ * What is on the board, your side minus theirs.
+ *
+ * Both halves are needed and they answer different questions. `pawns` is the weight,
+ * which is what the rules here reason about; `by` is what the weight is actually made
+ * of, which is what a reader needs — "+3" is a knight to one person and three pawns to
+ * another, and those are not the same position.
+ */
+export function materialEdge(
+  fen: string,
+  you: 'white' | 'black',
+): { pawns: number; by: Record<string, number> } {
   const board = new Chess(fen).board()
 
-  let mine = 0
-  let theirs = 0
+  const by: Record<string, number> = {}
+  let pawns = 0
+
   for (const row of board) {
     for (const square of row) {
-      if (!square) continue
-      if ((square.color === 'w') === (you === 'white')) mine += VALUE[square.type]
-      else theirs += VALUE[square.type]
+      if (!square || square.type === 'k') continue
+
+      const mine = (square.color === 'w') === (you === 'white')
+      pawns += mine ? VALUE[square.type] : -VALUE[square.type]
+      by[square.type] = (by[square.type] ?? 0) + (mine ? 1 : -1)
     }
   }
-  return mine - theirs
+
+  for (const type of Object.keys(by)) if (by[type] === 0) delete by[type]
+  return { pawns, by }
+}
+
+/**
+ * The material edge in words: "a rook up", "a knight for two pawns", "level".
+ *
+ * Written out rather than left as a number because a number cannot say which it is. The
+ * two-sided case keeps both halves — being a piece up for two pawns is a different
+ * position from being a piece up.
+ */
+export function materialLabel(by: Record<string, number> | undefined): string {
+  if (!by) return 'material unknown'
+
+  const part = (type: string, count: number) => {
+    const [one, many] = PIECE_NAME[type] ?? ['piece', 'pieces']
+    return count === 1 ? `a ${one}` : `${count} ${many}`
+  }
+
+  const up = PIECE_ORDER.filter(type => (by[type] ?? 0) > 0).map(type => part(type, by[type]))
+  const down = PIECE_ORDER.filter(type => (by[type] ?? 0) < 0).map(type => part(type, -by[type]))
+
+  if (up.length === 0 && down.length === 0) return 'level'
+  if (down.length === 0) return `${up.join(' and ')} up`
+  if (up.length === 0) return `${down.join(' and ')} down`
+  return `${up.join(' and ')} for ${down.join(' and ')}`
 }
 
 /**
@@ -216,12 +273,14 @@ export async function judgeGame(
 
     const fen = chess.fen()
     const candidates = await analyzeLines(fen, ENGINE_DEPTH, LINES)
-    const material = materialBalance(fen, game.color)
+    const edge = materialEdge(fen, game.color)
+    const material = edge.pawns
     const holds = countHolding(candidates.moves.map(candidate => candidate.cp))
 
     judged[String(move.ply)] = {
       ply: move.ply,
       material,
+      materialBy: edge.by,
       best: candidates.moves[0].cp,
       holds,
       looked: candidates.moves.length,

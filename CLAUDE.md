@@ -443,6 +443,14 @@ src/
   against the first pass's two. Faults are 7% of your moves, about 2.7 a game, which puts
   the second pass at under twenty seconds. It also skips moves already judged, so it
   resumes rather than restarting.
+- **A material count has to say what it is counting.** `+3` is a knight to one reader and
+  three pawns to another, and those are not the same position — reading "+1 material" off
+  a row tells you nothing you can picture. So the verdict stores both: `material` in pawn
+  units, which is what the rules weigh, and `materialBy`, the count per piece type, which
+  is what gets written out. "a pawn up", "a rook for a knight", "level". It earns itself
+  immediately on real data: the game that scored `+3` turns out to be *a bishop and 3
+  pawns for a knight*, and one that scored `0` is *2 bishops for a knight and 3 pawns* —
+  which is the two-bishop endgame the number flatly denied was anything at all.
 - **Material is the thing the eval is not.** A score runs ahead of the material when the
   advantage is an attack, two bishops, a passed pawn — something you have to keep playing
   for. So `threw it` needs either a decisive material edge (`DECISIVE_MATERIAL`, a piece)
