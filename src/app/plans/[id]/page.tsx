@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
+import { PlanRatings } from '@/components/PlanRatings'
 import PlanWeekCard from '@/components/PlanWeekCard'
 import { deletePlan, getGames, getPlans, getRatingHistory, updatePlan } from '@/lib/firestore'
 import {
@@ -170,6 +171,8 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
+
+      <PlanRatings plan={plan} history={history} />
 
       <div className="flex flex-col gap-2">
         {plan.weeks.map((week, index) => (

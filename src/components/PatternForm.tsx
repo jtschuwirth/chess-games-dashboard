@@ -2,15 +2,18 @@
 
 import { useMemo, useState } from 'react'
 import Chip from '@/components/Chip'
-import LineBoard from '@/components/LineBoard'
+import LineBoard, { plyName, useLineCursor } from '@/components/LineBoard'
 import { buildOpeningTree, openingLabel, type OpeningNode } from '@/lib/opening'
 import {
   KIND_LABEL,
   PATTERN_KINDS,
   clampStartPly,
+  commentAt,
+  commentedPlies,
   emptyLine,
   lineHasContent,
   parsePatternPgn,
+  withComment,
 } from '@/lib/pattern'
 import type { NewPattern, OpeningLine, PatternKind, PatternLine } from '@/types/chess'
 
@@ -30,6 +33,9 @@ const INPUT =
  * One line of a pattern: what it is called, the game, where the board opens, and what
  * to notice. The board sits beside the fields rather than under them, because pointing
  * the line at the right move is the one thing here you cannot do by typing.
+ *
+ * The comment field is for whichever move is on the board, so writing a line up is
+ * stepping and typing rather than filling in a list of moves you have to name.
  */
 function LineFields({
   line,
@@ -43,6 +49,8 @@ function LineFields({
   onRemove?: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
+  const nav = useLineCursor(line.moves, line.startPly)
+  const commented = useMemo(() => commentedPlies(line), [line])
 
   function setPgn(pgn: string) {
     // The PGN is kept whatever happens, so a typo does not throw away what you pasted.
@@ -57,7 +65,7 @@ function LineFields({
   }
 
   return (
-    <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,18rem)] gap-4 border border-zinc-800 rounded-xl p-3 bg-zinc-950/40">
+    <div className="grid lg:grid-cols-[minmax(0,1fr)_minmax(0,26rem)] gap-4 border border-zinc-800 rounded-xl p-3 bg-zinc-950/40">
       <div className="flex flex-col gap-3 min-w-0">
         <div className="flex items-center gap-2">
           <input
@@ -107,11 +115,11 @@ function LineFields({
         </div>
       </div>
 
-      <div className="w-full max-w-[18rem] mx-auto md:mx-0">
+      <div className="w-full max-w-[26rem] mx-auto lg:mx-0 flex flex-col gap-3">
         <LineBoard
-          moves={line.moves}
-          startPly={line.startPly}
+          nav={nav}
           orientation={line.orientation ?? 'white'}
+          commented={commented}
           onFlip={() =>
             onChange({
               ...line,
@@ -120,6 +128,23 @@ function LineFields({
           }
           onSetStart={ply => onChange({ ...line, startPly: ply })}
         />
+
+        <div className="flex flex-col gap-1.5">
+          {/* the move is mono and in its own case — "QC2" is not a move */}
+          <span className="text-xs uppercase tracking-wide text-zinc-500">
+            Comment on{' '}
+            <span className="normal-case tracking-normal font-mono text-zinc-400">
+              {plyName(nav.replay, nav.cursor)}
+            </span>
+          </span>
+          <textarea
+            value={commentAt(line, nav.cursor)}
+            onChange={event => onChange(withComment(line, nav.cursor, event.target.value))}
+            rows={3}
+            placeholder="what this move is for"
+            className={`${INPUT} resize-y`}
+          />
+        </div>
       </div>
     </div>
   )

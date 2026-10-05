@@ -197,8 +197,17 @@ export interface PatternLine {
    * idea. Absent on lines written before this existed, which read as White.
    */
   orientation?: Color
-  /** What to notice here. */
+  /** What to notice about the line as a whole. */
   note: string
+  /**
+   * What to notice at one point in it, keyed by how many half-moves have been played.
+   * So `7` is the comment on the seventh half-move — the one that produced the position
+   * on the board — and `0` is the position before anything.
+   *
+   * Keyed by that count rather than by the move itself, because the same move can appear
+   * twice in one game and the two are not the same thing to say.
+   */
+  comments?: Record<string, string>
 }
 
 /**

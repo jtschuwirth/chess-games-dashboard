@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import Board from '@/components/Board'
-import { plyLabel, replayGame } from '@/lib/board'
+import { plyLabel, replayGame, type Replay } from '@/lib/board'
 import type { Color } from '@/types/chess'
 
 function NavButton({
@@ -30,6 +30,109 @@ function NavButton({
   )
 }
 
+export interface LineCursor {
+  replay: Replay
+  /** How many plies the line has. */
+  total: number
+  /** The ply the line opens on, clamped into the game. */
+  home: number
+  /** How many plies are played on the board right now. */
+  cursor: number
+  goTo: (ply: number) => void
+}
+
+/**
+ * Where a line is being read, held outside the board.
+ *
+ * It lives here rather than inside `LineBoard` because what is worth saying about a line
+ * belongs to one move of it, and whoever shows or edits that comment has to know which
+ * move is on the board. Lifting the cursor is what lets the commentary sit beside the
+ * board instead of being squeezed underneath it.
+ *
+ * `moved` is null until you actually step, so while you are still pointing the line in
+ * the editor the board follows `startPly` as you change it, with no effect writing state
+ * back into the component.
+ */
+export function useLineCursor(moves: string[], startPly: number): LineCursor {
+  const [moved, setMoved] = useState<number | null>(null)
+
+  const replay = useMemo(() => replayGame(moves), [moves])
+  const total = replay.plies.length
+  const home = Math.max(0, Math.min(startPly, total))
+  const cursor = Math.max(0, Math.min(moved ?? home, total))
+
+  return { replay, total, home, cursor, goTo: setMoved }
+}
+
+/**
+ * What a point in a line is called — "7. Qc2", or "start" for the position before
+ * anything. Used wherever a comment has to say which move it belongs to.
+ */
+export function plyName(replay: Replay, ply: number): string {
+  if (ply <= 0) return 'start'
+  const move = replay.plies[ply - 1]
+  return move ? plyLabel(ply - 1, move.san) : 'start'
+}
+
+/**
+ * Every move of the line, to jump to directly.
+ *
+ * Stepping is fine for reading a line through, and useless for finding the one move
+ * someone wrote a note on — so the moves carrying a comment are marked, and any move is
+ * one click away. The ply the line opens on keeps a ring, because that position is the
+ * reason the line is here at all.
+ */
+function PlyStrip({
+  nav,
+  commented,
+}: {
+  nav: LineCursor
+  commented: Set<number>
+}) {
+  function chip(ply: number, label: React.ReactNode) {
+    const active = nav.cursor === ply
+    return (
+      <button
+        key={ply}
+        type="button"
+        onClick={() => nav.goTo(ply)}
+        className={`px-1.5 py-0.5 rounded font-mono text-[11px] leading-none transition-colors ${
+          active
+            ? 'bg-zinc-200 text-zinc-900'
+            : `text-zinc-400 hover:bg-zinc-800 hover:text-zinc-100 ${
+                ply === nav.home ? 'ring-1 ring-inset ring-zinc-700' : ''
+              }`
+        }`}
+      >
+        {label}
+        {commented.has(ply) && (
+          <span className={active ? 'text-amber-600' : 'text-amber-400'} aria-label="has a comment">
+            {' '}
+            •
+          </span>
+        )}
+      </button>
+    )
+  }
+
+  return (
+    <div className="max-h-24 overflow-y-auto rounded-md border border-zinc-800 bg-zinc-950/60 p-1 flex flex-wrap gap-0.5">
+      {chip(0, <span className="text-zinc-500">start</span>)}
+      {nav.replay.plies.map((ply, index) =>
+        chip(
+          index + 1,
+          <>
+            {index % 2 === 0 && (
+              <span className="text-zinc-600">{Math.floor(index / 2) + 1}.</span>
+            )}
+            {ply.san}
+          </>,
+        ),
+      )}
+    </div>
+  )
+}
+
 /**
  * A line of a pattern on a board: opens on the move the pattern is about, and steps
  * anywhere in the game from there.
@@ -38,34 +141,26 @@ function NavButton({
  * `plies[cursor - 1]` is the move that produced it — the one the readout names and the
  * board highlights.
  *
- * It is derived rather than stored: `moved` is null until you actually step, so while
- * you are still pointing the line in the editor the board follows `startPly` as you
- * change it, with no effect writing state back into the component.
- *
  * `⏮` returns to the pattern's own start rather than to move one. That position is the
  * reason the line is here, and stepping back past it is what `◀` is for.
  */
 export default function LineBoard({
-  moves,
-  startPly,
+  nav,
   orientation = 'white',
+  commented,
   onFlip,
   onSetStart,
 }: {
-  moves: string[]
-  startPly: number
+  nav: LineCursor
   orientation?: Color
+  /** Plies with something written on them, marked on the strip. */
+  commented?: Set<number>
   /** Offered only when the caller can store the result. */
   onFlip?: () => void
   /** Edit mode: lets the move on screen become the one the line opens on. */
   onSetStart?: (ply: number) => void
 }) {
-  const [moved, setMoved] = useState<number | null>(null)
-
-  const replay = replayGame(moves)
-  const total = replay.plies.length
-  const home = Math.max(0, Math.min(startPly, total))
-  const cursor = Math.max(0, Math.min(moved ?? home, total))
+  const { replay, total, home, cursor } = nav
 
   const current = cursor > 0 ? replay.plies[cursor - 1] : null
   const fen = replay.fens[cursor]
@@ -88,14 +183,14 @@ export default function LineBoard({
 
       <div className="flex items-center gap-1">
         <NavButton
-          onClick={() => setMoved(home)}
+          onClick={() => nav.goTo(home)}
           disabled={cursor === home}
           title="Back to where this line starts"
         >
           ⏮
         </NavButton>
         <NavButton
-          onClick={() => setMoved(cursor - 1)}
+          onClick={() => nav.goTo(cursor - 1)}
           disabled={cursor === 0}
           title="Previous move"
         >
@@ -108,14 +203,14 @@ export default function LineBoard({
         </span>
 
         <NavButton
-          onClick={() => setMoved(cursor + 1)}
+          onClick={() => nav.goTo(cursor + 1)}
           disabled={cursor >= total}
           title="Next move"
         >
           ▶
         </NavButton>
         <NavButton
-          onClick={() => setMoved(total)}
+          onClick={() => nav.goTo(total)}
           disabled={cursor === total}
           title="Last move"
         >
@@ -127,6 +222,8 @@ export default function LineBoard({
           </NavButton>
         )}
       </div>
+
+      {total > 0 && <PlyStrip nav={nav} commented={commented ?? new Set()} />}
 
       {onSetStart && (
         <div className="flex items-center gap-2 text-xs">

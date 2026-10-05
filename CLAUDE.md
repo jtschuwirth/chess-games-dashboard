@@ -24,14 +24,16 @@ win/draw/loss splits for all games or for the games that followed one of those l
    reviews carry; clicking a tag filters the games down to it.
 6. `/patterns` — write up the ideas themselves: a name, a kind, the conditions that
    bring it about, a game that shows it opened on the move where it appears, and more
-   games showing the same thing. Each pattern's name becomes a tag in the review form,
-   so a mistake can point at the idea you should have played, and the pattern's own page
-   lists the games where you did that.
+   games showing the same thing. Any move of a line can carry its own comment, and they
+   are listed beside the board to read or to jump to. Each pattern's name becomes a tag
+   in the review form, so a mistake can point at the idea you should have played, and the
+   pattern's own page lists the games where you did that.
 7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
-   Each week shows what you were rated going into it, read from the rating history with
-   nothing to press. Weeks fold, and more can be added as the plan runs on.
+   The plan says what it has been worth — your rating going in against where it stands
+   now — and each week what you were rated going into it, both read from the rating
+   history with nothing to press. Weeks fold, and more can be added as the plan runs on.
 8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
@@ -68,6 +70,7 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
+│                               # PatternLineCard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
 │                               # HomeNav, RatingPanel
@@ -296,6 +299,30 @@ src/
   there, and `⏮` returns to the pattern's own move rather than to move one, because that
   position is why the line is there at all. A board editor was the alternative and is
   strictly more work for strictly less: these patterns come out of games you played.
+- **A line is annotated move by move, and the annotations are a list.** A pattern's note
+  says what the line is for; what is worth saying about one move belongs to that move.
+  Comments are keyed by how many half-moves have been played — `7` is the seventh of them,
+  `0` the position before anything — rather than by the move itself, because the same move
+  can appear twice in a game and the two are not the same thing to say. They are shown as
+  a list beside the board rather than only the one for wherever you happen to be standing:
+  a line's annotations are what you came to read, and finding them by stepping through
+  eighteen moves is not reading. Clicking one puts its move on the board, and the move
+  strip under the board marks the same moves with a dot, so the two directions meet.
+- **The board's cursor lives outside the board.** `useLineCursor` is a hook rather than
+  state inside `LineBoard`, because whoever shows or edits a move's comment has to know
+  which move is on the board. That is what lets the commentary sit beside the board in the
+  reader and under it in the editor, instead of both being squeezed into the board's own
+  column. `moved` stays null until you actually step, so while you are still pointing a
+  line in the editor the board follows `startPly` as you change it.
+- **A pattern board is read at the size you would study at**, 28rem, with the commentary
+  beside it — and the split waits for `lg` rather than `md`. At tablet width a
+  two-column row squeezes the board back to the 20rem it was before it was made bigger,
+  which is the opposite of the point, so below that the commentary stacks underneath.
+- **When a pattern applies and where it turns up answer the same question**, so they sit
+  on one row above the board rather than one on each side of it, and the openings are
+  pills: two underlined links side by side read as one long name. The row wraps rather
+  than being a two-column grid, so a pattern carrying only one of them gets the whole
+  width instead of half and a gap.
 - **Each line carries its own orientation.** A pattern nearly always belongs to one side —
   the note that prompted this says "Black - Catalan" — and read from the wrong end it is a
   different idea. Lines written before the field existed read as White.
@@ -587,6 +614,14 @@ src/
   keeps one rating per time class, so `TRACKED_POOLS` holds `chesscom:rapid`, `chesscom:blitz` and
   `lichess:classical` rather than one number. Uploads and engine games are left out, as everywhere
   else.
+- **A plan says what it has been worth, start against now.** The start is your close the
+  day before day one, the same figure a week reads; the end stops at the plan's own last
+  day once that day is behind you, because a plan that ran in March answers for March and
+  not for everything played since. While it is still running the end is simply today. Both
+  ends are read from the history rather than the clock — `ratingOn` carries the last close
+  forward, so asking for today and asking for the history's own end give the same number,
+  and using the history keeps `Date.now()` out of a render. `planRatingWindow` picks the
+  two days and is the only thing that decides this; the panel reads ratings on them.
 - **A plan week reads its rating; it does not keep one.** It is the close of the day before day
   one, straight out of the history. It used to be stored on the week and filled by a button, which
   meant a figure that could be out of date and a button that had to be remembered — both

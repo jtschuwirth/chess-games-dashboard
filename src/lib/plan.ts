@@ -138,6 +138,32 @@ export function weekLabel(week: PlanWeek, index: number): string {
   return week.name.trim() || `week ${index + 1}`
 }
 
+/**
+ * The two days a plan's rating is read on: what you were rated going into it, and where
+ * it stands now.
+ *
+ * "Now" stops at the plan's own last day once that day is behind you — a plan that ran in
+ * March answers for March, not for everything you have played since. While it is still
+ * running, the end is simply the last day anything is known about, which is today's
+ * rating: the history carries the last close forward, so asking for today and asking for
+ * its own end give the same number, and using its end keeps the clock out of a render.
+ *
+ * Null when the plan has no days, or when nothing is known yet.
+ */
+export function planRatingWindow(
+  plan: Pick<StudyPlan, 'startDate' | 'weeks'>,
+  lastKnownDay: string | undefined,
+): { start: string; end: string; over: boolean } | null {
+  const length = plan.weeks.reduce((count, week) => count + week.days.length, 0)
+  if (!lastKnownDay || length === 0) return null
+
+  const start = dayKey(addDays(dateAt(plan, 0), -1))
+  const finish = dayKey(dateAt(plan, length - 1))
+  const over = finish < lastKnownDay
+
+  return { start, end: over ? finish : lastKnownDay, over }
+}
+
 /* ------------------------------------------------------------------ progress */
 
 export interface Progress {

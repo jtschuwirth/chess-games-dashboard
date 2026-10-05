@@ -29,7 +29,41 @@ export const KIND_BADGE: Record<PatternKind, string> = {
 
 /** An empty line, which is what a new example starts as. */
 export function emptyLine(): PatternLine {
-  return { title: '', pgn: '', moves: [], startPly: 0, note: '' }
+  return { title: '', pgn: '', moves: [], startPly: 0, note: '', comments: {} }
+}
+
+/**
+ * What was written about one point in a line, raw.
+ *
+ * Untrimmed on purpose: this is also what the editor puts in its field, and trimming
+ * there would eat the space you just typed.
+ */
+export function commentAt(line: PatternLine, ply: number): string {
+  return line.comments?.[String(ply)] ?? ''
+}
+
+/**
+ * The line with one comment written, or cleared when the text is emptied.
+ *
+ * Clearing removes the key rather than storing an empty string, so a comment deleted
+ * does not keep its marker on the move strip.
+ */
+export function withComment(line: PatternLine, ply: number, text: string): PatternLine {
+  const comments = { ...(line.comments ?? {}) }
+
+  if (text.trim().length === 0) delete comments[String(ply)]
+  else comments[String(ply)] = text
+
+  return { ...line, comments }
+}
+
+/** The plies carrying a comment, so the move strip can mark where there is something to read. */
+export function commentedPlies(line: PatternLine): Set<number> {
+  return new Set(
+    Object.entries(line.comments ?? {})
+      .filter(([, text]) => text.trim().length > 0)
+      .map(([ply]) => Number(ply)),
+  )
 }
 
 /**
@@ -62,7 +96,12 @@ export function clampStartPly(startPly: number, moves: string[]): number {
 
 /** A line is worth storing once it has a name or something to show. */
 export function lineHasContent(line: PatternLine): boolean {
-  return line.title.trim().length > 0 || line.moves.length > 0 || line.note.trim().length > 0
+  return (
+    line.title.trim().length > 0 ||
+    line.moves.length > 0 ||
+    line.note.trim().length > 0 ||
+    commentedPlies(line).size > 0
+  )
 }
 
 /**

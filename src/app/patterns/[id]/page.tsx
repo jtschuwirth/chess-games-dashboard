@@ -3,46 +3,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
-import LineBoard from '@/components/LineBoard'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import PatternForm from '@/components/PatternForm'
+import PatternLineCard from '@/components/PatternLineCard'
 import { deletePattern, getGames, getOpenings, getPatterns, updatePattern } from '@/lib/firestore'
 import { openingLabel } from '@/lib/opening'
 import { KIND_BADGE, KIND_LABEL, gamesTagged, lineHasContent } from '@/lib/pattern'
 import { trainableMistakes } from '@/lib/review'
-import type {
-  GameRecord,
-  NewPattern,
-  OpeningLine,
-  PatternLine,
-  PatternRecord,
-} from '@/types/chess'
-
-/**
- * One line, read rather than edited. The board and the note sit side by side because
- * the note is about the position on the board, not about the pattern as a whole.
- */
-function LineCard({ line, fallbackTitle }: { line: PatternLine; fallbackTitle: string }) {
-  return (
-    <div className="border border-zinc-800 rounded-xl p-3 bg-zinc-900 flex flex-col gap-3">
-      <h3 className="text-sm font-medium text-zinc-100">{line.title.trim() || fallbackTitle}</h3>
-
-      <div className="grid md:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] gap-4 items-start">
-        <div className="w-full max-w-[20rem] mx-auto md:mx-0">
-          <LineBoard
-            moves={line.moves}
-            startPly={line.startPly}
-            orientation={line.orientation ?? 'white'}
-          />
-        </div>
-
-        {line.note.trim().length > 0 && (
-          <p className="text-sm text-zinc-400 whitespace-pre-wrap min-w-0">{line.note}</p>
-        )}
-      </div>
-    </div>
-  )
-}
+import type { GameRecord, NewPattern, OpeningLine, PatternRecord } from '@/types/chess'
 
 function PatternBody({ userId, patternId }: { userId: string; patternId: string }) {
   const router = useRouter()
@@ -197,44 +165,57 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      {pattern.conditions.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
-          <h3 className="text-xs uppercase tracking-wide text-zinc-500">Conditions</h3>
-          <ul className="flex flex-col gap-1">
-            {pattern.conditions.map((condition, index) => (
-              <li key={index} className="text-sm text-zinc-300 flex gap-2">
-                <span className="text-zinc-600">•</span>
-                <span className="min-w-0">{condition}</span>
-              </li>
-            ))}
-          </ul>
+      {/*
+        When it applies and where it turns up answer the same question, so they sit on one
+        row above the board rather than one on each side of it. Wrapping rather than a
+        two-column grid, so a pattern with only one of them gets the whole width instead
+        of half and a gap.
+      */}
+      {(pattern.conditions.length > 0 || linkedOpenings.length > 0) && (
+        <div className="flex flex-wrap gap-3 items-start">
+          {pattern.conditions.length > 0 && (
+            <div className="flex-1 min-w-[16rem] bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
+              <h3 className="text-xs uppercase tracking-wide text-zinc-500">Conditions</h3>
+              <ul className="flex flex-col gap-1">
+                {pattern.conditions.map((condition, index) => (
+                  <li key={index} className="text-sm text-zinc-300 flex gap-2">
+                    <span className="text-zinc-600">•</span>
+                    <span className="min-w-0">{condition}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {linkedOpenings.length > 0 && (
+            <div className="flex-1 min-w-[16rem] bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
+              <h3 className="text-xs uppercase tracking-wide text-zinc-500">
+                Openings it turns up in
+              </h3>
+              <div className="flex gap-1.5 flex-wrap">
+                {/* pills, because two underlined links side by side read as one long name */}
+                {linkedOpenings.map(opening => (
+                  <Link
+                    key={opening.id}
+                    href={`/dashboard?opening=${opening.id}`}
+                    className="px-2 py-1 rounded-md border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+                  >
+                    {openingLabel(opening)}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      <LineCard line={pattern.main} fallbackTitle="The idea" />
-
-      {linkedOpenings.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
-          <h3 className="text-xs uppercase tracking-wide text-zinc-500">Openings it turns up in</h3>
-          <div className="flex gap-2 flex-wrap">
-            {linkedOpenings.map(opening => (
-              <Link
-                key={opening.id}
-                href={`/dashboard?opening=${opening.id}`}
-                className="text-sm text-zinc-300 underline decoration-zinc-700 hover:decoration-zinc-400"
-              >
-                {openingLabel(opening)}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
+      <PatternLineCard line={pattern.main} fallbackTitle="The idea" />
 
       {examples.length > 0 && (
         <div className="flex flex-col gap-3">
           <h3 className="text-xs uppercase tracking-wide text-zinc-500">Examples</h3>
           {examples.map((example, index) => (
-            <LineCard key={index} line={example} fallbackTitle={`Example ${index + 1}`} />
+            <PatternLineCard key={index} line={example} fallbackTitle={`Example ${index + 1}`} />
           ))}
         </div>
       )}
