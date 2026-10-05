@@ -240,18 +240,28 @@ export function pendingPlies(game: GameRecord): number[] {
 }
 
 /**
- * Reads one marked move: the position before it, the engine's candidates, and the
+ * Reads the marked moves: the position before each one, the engine's candidates, and the
  * verdict that falls out of them.
+ *
+ * Skips what has already been read, so stopping half way and coming back resumes.
+ * `force` reads them all again, which is what the re-read button is for — a reading
+ * written before the code knew how to say something is a reading worth taking again.
  *
  * `onProgress` is called per move because this is slow enough to need a progress line —
  * one MultiPV search at depth 21 per marked move.
  */
 export async function judgeGame(
   game: GameRecord,
-  options: { signal?: { stopped: boolean }; onProgress?: (done: number, total: number) => void } = {},
+  options: {
+    /** Read every marked move again, rather than only the ones never read. */
+    force?: boolean
+    signal?: { stopped: boolean }
+    onProgress?: (done: number, total: number) => void
+  } = {},
 ): Promise<Record<string, MoveVerdict>> {
+  const stored = verdictsOf(game)
   const marked = (game.analysis?.moves ?? []).filter(move => isFault(move.tag))
-  const pending = marked.filter(move => !verdictsOf(game)[String(move.ply)])
+  const pending = options.force ? marked : marked.filter(move => !stored[String(move.ply)])
 
   const judged: Record<string, MoveVerdict> = {}
 
@@ -287,6 +297,8 @@ export async function judgeGame(
       verdict: readVerdict({ cpBefore: move.cpBefore, material, holds }),
       depth: candidates.depth,
       judgedAt: Date.now(),
+      // a re-read refreshes the reading; it does not argue with you about it
+      dismissed: stored[String(move.ply)]?.dismissed,
     }
 
     options.onProgress?.(index + 1, pending.length)

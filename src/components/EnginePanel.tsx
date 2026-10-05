@@ -82,13 +82,15 @@ export default function EnginePanel({
    * One MultiPV search per marked move, at the same depth as everything else, so the
    * candidates it counts are comparable with each other and with the first pass.
    */
-  async function judge() {
+  async function judge(force: boolean) {
+    const count = force ? marked.length : pendingPlies(game).length
     setError(null)
-    setJudging({ done: 0, total: pendingPlies(game).length })
+    setJudging({ done: 0, total: count })
 
     try {
       const judged = await judgeGame(game, {
-        onProgress: (done, count) => setJudging({ done, total: count }),
+        force,
+        onProgress: (done, total) => setJudging({ done, total }),
       })
 
       await saveVerdicts(userId, game.id, judged)
@@ -182,17 +184,17 @@ export default function EnginePanel({
             <h3 className="text-xs uppercase tracking-wide text-zinc-500">
               What each one was
             </h3>
-            {pending.length > 0 && (
-              <button
-                onClick={judge}
-                disabled={judging !== null || running}
-                className="px-3 py-1 text-xs font-medium border border-zinc-700 text-zinc-200 rounded-lg hover:border-zinc-500 hover:text-white transition-colors disabled:opacity-40"
-              >
-                {judging
-                  ? `Reading… ${judging.done}/${judging.total}`
+            <button
+              onClick={() => judge(pending.length === 0)}
+              disabled={judging !== null || running}
+              className="px-3 py-1 text-xs font-medium border border-zinc-700 text-zinc-200 rounded-lg hover:border-zinc-500 hover:text-white transition-colors disabled:opacity-40"
+            >
+              {judging
+                ? `Reading… ${judging.done}/${judging.total}`
+                : pending.length === 0
+                  ? `Read all ${marked.length} again`
                   : `Read ${pending.length} marked move${pending.length === 1 ? '' : 's'}`}
-              </button>
-            )}
+            </button>
           </div>
 
           <div className="flex flex-col divide-y divide-zinc-800/70">
