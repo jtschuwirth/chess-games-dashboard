@@ -462,6 +462,29 @@ src/
   against the first pass's two. Faults are 7% of your moves, about 2.7 a game, which puts
   the second pass at under twenty seconds. It also skips moves already judged, so it
   resumes rather than restarting.
+- **The verdict keeps the board, not just the difference.** `pieces` holds what each side
+  has, by type, kings aside — the difference falls out of it and the inventory answers
+  what the difference cannot: whether the queens were off, whether this was a rook ending,
+  whether a level position was level with two pawns each or two queens each. "Every
+  mistake I make in a rook ending" is not a findable slice without it. `materialBy` is the
+  older, thinner field and is still read for verdicts written before this.
+- **The imbalance is figurines on the row and a sentence on hover.** `♟♟ / ♝` is read at a
+  glance where "2 pawns for a bishop" has to be read; the row is scanned, not studied, and
+  the words are a `title` away. Only the side that is up is drawn — the same thing a
+  captured-piece strip shows, and the only part carrying information. Solid black
+  figurines only: one colour renders the same in every font, which is the trap the board
+  itself hit with hollow white glyphs.
+- **The candidate moves are kept, not just counted.** The search has already found five
+  moves and scored them; throwing them away left "two of five held" answering a question
+  nobody has in front of a board. The question is what to play instead, so the row expands
+  to the moves themselves, the ones that held in green. It costs nothing — the work was
+  done to produce the count.
+- **What your opponent did is already in the stored analysis, and nobody was asking.** The
+  first pass evaluates the position before and after each of *your* moves, so their reply
+  sits bracketed between your `cpAfter` and your next `cpBefore`, both already in your
+  frame. `opponentMoves` reads it out; `giftsFrom` names the replies that handed you a win
+  you did not have. No extra search, no extra field, no re-analysis of a single game —
+  which is why it is derived rather than stored, like everything else here that can be.
 - **A material count has to say what it is counting.** `+3` is a knight to one reader and
   three pawns to another, and those are not the same position — reading "+1 material" off
   a row tells you nothing you can picture. So the verdict stores both: `material` in pawn

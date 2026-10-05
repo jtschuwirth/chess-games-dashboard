@@ -165,6 +165,59 @@ export async function analyzeGame(game: GameRecord, options: AnalyzeOptions): Pr
   }
 }
 
+export interface OpponentMove {
+  ply: number
+  san: string
+  moveNumber: number
+  /** Where the position stood for YOU before their move, and after it. */
+  cpBefore: number
+  cpAfter: number
+  /** What their move was worth to you. Positive means they handed you something. */
+  swing: number
+}
+
+/**
+ * What your opponent's moves did, read out of the analysis that is already stored.
+ *
+ * Nothing extra is evaluated or saved. The first pass scores the position before and
+ * after each of *your* moves, and their reply is the gap between the two: the eval after
+ * your move and the eval before your next one bracket it exactly, both already in your
+ * frame. So "who created this advantage" is a question the stored data can answer and
+ * was simply never asked.
+ *
+ * The last reply of the game has no move of yours after it to be bracketed by, so it is
+ * left out rather than guessed at.
+ */
+export function opponentMoves(game: GameRecord): OpponentMove[] {
+  const mine = game.analysis?.moves ?? []
+  const replies: OpponentMove[] = []
+
+  for (let index = 0; index < mine.length - 1; index++) {
+    const ply = mine[index].ply + 1
+    const san = game.moves[ply]
+    if (!san) continue
+
+    const cpBefore = mine[index].cpAfter
+    const cpAfter = mine[index + 1].cpBefore
+
+    replies.push({
+      ply,
+      san,
+      moveNumber: Math.floor(ply / 2) + 1,
+      cpBefore,
+      cpAfter,
+      swing: cpAfter - cpBefore,
+    })
+  }
+
+  return replies
+}
+
+/** The replies that handed you a winning position you did not have a move earlier. */
+export function giftsFrom(game: GameRecord, winning = 200): OpponentMove[] {
+  return opponentMoves(game).filter(move => move.cpAfter >= winning && move.cpBefore < winning)
+}
+
 function clamp(cp: number): number {
   return Math.max(-MATE_SCORE, Math.min(MATE_SCORE, cp))
 }

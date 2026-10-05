@@ -4,7 +4,13 @@ import { useState } from 'react'
 import EngineModeToggle from '@/components/EngineMode'
 import { Spinner } from '@/components/PageShell'
 import { formatDuration } from '@/lib/clocks'
-import { AnalysisStopped, ENGINE_DEPTH, analyzeGame, buildAnnotatedPgn } from '@/lib/analysis'
+import {
+  AnalysisStopped,
+  ENGINE_DEPTH,
+  analyzeGame,
+  buildAnnotatedPgn,
+  giftsFrom,
+} from '@/lib/analysis'
 import { terminateEngine } from '@/lib/engine'
 import { dismissVerdict, saveAnalysis, saveVerdicts } from '@/lib/firestore'
 import { formatEval, isFault } from '@/lib/review'
@@ -12,7 +18,9 @@ import {
   VERDICT_BADGE,
   VERDICT_HINT,
   VERDICT_LABEL,
+  imbalanceAt,
   judgeGame,
+  materialGlyphs,
   materialLabel,
   pendingPlies,
   verdictsOf,
@@ -121,6 +129,8 @@ export default function EnginePanel({
   }
 
   const marked = (game.analysis?.moves ?? []).filter(move => isFault(move.tag))
+  // read out of the analysis already stored: no extra search, nothing new saved
+  const gifts = giftsFrom(game)
   const stored = verdictsOf(game)
   const pending = pendingPlies(game)
 
@@ -197,6 +207,16 @@ export default function EnginePanel({
             </button>
           </div>
 
+          {gifts.length > 0 && (
+            <p className="text-xs text-zinc-600">
+              Your opponent handed you a won position {gifts.length} time
+              {gifts.length === 1 ? '' : 's'}:{' '}
+              <span className="font-mono text-zinc-500">
+                {gifts.map(gift => `${gift.moveNumber}...${gift.san}`).join(', ')}
+              </span>
+            </p>
+          )}
+
           <div className="flex flex-col divide-y divide-zinc-800/70">
             {marked.map(move => (
               <VerdictRow
@@ -239,7 +259,9 @@ function VerdictRow({
   verdict?: MoveVerdict
   onDismiss: (dismissed: boolean) => void
 }) {
+  const [open, setOpen] = useState(false)
   const dismissed = verdict?.dismissed === true
+  const imbalance = verdict ? imbalanceAt(verdict) : undefined
 
   return (
     <div className={`flex items-center gap-3 py-1.5 flex-wrap ${dismissed ? 'opacity-40' : ''}`}>
@@ -263,9 +285,23 @@ function VerdictRow({
             {VERDICT_LABEL[verdict.verdict]}
           </span>
 
-          <span className="text-xs text-zinc-600">
-            {materialLabel(verdict.materialBy)} · {verdict.holds} of {verdict.looked} held
+          {/* figurines to scan, the sentence on hover */}
+          <span className="text-xs text-zinc-400" title={materialLabel(imbalance)}>
+            {materialGlyphs(imbalance)}
           </span>
+
+          <span className="text-xs text-zinc-600">
+            {verdict.holds} of {verdict.looked} held
+          </span>
+
+          {(verdict.candidates?.length ?? 0) > 0 && (
+            <button
+              onClick={() => setOpen(!open)}
+              className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+            >
+              {open ? 'hide' : 'what held'}
+            </button>
+          )}
 
           <button
             onClick={() => onDismiss(!dismissed)}
@@ -274,6 +310,23 @@ function VerdictRow({
           >
             {dismissed ? '↺' : '✕'}
           </button>
+
+          {open && (
+            <div className="basis-full flex gap-3 flex-wrap pl-24 pb-1">
+              {verdict.candidates?.map((candidate, index) => (
+                <span
+                  key={index}
+                  className={`font-mono text-xs ${
+                    candidate.holds ? 'text-emerald-300' : 'text-zinc-600'
+                  }`}
+                  title={candidate.holds ? 'holds the position' : 'gives something away too'}
+                >
+                  {candidate.san}{' '}
+                  <span className="text-zinc-600">{formatEval(candidate.cp, color)}</span>
+                </span>
+              ))}
+            </div>
+          )}
         </>
       ) : (
         <span className="text-xs text-zinc-700">not read yet</span>

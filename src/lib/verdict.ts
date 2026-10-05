@@ -67,9 +67,11 @@ export const LINES = 5
 
 /** Your material minus theirs, in pawns, in a position. */
 export function materialBalance(fen: string, you: 'white' | 'black'): number {
-  const edge = materialEdge(fen, you)
-  return edge.pawns
+  return materialEdge(fen, you).pawns
 }
+
+/** The figurines, solid-black only — one colour renders the same in every font. */
+const GLYPH: Record<string, string> = { q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' }
 
 /** What the pieces are called, so a count can say what it is counting. */
 const PIECE_NAME: Record<string, [string, string]> = {
@@ -94,24 +96,78 @@ const PIECE_ORDER = ['q', 'r', 'b', 'n', 'p']
 export function materialEdge(
   fen: string,
   you: 'white' | 'black',
-): { pawns: number; by: Record<string, number> } {
+): { pawns: number; by: Record<string, number>; mine: Inventory; theirs: Inventory } {
   const board = new Chess(fen).board()
 
-  const by: Record<string, number> = {}
+  const mine: Inventory = {}
+  const theirs: Inventory = {}
   let pawns = 0
 
   for (const row of board) {
     for (const square of row) {
+      // the king is on both sides of every position, so it is not material
       if (!square || square.type === 'k') continue
 
-      const mine = (square.color === 'w') === (you === 'white')
-      pawns += mine ? VALUE[square.type] : -VALUE[square.type]
-      by[square.type] = (by[square.type] ?? 0) + (mine ? 1 : -1)
+      const ours = (square.color === 'w') === (you === 'white')
+      const side = ours ? mine : theirs
+      side[square.type] = (side[square.type] ?? 0) + 1
+      pawns += ours ? VALUE[square.type] : -VALUE[square.type]
     }
   }
 
-  for (const type of Object.keys(by)) if (by[type] === 0) delete by[type]
-  return { pawns, by }
+  return { pawns, by: imbalanceOf({ mine, theirs }), mine, theirs }
+}
+
+/** What one side has, by piece type. Kings left out; they are not material. */
+export type Inventory = Record<string, number>
+
+/** Your count minus theirs, per type, zeroes dropped. */
+export function imbalanceOf(pieces: { mine: Inventory; theirs: Inventory }): Record<string, number> {
+  const by: Record<string, number> = {}
+
+  for (const type of new Set([...Object.keys(pieces.mine), ...Object.keys(pieces.theirs)])) {
+    const diff = (pieces.mine[type] ?? 0) - (pieces.theirs[type] ?? 0)
+    if (diff !== 0) by[type] = diff
+  }
+  return by
+}
+
+/**
+ * The imbalance of a stored verdict, from the inventory where there is one.
+ *
+ * Verdicts written before the inventory existed kept only the difference, so that is
+ * read as the answer when the boards are not there — the same habit as every other shape
+ * here.
+ */
+export function imbalanceAt(verdict: {
+  pieces?: { mine: Inventory; theirs: Inventory }
+  materialBy?: Record<string, number>
+}): Record<string, number> | undefined {
+  return verdict.pieces ? imbalanceOf(verdict.pieces) : verdict.materialBy
+}
+
+/**
+ * The imbalance as figurines — "♟♟" two pawns up, "♟♟ / ♝" two pawns for a bishop.
+ *
+ * Pieces rather than a sentence because this sits on a row you scan rather than read,
+ * and because the words are a tooltip away. Only the side that is up is drawn, which is
+ * what a captured-piece strip shows and is the only part that carries information.
+ */
+export function materialGlyphs(by: Record<string, number> | undefined): string {
+  if (!by) return '?'
+
+  const run = (sign: number) =>
+    PIECE_ORDER.filter(type => Math.sign(by[type] ?? 0) === sign)
+      .map(type => GLYPH[type].repeat(Math.abs(by[type])))
+      .join('')
+
+  const up = run(1)
+  const down = run(-1)
+
+  if (!up && !down) return '='
+  if (!down) return up
+  if (!up) return `– ${down}`
+  return `${up} / ${down}`
 }
 
 /**
@@ -285,12 +341,40 @@ export async function judgeGame(
     const candidates = await analyzeLines(fen, ENGINE_DEPTH, LINES)
     const edge = materialEdge(fen, game.color)
     const material = edge.pawns
-    const holds = countHolding(candidates.moves.map(candidate => candidate.cp))
+    const scores = candidates.moves.map(candidate => candidate.cp)
+    const holds = countHolding(scores)
+
+    /*
+      The candidates are kept, not just counted. The search has already done the work of
+      finding them, and "how many held" is the one question that does not answer the one
+      you actually have in front of the board, which is what to play instead.
+    */
+    const best = scores[0]
+    const named = candidates.moves.map(candidate => {
+      const board = new Chess(fen)
+      let san = candidate.uci
+      try {
+        san = board.move({
+          from: candidate.uci.slice(0, 2),
+          to: candidate.uci.slice(2, 4),
+          promotion: candidate.uci.slice(4, 5) || undefined,
+        }).san
+      } catch {
+        // an unreadable move keeps its coordinates rather than dropping the line
+      }
+      return {
+        san,
+        cp: candidate.cp,
+        holds: !isFault(classifyMove(best, candidate.cp, false)),
+      }
+    })
 
     const reading: MoveVerdict = {
       ply: move.ply,
       material,
       materialBy: edge.by,
+      pieces: { mine: edge.mine, theirs: edge.theirs },
+      candidates: named,
       best: candidates.moves[0].cp,
       holds,
       looked: candidates.moves.length,

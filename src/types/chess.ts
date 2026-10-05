@@ -199,10 +199,28 @@ export interface MoveVerdict {
   /**
    * What that weight is made of: your count minus theirs per piece type, zeroes left
    * out. `+3` is a knight to one reader and three pawns to another, and they are not the
-   * same position — this is the half that says which. Absent on verdicts read before it
-   * existed.
+   * same position — this is the half that says which.
+   *
+   * Superseded by `pieces`, which the imbalance is derived from; kept so verdicts
+   * written before that still read.
    */
   materialBy?: Record<string, number>
+  /**
+   * What is actually on the board for each side, by piece type, kings left out.
+   *
+   * The difference alone cannot answer "was this a rook ending" or "were the queens
+   * off" — a level position is level whether it holds two pawns or two queens. The
+   * inventory can, which is what makes a slice like "every mistake I make in a rook
+   * ending" findable at all.
+   */
+  pieces?: { mine: Record<string, number>; theirs: Record<string, number> }
+  /**
+   * The moves the search looked at, best first, and whether each one held.
+   *
+   * Kept rather than only counted: the search has already found them, and "two of five
+   * held" does not answer the question you actually have, which is what to play instead.
+   */
+  candidates?: { san: string; cp: number; holds: boolean }[]
   /** The best score in that search, from your side. Not the stored `cpBefore`. */
   best: number
   /** How many of the candidates looked at would not have been a fault. */
