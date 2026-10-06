@@ -94,10 +94,13 @@ function landings(fall: { from: Standing; to: Standing[] }): Standing[] {
   return shown.length > 0 ? shown : [fall.from]
 }
 
-/** The bands a marked move can actually be played from — see `classifyMove`. */
-const REACHABLE: Standing[] = STANDINGS.filter(
-  standing => standing !== 'losing' && standing !== 'mate',
-)
+/**
+ * The bands a move can actually be played from.
+ *
+ * Only `mate` is left out: once the mate is on the board every move is the same move,
+ * and a row saying so would be a row saying nothing.
+ */
+const REACHABLE: Standing[] = STANDINGS.filter(standing => standing !== 'mate')
 
 /**
  * The numbers the analysis is a judgement about, and the table of what those judgements
@@ -350,8 +353,7 @@ export default function AnalysisSettingsPanel({
         <p className="text-xs text-zinc-600">
           A move holds when it costs no more than an inaccuracy, which is the same rule
           that grades the move you played — so a move can no longer be flagged while the
-          second pass counts it as having held. Rows starting from a lost position are
-          left out.
+          second pass counts it as having held.
         </p>
       </div>
 

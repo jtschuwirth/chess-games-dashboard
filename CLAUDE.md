@@ -136,9 +136,13 @@ src/
   noise — the fault rate there fell from 9.5% to 4.1% when this landed, and `winning` went
   from one of the worst bands to the safest. So: staying in your band is an **inaccuracy**
   whatever it cost, falling out of it is a **mistake**, and falling further is a
-  **blunder**. The one exception is `winning → better`, graded an inaccuracy because the
-  winning band has no ceiling — coming down inside it is the only fall that does not
-  change what the position is for.
+  **blunder**. Two falls are graded softer than their distance suggests, and both earn it
+  at an end of the scale where the band has no floor or ceiling to measure against.
+  `winning → better` is the only one-band fall that does not change what the position is
+  for: you were on top and you are still on top. `losing → mated` is its mirror — a
+  position already lost has no better move to point at, so marking the move that ends it
+  would be blaming you for that one rather than for the twenty before it. It is the one
+  fall into mate that is not a blunder.
 - **One function grades the move you played and the candidates you did not.** `gradeOf` in
   `lib/bands.ts` returns a severity or null; `classifyMove` turns it into a mark and the
   second pass turns it into whether a candidate held. They were two rules in two units

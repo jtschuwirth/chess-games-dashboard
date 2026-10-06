@@ -88,10 +88,12 @@ export interface Fall {
 /**
  * Every fall, what it costs you, and what it is called.
  *
- * `winning -> better` is the one one-band fall graded as an inaccuracy, and it earns the
- * exception: the winning band has no ceiling, so coming down inside it is the only fall
- * that does not change what the position is for. You were on top and you are still on
- * top. Everywhere else a band is a band.
+ * Two falls are graded softer than their distance suggests, and both earn it at an end of
+ * the scale where the band has no floor or ceiling to measure against. `winning -> better`
+ * is the only one-band fall that does not change what the position is for: you were on
+ * top and you are still on top. `losing -> mated` is the mirror — a position already lost
+ * has no better move to point at, and marking the move that ends it would be blaming you
+ * for that one rather than for the twenty before it. Everywhere else a band is a band.
  */
 export const TRANSITIONS: Fall[] = [
   { from: 'winning', to: ['winning', 'better'], severity: 'inaccuracy', concrete: 'missed-the-kill', stable: 'let-the-win-go' },
@@ -114,7 +116,10 @@ export const TRANSITIONS: Fall[] = [
   { from: 'worse', to: ['mate'], severity: 'blunder', concrete: 'walked-into-mate', stable: 'walked-into-mate' },
 
   { from: 'losing', to: ['winning', 'better', 'level', 'worse', 'losing'], severity: 'inaccuracy', concrete: 'missed-the-save', stable: 'already-lost' },
-  { from: 'losing', to: ['mate'], severity: 'mistake', concrete: 'walked-into-mate', stable: 'walked-into-mate' },
+  // the one fall into mate that is not a blunder: from a position already lost there is
+  // nothing to point at instead, and calling it an error would be blaming you for the
+  // move rather than for the twenty before it
+  { from: 'losing', to: ['mate'], severity: 'inaccuracy', concrete: 'walked-into-mate', stable: 'walked-into-mate' },
 
   { from: 'mate', to: ['winning', 'better', 'level', 'worse', 'losing', 'mate'], severity: 'inaccuracy', concrete: 'already-lost', stable: 'already-lost' },
 ]
