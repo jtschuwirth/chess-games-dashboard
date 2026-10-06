@@ -22,17 +22,19 @@ export interface AnalysisSettings {
   level: number
   /** From this many centipawns the position is won — and below its negative, lost. */
   winning: number
-  /** At most this many candidate moves holding makes a position concrete. */
+  /** At most this many candidate moves holding makes a position sharp. */
   narrow: number
   /** How many candidate moves the second pass asks the engine for. */
   lines: number
   /**
    * Centipawn loss below which a move is not worth marking at all.
    *
-   * The only thing centipawns decide any more. How bad a marked move is comes from the
-   * band it fell out of — see `lib/bands.ts` — because "how much did this cost" and "what
-   * did it cost you" are different questions, and from a won position they have very
-   * different answers.
+   * The only thing centipawns decide any more, and it is also what keeps a band edge
+   * from being graded instead of a move: +3.2 to +2.9 leaves `winning` for thirty
+   * centipawns and is simply not marked. How bad a marked move is comes from the band it
+   * fell out of — see `lib/bands.ts` — because "how much did this cost" and "what did it
+   * cost you" are different questions, and from a won position they have very different
+   * answers.
    */
   mistake: number
   /** Which marks to count as faults. The rest are recorded and left off the screen. */

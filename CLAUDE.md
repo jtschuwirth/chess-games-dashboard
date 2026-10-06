@@ -20,8 +20,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    same filter, the way clicking a variation row sets the opening.
 5. `/games/{id}` — one game: a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
-   pass over the marked moves says what *kind* of mistake each was — a concrete line
-   missed, a material advantage thrown, a plan lost — and any reading can be thrown out. Reached from any
+   pass over the marked moves says what *kind* of mistake each was — a line missed, a
+   won game thrown, an edge mishandled — and any reading can be thrown out. Reached from any
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
@@ -449,24 +449,25 @@ src/
   could only ever say the first of them. So `TRANSITIONS` is a table of from → to, and the
   breadth picks the column.
 
-  | the fall | concrete | stable |
-  |---|---|---|
-  | winning → better | missed the kill | let the win go |
-  | winning → level | lost the thread | threw it |
-  | winning → worse or losing | lost the thread | threw it away |
-  | better → better | missed the sharpest | eased off |
-  | better → level | missed the follow-up | let the edge go |
-  | better → worse or losing | missed the follow-up | gave it away |
-  | level → level | missed a chance | a loose move |
-  | level → worse | missed the line | a careless move |
-  | level → losing | missed the line | gave it away |
-  | worse → worse | missed the defence | made it worse |
-  | worse → losing | missed the defence | let it go |
-  | anything → mated | walked into mate | walked into mate |
+  | the fall | sharp | open | stable |
+  |---|---|---|---|
+  | winning → better | missed the kill | slowed it down | let the win go |
+  | winning → level | lost the thread | let it slip | threw it |
+  | winning → worse or losing | lost the thread | turned it around | threw it away |
+  | better → better | missed the sharpest | took the slow road | eased off |
+  | better → level | missed the follow-up | mishandled the edge | let the edge go |
+  | better → worse or losing | missed the follow-up | lost the plot | gave it away |
+  | level → level | missed a chance | drifted | a loose move |
+  | level → worse | missed the line | went the wrong way | a careless move |
+  | level → losing | missed the line | came apart | gave it away |
+  | worse → worse | missed the defence | defended badly | made it worse |
+  | worse → losing | missed the defence | cracked | let it go |
+  | losing → losing | missed the save | hung on badly | already lost |
+  | anything → mated | walked into mate | walked into mate | walked into mate |
 
-  The two columns are two different failures, and the names say which: a `concrete`
-  position had a line in it, so its names begin `missed`; a `stable` one had several
-  playable moves, so its names say what you did with them. Cells share a name where the
+  The columns are three different failures, and the names say which: a `sharp` position
+  had a line in it, so its names begin `missed`; an `open` one had a few playable moves;
+  a `stable` one forgave anything, so its names say what you did with all that room. Cells share a name where the
   distinction stops carrying anything — falling from winning to worse and to losing is the
   same mistake twice over. The badge is coloured by where you fell *from*, which is the
   axis that says how much was at stake; the landing and the breadth are words beside it,
@@ -493,19 +494,18 @@ src/
   was.** "You dropped four pawns" does not distinguish being a rook up and giving it back
   from failing to find the only move that held a position worth four pawns — different
   mistakes, different training, and a tag table that cannot tell them apart sends you to
-  the wrong one. `lib/verdict.ts` reads three things off the position before each marked
-  move: your **material**, the engine's **score**, and **how many moves held it**. The
-  verdicts are `concrete line`, `threw it`, `lost the thread` and `from level`, and the
-  order they are tested in matters: hardly anything holding comes first whether or not you
-  were winning, because a position with one line in it is a failure to find that line at
-  +6 and at level alike.
-- **A concrete line is one or two moves, not one.** `NARROW` is 2 because the same idea
-  often has two move orders, or a check available from either of two squares, and a
-  position with one answer written two ways is still a position with one answer. The name
-  is `concrete line` rather than `only move` for the same reason, and because it is the
-  honest opposite of `lost the thread`: a line to calculate against a plan to follow. The
-  old `only-move` is read forward in `verdictsOf`, the same habit as every other stored
-  shape here.
+  the wrong one. The second pass reads three things off the position before each marked
+  move: your **material**, the engine's **score**, and **how many of its candidates held**.
+  The last of those is the breadth, and it decides which column of the transition table
+  the descriptor comes from.
+- **Breadth is three buckets, not two.** `sharp` is one or two moves holding, `open` a
+  few, `stable` everything the search looked at. Two was too coarse at the top: holding on
+  three of five is a position with room in it, holding on all five is a position that
+  forgave anything, and failing those is not the same failure. `sharp` is `narrow` on the
+  account — two, because the same idea often has two move orders and a position with one
+  answer written twice is still a position with one answer. `stable` is measured against
+  what was *looked at* rather than against the setting, so three legal moves with three
+  holding counts as having forgiven anything, which is what it did.
 - **"How many moves held it" is one MultiPV search, not one search per move.** Asking the
   engine about each legal move separately would be forty searches and — worse — forty
   separate searches, which cannot be compared with each other any more than two depths
@@ -869,7 +869,7 @@ src/
   "7 Oct – 3 Oct", which reads as four days backwards; that is exactly what the rating panel
   showed. `formatRange` adds both years when they differ and stays short inside one year.
 - **The numbers the analysis is a judgement about are set per account.** Every one of
-  them — the level band, the winning cut, how few moves make a position concrete, the
+  them — the level band, the winning cut, how few moves make a position sharp, the
   mistake and blunder thresholds, how many candidates to ask for — began as a constant in
   the file that used it, and every one of them moved at least once, each time as a code
   change for a matter of taste. They live on the user document now, in `lib/settings.ts`,

@@ -6,6 +6,8 @@ import { Spinner } from '@/components/PageShell'
 import { terminateEngine } from '@/lib/engine'
 import { saveVerdicts } from '@/lib/firestore'
 import {
+  BREADTHS,
+  BREADTH_LABEL,
   STANDINGS,
   STANDING_BADGE,
   STANDING_LABEL,
@@ -89,8 +91,8 @@ export default function VerdictPanel({
     )
   }
 
-  const rows = STANDINGS.filter(
-    standing => tally.byStanding[standing].concrete + tally.byStanding[standing].stable > 0,
+  const rows = STANDINGS.filter(standing =>
+    BREADTHS.some(breadth => tally.byStanding[standing][breadth] > 0),
   )
   const widest = Math.max(1, ...tally.byVerdict.map(row => row.count))
 
@@ -152,28 +154,33 @@ export default function VerdictPanel({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <div className="grid grid-cols-[1fr_4rem_4rem] gap-2 text-[10px] uppercase tracking-wide text-zinc-600">
+            <div className="grid grid-cols-[1fr_3.5rem_3.5rem_3.5rem] gap-2 text-[10px] uppercase tracking-wide text-zinc-600">
               <span>Where you stood</span>
-              <span className="text-right">concrete</span>
-              <span className="text-right">stable</span>
+              {BREADTHS.map(breadth => (
+                <span key={breadth} className="text-right">
+                  {BREADTH_LABEL[breadth]}
+                </span>
+              ))}
             </div>
 
             {rows.map(standing => (
               <div
                 key={standing}
-                className="grid grid-cols-[1fr_4rem_4rem] gap-2 items-center"
+                className="grid grid-cols-[1fr_3.5rem_3.5rem_3.5rem] gap-2 items-center"
               >
                 <span
                   className={`justify-self-start text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${STANDING_BADGE[standing as Standing]}`}
                 >
                   {STANDING_LABEL[standing as Standing]}
                 </span>
-                <span className="text-sm font-mono text-zinc-300 text-right tabular-nums">
-                  {tally.byStanding[standing].concrete}
-                </span>
-                <span className="text-sm font-mono text-zinc-300 text-right tabular-nums">
-                  {tally.byStanding[standing].stable}
-                </span>
+                {BREADTHS.map(breadth => (
+                  <span
+                    key={breadth}
+                    className="text-sm font-mono text-zinc-300 text-right tabular-nums"
+                  >
+                    {tally.byStanding[standing][breadth]}
+                  </span>
+                ))}
               </div>
             ))}
           </div>

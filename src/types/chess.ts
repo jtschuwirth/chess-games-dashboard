@@ -204,6 +204,18 @@ export type VerdictKind =
   | 'let-it-go'
   | 'missed-the-save'
   | 'already-lost'
+  | 'slowed-it-down'
+  | 'let-it-slip'
+  | 'turned-it-around'
+  | 'took-the-slow-road'
+  | 'mishandled-the-edge'
+  | 'lost-the-plot'
+  | 'drifted'
+  | 'went-the-wrong-way'
+  | 'came-apart'
+  | 'defended-badly'
+  | 'cracked'
+  | 'hung-on-badly'
 
 /**
  * The second pass's reading of one marked move, kept beside the analysis because it is

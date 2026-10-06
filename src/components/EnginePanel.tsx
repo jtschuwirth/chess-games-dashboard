@@ -267,7 +267,7 @@ function VerdictRow({
   const imbalance = verdict ? imbalanceAt(verdict) : undefined
   const standing = standingOf(move.cpBefore)
   const landed = standingOf(move.cpAfter)
-  const breadth = breadthOf(verdict?.holds ?? 0)
+  const breadth = breadthOf(verdict?.holds ?? 0, verdict?.looked ?? 0)
 
   return (
     <div className={`flex items-center gap-3 py-1.5 flex-wrap ${dismissed ? 'opacity-40' : ''}`}>

@@ -7,11 +7,10 @@ import {
   STANDING_LABEL,
   TRANSITIONS,
   VERDICT_LABEL,
-  type Breadth,
   type Standing,
 } from '@/lib/verdict'
 import { saveSettings } from '@/lib/firestore'
-import { SEVERITY_LABEL, SEVERITY_MARK } from '@/lib/bands'
+import { BREADTHS, BREADTH_LABEL, SEVERITY_LABEL, SEVERITY_MARK } from '@/lib/bands'
 import {
   SETTING_RANGE,
   SEVERITIES,
@@ -70,7 +69,7 @@ function Field({
   )
 }
 
-const BREADTHS: Breadth[] = ['concrete', 'stable']
+
 
 /** The same scale the marks use everywhere else. */
 const MARK_TONE: Record<Severity, string> = {
@@ -296,11 +295,11 @@ export default function AnalysisSettingsPanel({
                 <th className="text-left font-normal px-3 py-2">Counts as</th>
                 {BREADTHS.map(breadth => (
                   <th key={breadth} className="text-left font-normal px-3 py-2">
-                    {breadth}
+                    {BREADTH_LABEL[breadth]}
                     <span className="normal-case tracking-normal text-zinc-700">
-                      {breadth === 'concrete'
-                        ? ` — ${draft.narrow} move${draft.narrow === 1 ? '' : 's'} or fewer held`
-                        : ' — more than that held'}
+                      {breadth === 'sharp' && ` — ${draft.narrow} or fewer held`}
+                      {breadth === 'open' && ` — ${draft.narrow + 1} to ${draft.lines - 1}`}
+                      {breadth === 'stable' && ' — all of them held'}
                     </span>
                   </th>
                 ))}

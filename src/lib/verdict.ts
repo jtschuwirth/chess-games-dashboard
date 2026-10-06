@@ -1,12 +1,15 @@
 import { Chess } from 'chess.js'
 import { ENGINE_DEPTH } from './analysis'
 import {
+  BREADTHS,
+  BREADTH_LABEL,
   STANDINGS,
   STANDING_LABEL,
   TRANSITIONS,
   fallBetween,
   holdsMove,
   standingOf,
+  type Breadth,
   type Standing,
 } from './bands'
 import { analyzeLines } from './engine'
@@ -45,10 +48,16 @@ const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
  * it read as a muddle — "concrete line" answered how many moves held and "from better"
  * answered where you stood, and they are not alternatives to each other.
  */
-export type Breadth = 'concrete' | 'stable'
-
-export function breadthOf(holds: number, config = settings()): Breadth {
-  return holds <= config.narrow ? 'concrete' : 'stable'
+/**
+ * How much room the position gave you.
+ *
+ * `stable` means everything the search looked at held, so it is read against `looked`
+ * rather than against the setting: a position with three legal moves and three holding
+ * forgave anything, which is the same thing five of five says.
+ */
+export function breadthOf(holds: number, looked: number, config = settings()): Breadth {
+  if (holds <= config.narrow) return 'sharp'
+  return holds >= Math.min(looked, config.lines) ? 'stable' : 'open'
 }
 
 /** Your material minus theirs, in pawns, in a position. */
@@ -212,13 +221,13 @@ export function describe(from: Standing, to: Standing, breadth: Breadth): Verdic
 }
 
 export function readVerdict(
-  input: { cpBefore: number; cpAfter: number; holds: number },
+  input: { cpBefore: number; cpAfter: number; holds: number; looked: number },
   config = settings(),
 ): VerdictKind {
   return describe(
     standingOf(input.cpBefore, config),
     standingOf(input.cpAfter, config),
-    breadthOf(input.holds, config),
+    breadthOf(input.holds, input.looked, config),
   )
 }
 
@@ -243,11 +252,24 @@ export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'let-it-go': 'let it go',
   'missed-the-save': 'missed the save',
   'already-lost': 'already lost',
+  'slowed-it-down': 'slowed it down',
+  'let-it-slip': 'let it slip',
+  'turned-it-around': 'turned it around',
+  'took-the-slow-road': 'took the slow road',
+  'mishandled-the-edge': 'mishandled the edge',
+  'lost-the-plot': 'lost the plot',
+  drifted: 'drifted',
+  'went-the-wrong-way': 'went the wrong way',
+  'came-apart': 'came apart',
+  'defended-badly': 'defended badly',
+  cracked: 'cracked',
+  'hung-on-badly': 'hung on badly',
 }
 
 const BREADTH_HINT: Record<Breadth, string> = {
-  concrete: 'Only a move or two held, so this was a line to find.',
-  stable: 'Several moves held, so this was a choice to get right.',
+  sharp: 'Only a move or two held, so this was a line to find.',
+  open: 'A few held, so there was room — but not much.',
+  stable: 'Everything looked at held, so anything reasonable would have done.',
 }
 
 /** The sentence behind a badge: the fall it names, then what the position asked for. */
@@ -277,7 +299,7 @@ export interface VerdictTally {
   /** Games holding a marked move nobody has read yet. */
   pending: GameRecord[]
   byVerdict: { kind: VerdictKind; count: number }[]
-  byStanding: Record<Standing, { concrete: number; stable: number }>
+  byStanding: Record<Standing, Record<Breadth, number>>
 }
 
 /**
@@ -291,7 +313,7 @@ export interface VerdictTally {
 export function verdictTally(games: GameRecord[], config = settings()): VerdictTally {
   const byVerdict = new Map<VerdictKind, number>()
   const byStanding = Object.fromEntries(
-    STANDINGS.map(standing => [standing, { concrete: 0, stable: 0 }]),
+    STANDINGS.map(standing => [standing, { sharp: 0, open: 0, stable: 0 }]),
   ) as VerdictTally['byStanding']
 
   let marked = 0
@@ -311,7 +333,9 @@ export function verdictTally(games: GameRecord[], config = settings()): VerdictT
 
       read++
       byVerdict.set(verdict.verdict, (byVerdict.get(verdict.verdict) ?? 0) + 1)
-      byStanding[standingOf(move.cpBefore, config)][breadthOf(verdict.holds, config)]++
+      byStanding[standingOf(move.cpBefore, config)][
+        breadthOf(verdict.holds, verdict.looked, config)
+      ]++
     }
   }
 
@@ -362,18 +386,20 @@ export function verdictsOf(game: GameRecord, config = settings()): Record<string
       */
       const scores = verdict.candidates?.map(candidate => candidate.cp)
       const holds = scores ? countHolding(scores, config) : verdict.holds
+      const looked = scores ? scores.length : verdict.looked
 
       return [
         ply,
         {
           ...verdict,
           holds,
+          looked,
           candidates: verdict.candidates?.map(candidate => ({
             ...candidate,
             holds: holdsFrom(verdict.candidates![0].cp, candidate.cp, config),
           })),
           verdict: readVerdict(
-            { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds },
+            { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds, looked },
             config,
           ),
         },
@@ -474,7 +500,7 @@ export async function judgeGame(
       holds,
       looked: candidates.moves.length,
       verdict: readVerdict(
-        { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds },
+        { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds, looked: scores.length },
         config,
       ),
       depth: candidates.depth,
@@ -496,5 +522,5 @@ export async function judgeGame(
   return judged
 }
 
-export { STANDINGS, STANDING_LABEL, TRANSITIONS, standingOf }
-export type { Standing }
+export { BREADTHS, BREADTH_LABEL, STANDINGS, STANDING_LABEL, TRANSITIONS, standingOf }
+export type { Breadth, Standing }
