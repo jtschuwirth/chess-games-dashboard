@@ -1,8 +1,10 @@
 'use client'
 
 import { useMemo, useRef, useState } from 'react'
+import { useAnalysisQueue } from '@/components/AnalyseButton'
 import Panel from '@/components/Section'
 import { Spinner } from '@/components/PageShell'
+import { queueBusy } from '@/lib/analysis-queue'
 import { terminateEngine } from '@/lib/engine'
 import { saveVerdicts } from '@/lib/firestore'
 import {
@@ -44,6 +46,8 @@ export default function VerdictPanel({
   const [running, setRunning] = useState<{ done: number; total: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const stop = useRef({ stopped: false })
+  /** The first pass and this one share one worker, so only one of them may be going. */
+  const queue = useAnalysisQueue()
 
   const tally = useMemo(() => verdictTally(games), [games])
 
@@ -75,7 +79,8 @@ export default function VerdictPanel({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'That run failed.')
     } finally {
-      terminateEngine()
+      // never while the queue still has a game going: that would reject its positions
+      if (!queueBusy()) terminateEngine()
       setRunning(null)
     }
   }
@@ -119,8 +124,13 @@ export default function VerdictPanel({
           toRead > 0 && (
             <button
               onClick={readAll}
-              title={`${toRead} positions, about ${Math.round((toRead * 6) / 60)} minutes`}
-              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+              disabled={queue.active !== null}
+              title={
+                queue.active !== null
+                  ? 'The engine is working through the analysis queue'
+                  : `${toRead} positions, about ${Math.round((toRead * 6) / 60)} minutes`
+              }
+              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-40 disabled:hover:text-zinc-500"
             >
               Read {toRead} more
             </button>

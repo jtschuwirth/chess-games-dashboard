@@ -17,6 +17,7 @@ import {
   parseTimeControl,
   timeSpentPerPly,
 } from '@/lib/clocks'
+import { onAnalysed } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
 import { buildOpeningTree, matchingPath, openingLabel } from '@/lib/opening'
@@ -360,6 +361,27 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
       ),
     )
   }
+
+  /**
+   * An analysis the queue finished, which may well be a game queued from the list and
+   * then opened to read while it waited — so this page follows the queue rather than
+   * only the button in its own panel.
+   */
+  useEffect(
+    () =>
+      // not destructured as `gameId`, which is this page's own prop: the queue analyses
+      // whichever game it is on, which is not necessarily the one being read
+      onAnalysed(result =>
+        setGames(prev =>
+          (prev ?? []).map(entry =>
+            entry.id === result.gameId
+              ? { ...entry, analysis: result.analysis, annotatedPgn: result.annotatedPgn }
+              : entry,
+          ),
+        ),
+      ),
+    [],
+  )
 
   function applyAnalysed(updated: GameRecord) {
     setGames(prev => (prev ?? []).map(entry => (entry.id === updated.id ? updated : entry)))

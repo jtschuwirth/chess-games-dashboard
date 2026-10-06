@@ -17,7 +17,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
    own rating band — the Control chips list the clocks you have actually played. Read overall / as White / as Black stats, the clock KPI, and the game phase
    analysis, plus a table breaking the slice down by sub-variation. The "Ended in" dropdown scopes
    to games that finished in one phase (`?phase=11-15`); clicking a phase's *ended* count sets the
-   same filter, the way clicking a variation row sets the opening.
+   same filter, the way clicking a variation row sets the opening. A game the engine has
+   never seen carries a control to analyse it right there in the list; press it on several
+   and they queue up rather than fighting each other for the one engine.
 5. `/games/{id}` — one game: a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
    pass over the marked moves says what *kind* of mistake each was — a line missed, a
@@ -70,6 +72,7 @@ src/
 │       ├── engine/route.ts     # server-side Stockfish, Firebase token gated
 │       └── export/route.ts     # read-only JSON export, API-key gated
 ├── components/                 # PageShell, SyncPanel, OpeningForm, StatBlockCard,
+│                               # AnalyseButton,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # EnginePanel, EngineMode, PatternForm, LineBoard,
@@ -95,6 +98,7 @@ src/
 │   ├── engine-protocol.ts      # what an evaluation is, shared by both engines
 │   ├── server-engine.ts        # the same engine under Node, behind /api/engine
 │   ├── analysis.ts             # move classification and the annotated PGN
+│   ├── analysis-queue.ts       # one first pass at a time, wherever it was started from
 │   ├── bands.ts                # standings, falls, severities — the bottom of the analysis
 │   ├── settings.ts             # the thresholds the analysis is a judgement about
 │   ├── verdict.ts              # the second pass: what kind of mistake a marked move was
@@ -603,7 +607,8 @@ src/
   game is eighty positions, reading its marked moves is about three. A hundred games is
   minutes rather than hours, and the run is resumable — it skips what has been read, so
   stopping it loses nothing. It still says how many positions it is about to search before
-  it starts, and it still stops on demand.
+  it starts, and it still stops on demand. The first pass has a queue rather than a slice-wide run,
+  which is a different thing: a queue is still games you picked one at a time.
 - **A verdict can be thrown out, and the rejection is stored.** `dismissed` is a flag
   rather than a delete, because running the pass again must not hand back a reading you
   have already rejected — and the row stays on screen, greyed, so it is on record as
@@ -613,12 +618,41 @@ src/
 - **Verdicts live in `verdicts` on the game, keyed by ply**, like `drills` — a `merge`
   write on a map field merges keys, so judging two more moves never clears the rest, and
   keying by ply survives a re-analysis.
-- **Analysis is one game at a time, from that game's own page.** A batch panel over the filtered
+- **Analysis is one game at a time, and you say which.** A batch panel over the filtered
   slice used to sit on the dashboard, and the trouble with it was how easy it was to point at two
-  hundred games — hours of compute for games you were never going to read. `EnginePanel` gathers
-  everything the engine does to one game in one box: what it found, where it runs, the button,
-  and the annotated PGN. The depth tag stays up in the title, because that is a status of the
-  game rather than part of the engine's controls.
+  hundred games — hours of compute for games you were never going to read. There is still no
+  control that means "all of these": the game list's own `⚙ analyse` is per row, and it shows only
+  on a game the engine has never seen, so what gets analysed is still a series of decisions about
+  particular games. What changed is only where the decision can be made. `EnginePanel` still
+  gathers everything the engine does to one game in one box: what it found, where it runs, the
+  button, and the annotated PGN. The depth tag stays up in the title, because that is a status of
+  the game rather than part of the engine's controls.
+- **One queue owns the first pass, wherever it was started from.** There is one Stockfish
+  worker, and `terminateEngine` rejects everything in flight — so two `analyzeGame` calls
+  against it are not merely slow: whichever finishes first kills the other on its way out.
+  Reaching the control from a list is what made that reachable, since a list invites
+  pressing twice. `lib/analysis-queue.ts` is therefore the only caller of `analyzeGame`:
+  the row's button and the game page's both enqueue, the second press shows its place in
+  the line, and the panels that run the *second* pass check `queueBusy` before terminating
+  anything. It lives in a module rather than a page's state because the work is not the
+  page's — a run started from a list has to survive opening one of those games to read it,
+  which is exactly what you do while waiting, and a loop left in an unmounted component
+  would go on writing to Firestore with nothing on screen to say so. The engine is left
+  running between games on purpose: starting the worker costs a second and games from one
+  opening share most of their early positions, so the FEN cache is worth more here than a
+  clean slate, and the single-line searches of the first pass do not depend on the hash the
+  way a MultiPV one does.
+- **A stopped run leaves the screen at once, and a stopped run never counts as a failure.**
+  `analyzeGame` only looks at `shouldStop` between positions, which is something over a
+  second, so a control that waited for the unwind would sit there saying "Stop analysing"
+  long enough to read as a click that missed. The queue drops the game from its state on
+  the press instead — nothing is written until a game finishes, so there is nothing to
+  take back — and ignores the progress callback from the position still in flight, which
+  would otherwise put the game straight back. The failure it records is likewise guarded by
+  that flag and not only by the exception type, because stopping is not the only way a run
+  ends early: a second pass elsewhere calling `terminateEngine` rejects the position in
+  flight with a plain error, and a game you stopped yourself must not then be labelled as
+  having failed.
 - **A clock reading says whose it is.** The readout under the board carries two numbers that
   both belong to the move highlighted on it — already played — and on an opponent's move they are
   *their* think and *their* clock. Left unattributed they read as being about the move you are

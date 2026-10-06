@@ -1,18 +1,14 @@
 'use client'
 
 import { useState } from 'react'
+import { placeOf, useAnalysisQueue } from '@/components/AnalyseButton'
 import EngineModeToggle from '@/components/EngineMode'
 import { Spinner } from '@/components/PageShell'
 import { formatDuration } from '@/lib/clocks'
-import {
-  AnalysisStopped,
-  ENGINE_DEPTH,
-  analyzeGame,
-  buildAnnotatedPgn,
-  giftsFrom,
-} from '@/lib/analysis'
+import { ENGINE_DEPTH, giftsFrom } from '@/lib/analysis'
+import { enqueue, queueBusy, stop } from '@/lib/analysis-queue'
 import { terminateEngine } from '@/lib/engine'
-import { dismissVerdict, saveAnalysis, saveVerdicts } from '@/lib/firestore'
+import { dismissVerdict, saveVerdicts } from '@/lib/firestore'
 import { formatEval, isFault } from '@/lib/review'
 import {
   STANDING_BADGE,
@@ -34,10 +30,14 @@ import type { Color, GameRecord, MoveVerdict } from '@/types/chess'
  * Everything the engine does to this one game, in one place: what it found, where it
  * runs, how to run it, and the annotated PGN that falls out.
  *
- * One game at a time is the whole design. A batch over a filtered slice used to live on
- * the dashboard and was too easy to point at two hundred games; analysis is worth having
- * on the games you are actually going to read, at a depth worth trusting, which is why
- * there is no depth picker either.
+ * The first pass goes through `lib/analysis-queue`, which is also what the game list's
+ * own control presses. That is not about batching — this panel still speaks about one
+ * game — but about there being one Stockfish worker: a run started here while a run
+ * started from the list was going would fight it for the worker and then kill it on the
+ * way out. With one owner, pressing this while the queue is busy puts the game in the
+ * queue and the button says where in the line it is.
+ *
+ * There is still no depth picker: numbers read side by side have to come from one depth.
  */
 export default function EnginePanel({
   userId,
@@ -48,44 +48,14 @@ export default function EnginePanel({
   game: GameRecord
   onDone: (game: GameRecord) => void
 }) {
-  const [running, setRunning] = useState(false)
-  const [progress, setProgress] = useState<{ done: number; elapsedMs: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [judging, setJudging] = useState<{ done: number; total: number } | null>(null)
 
+  const queue = useAnalysisQueue()
+  const place = placeOf(queue, game.id)
+
   const analysed = game.analysis
   const shallower = analysed ? analysed.depth < ENGINE_DEPTH : false
-
-  async function run() {
-    setRunning(true)
-    setError(null)
-    setProgress({ done: 0, elapsedMs: 0 })
-
-    // measured here rather than during render, where reading the clock is not allowed
-    const startedAt = Date.now()
-    let done = 0
-
-    try {
-      const analysis = await analyzeGame(game, {
-        depth: ENGINE_DEPTH,
-        onPosition: () => {
-          done++
-          setProgress({ done, elapsedMs: Date.now() - startedAt })
-        },
-      })
-
-      const pgn = buildAnnotatedPgn(game, analysis)
-      await saveAnalysis(userId, game.id, analysis, pgn)
-      onDone({ ...game, analysis, annotatedPgn: pgn })
-    } catch (caught) {
-      if (!(caught instanceof AnalysisStopped)) {
-        setError(caught instanceof Error ? caught.message : 'Analysis failed.')
-      }
-    } finally {
-      terminateEngine()
-      setRunning(false)
-    }
-  }
 
   /**
    * The second pass: for each move the engine marked, what kind of mistake it was.
@@ -109,7 +79,9 @@ export default function EnginePanel({
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'That pass failed.')
     } finally {
-      terminateEngine()
+      // the queue owns the worker while it is running: terminating it would reject
+      // every position its current game has in flight
+      if (!queueBusy()) terminateEngine()
       setJudging(null)
     }
   }
@@ -137,11 +109,10 @@ export default function EnginePanel({
   const stored = verdictsOf(game)
   const pending = pendingPlies(game)
 
-  // two evaluations per move of yours, which is what the progress counts against
-  const total = game.moves.length
+  // the queue counts two evaluations per move of yours, which is what it measures against
   const left =
-    progress && progress.done > 0
-      ? ((total - progress.done) * progress.elapsedMs) / progress.done
+    place.kind === 'running' && place.done > 0
+      ? ((place.total - place.done) * place.elapsedMs) / place.done
       : 0
 
   return (
@@ -162,34 +133,45 @@ export default function EnginePanel({
         </div>
 
         <button
-          onClick={run}
-          disabled={running}
-          className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40 shrink-0"
+          onClick={() => (place.kind === 'idle' ? enqueue(userId, game) : stop(game.id))}
+          title={
+            place.kind === 'waiting'
+              ? 'Press to take this game back out of the queue'
+              : place.kind === 'running'
+                ? 'Stop here — nothing is written until a game is finished'
+                : undefined
+          }
+          className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors shrink-0"
         >
-          {running
-            ? `Analysing… ${progress?.done ?? 0}/${total}`
-            : analysed
-              ? `Re-analyse at depth ${ENGINE_DEPTH}`
-              : `Analyse at depth ${ENGINE_DEPTH}`}
+          {place.kind === 'running'
+            ? 'Stop analysing'
+            : place.kind === 'waiting'
+              ? `Queued · ${place.ahead} ahead`
+              : analysed
+                ? `Re-analyse at depth ${ENGINE_DEPTH}`
+                : `Analyse at depth ${ENGINE_DEPTH}`}
         </button>
       </div>
 
-      {shallower && !running && (
+      {shallower && place.kind === 'idle' && (
         <p className="text-xs text-amber-400">
           This one was analysed at depth {analysed?.depth}. Re-analysing takes it to{' '}
           {ENGINE_DEPTH}, which is what every number in the review is measured at.
         </p>
       )}
 
-      {running && progress && (
+      {place.kind === 'running' && (
         <p className="text-xs text-zinc-500 flex items-center gap-2">
           <Spinner size="w-3 h-3" />
-          {formatDuration(progress.elapsedMs / 1000)} elapsed
+          {place.done}/{place.total} positions ·{' '}
+          {formatDuration(place.elapsedMs / 1000)} elapsed
           {left > 0 && ` · about ${formatDuration(left / 1000)} left`}
         </p>
       )}
 
-      {error && <p className="text-xs text-red-400">{error}</p>}
+      {(error ?? queue.failed[game.id]) && (
+        <p className="text-xs text-red-400">{error ?? queue.failed[game.id]}</p>
+      )}
 
       {marked.length > 0 && (
         <div className="flex flex-col gap-2 border-t border-zinc-800 pt-3">
@@ -199,7 +181,12 @@ export default function EnginePanel({
             </h3>
             <button
               onClick={() => judge(pending.length === 0)}
-              disabled={judging !== null || running}
+              disabled={judging !== null || queue.active !== null}
+              title={
+                queue.active !== null
+                  ? 'The engine is working through the analysis queue'
+                  : undefined
+              }
               className="px-3 py-1 text-xs font-medium border border-zinc-700 text-zinc-200 rounded-lg hover:border-zinc-500 hover:text-white transition-colors disabled:opacity-40"
             >
               {judging

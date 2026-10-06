@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
+import { useAnalysisQueue } from '@/components/AnalyseButton'
 import Chip from '@/components/Chip'
 import GameRow from '@/components/GameRow'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
@@ -16,6 +17,7 @@ import SyncPanel from '@/components/SyncPanel'
 import VerdictPanel from '@/components/VerdictPanel'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
+import { onAnalysed, stopAll } from '@/lib/analysis-queue'
 import { getGames, getOpenings, getPatterns, getProfile, getRatingHistory } from '@/lib/firestore'
 import { patternTags } from '@/lib/pattern'
 import { sinceTimestamp } from '@/lib/game-filters'
@@ -159,6 +161,30 @@ function DashboardBody({ userId }: { userId: string }) {
   useEffect(() => {
     load()
   }, [load])
+
+  /**
+   * Games the queue finishes land in the list without a reload.
+   *
+   * The queue hands over the analysis and the game id rather than a whole record,
+   * because the record it was holding is minutes old by then — long enough for a review
+   * to have been written on it. Merging onto the current one is this page's job, the
+   * same as every other edit here.
+   */
+  useEffect(
+    () =>
+      onAnalysed(({ gameId, analysis, annotatedPgn }) =>
+        setGames(prev =>
+          (prev ?? []).map(game =>
+            game.id === gameId ? { ...game, analysis, annotatedPgn } : game,
+          ),
+        ),
+      ),
+    [],
+  )
+
+  const queue = useAnalysisQueue()
+  /** Everything the queue still has to do, the game in progress included. */
+  const queueSize = (queue.active ? 1 : 0) + queue.waiting.length
 
   /** Reads come from the local cache; this bills a server read to pick up other devices. */
   async function refresh() {
@@ -624,7 +650,26 @@ function DashboardBody({ userId }: { userId: string }) {
         )
       )}
 
-      <Panel id="games" title="Games" meta={`${scoped.length}`}>
+      <Panel
+        id="games"
+        title="Games"
+        meta={`${scoped.length}`}
+        actions={
+          queueSize > 0 ? (
+            <span className="flex items-center gap-2 text-xs text-zinc-500">
+              <Spinner size="w-3 h-3" />
+              analysing {queueSize} game{queueSize === 1 ? '' : 's'}
+              <button
+                onClick={stopAll}
+                title="Empty the queue and stop the game being analysed"
+                className="text-zinc-400 hover:text-zinc-100 transition-colors"
+              >
+                Stop all
+              </button>
+            </span>
+          ) : undefined
+        }
+      >
         {scoped.length === 0 ? (
           <div className="py-12 text-center text-zinc-500">No games match these filters.</div>
         ) : (
@@ -633,6 +678,7 @@ function DashboardBody({ userId }: { userId: string }) {
               {scoped.slice(0, limit).map(game => (
                 <GameRow
                   key={game.id}
+                  userId={userId}
                   game={game}
                   line={linesByGame.get(game.id) ?? []}
                   href={hrefFor(game)}

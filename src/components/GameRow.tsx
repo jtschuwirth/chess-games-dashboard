@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import AnalyseButton from '@/components/AnalyseButton'
 import StatusTag from '@/components/StatusTag'
 import { hasReview, trainableMistakes } from '@/lib/review'
 import type { GameRecord, GameResult } from '@/types/chess'
@@ -17,10 +18,13 @@ const RESULT_LABEL: Record<GameResult, string> = {
 }
 
 export default function GameRow({
+  userId,
   game,
   line,
   href,
 }: {
+  /** Whose games these are, for the analysis the row can start. */
+  userId: string
   game: GameRecord
   /** Names of the saved variations this game followed, root first. Empty if none matched. */
   line: string[]
@@ -70,8 +74,13 @@ export default function GameRow({
                 ◆ reviewed
               </StatusTag>
             )}
-            {/* depth always, so an analysed game with nothing wrong is not mistaken
-                for one the engine has never seen */}
+            {/*
+              Depth always, so an analysed game with nothing wrong is not mistaken for
+              one the engine has never seen — and nothing at all for the absence, which
+              the control on the right of the row carries instead. "no engine" used to
+              sit here and said the same thing while offering nothing; two notices about
+              one state, one of them inert, is one too many.
+            */}
             {game.analysis ? (
               <StatusTag
                 tone="engine"
@@ -80,15 +89,7 @@ export default function GameRow({
               >
                 ⚙ d{game.analysis.depth}
               </StatusTag>
-            ) : (
-              /* an absence, not a status — so it is not wrapped in a tag */
-              <span
-                className="text-xs text-zinc-600 shrink-0"
-                title="The engine has never looked at this game"
-              >
-                no engine
-              </span>
-            )}
+            ) : null}
 
             {/* what the engine found, written plainly: a count is a measurement */}
             {game.analysis && game.analysis.blunders > 0 && (
@@ -133,14 +134,21 @@ export default function GameRow({
         </div>
       </Link>
 
-      <a
-        href={game.url}
-        target="_blank"
-        rel="noreferrer"
-        className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors shrink-0"
-      >
-        View ↗
-      </a>
+      {/*
+        Outside the link, because a button inside an anchor is both invalid and
+        unusable — the click would navigate rather than start anything.
+      */}
+      <div className="flex flex-col items-end gap-1 shrink-0">
+        {!game.analysis && <AnalyseButton userId={userId} game={game} />}
+        <a
+          href={game.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+        >
+          View ↗
+        </a>
+      </div>
     </div>
   )
 }
