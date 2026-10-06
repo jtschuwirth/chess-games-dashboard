@@ -10,7 +10,9 @@
 !.yarn/releases
 !.yarn/versions
 
-.claude
+# local settings stay out, but the skills are part of the project
+.claude/*
+!.claude/skills/
 
 # testing
 /coverage
