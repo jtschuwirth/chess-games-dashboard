@@ -266,6 +266,7 @@ function VerdictRow({
   const dismissed = verdict?.dismissed === true
   const imbalance = verdict ? imbalanceAt(verdict) : undefined
   const standing = standingOf(move.cpBefore)
+  const landed = standingOf(move.cpAfter)
   const breadth = breadthOf(verdict?.holds ?? 0)
 
   return (
@@ -282,7 +283,7 @@ function VerdictRow({
       {verdict ? (
         <>
           <span
-            title={verdictHint(standing, breadth)}
+            title={verdictHint(standing, landed, breadth)}
             className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
               STANDING_BADGE[standing]
             }`}
@@ -292,7 +293,7 @@ function VerdictRow({
 
           {/* the two axes the descriptor is the name of, so the badge can be checked */}
           <span className="text-xs text-zinc-500">
-            {STANDING_LABEL[standing]} · {breadth}{' '}
+            {STANDING_LABEL[standing]} → {STANDING_LABEL[landed]} · {breadth}{' '}
             <span className="text-zinc-600">
               {verdict.holds}/{verdict.looked}
             </span>

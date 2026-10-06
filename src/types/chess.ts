@@ -184,16 +184,26 @@ export type NewOpeningLine = Omit<OpeningLine, 'id'>
  * already says, but what sort of advantage went with it.
  */
 export type VerdictKind =
-  | 'threw-it'
+  | 'walked-into-mate'
+  | 'missed-the-kill'
+  | 'let-the-win-go'
   | 'lost-the-thread'
-  | 'let-the-edge-go'
+  | 'threw-it'
+  | 'threw-it-away'
+  | 'missed-the-sharpest'
+  | 'eased-off'
   | 'missed-the-follow-up'
-  | 'careless'
+  | 'let-the-edge-go'
+  | 'gave-it-away'
+  | 'missed-a-chance'
+  | 'a-loose-move'
   | 'missed-the-line'
-  | 'made-it-worse'
+  | 'careless'
   | 'missed-the-defence'
-  | 'already-lost'
+  | 'made-it-worse'
+  | 'let-it-go'
   | 'missed-the-save'
+  | 'already-lost'
 
 /**
  * The second pass's reading of one marked move, kept beside the analysis because it is

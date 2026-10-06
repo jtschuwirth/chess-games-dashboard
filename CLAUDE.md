@@ -427,26 +427,45 @@ src/
   Changing a band is now a constant and a deploy. (`annotatedPgn` is the exception: it is
   a copy of the game written once, and carries the marks of the analysis that produced it
   until the game is analysed again.)
-- **The verdict is two axes and a name for the pair.** One label was answering two
-  questions at once — `concrete line` said how many moves held, `from better` said where
-  you stood — and they are not alternatives, so the panel read as a muddle. **Standing**
-  is where you were: `winning`, `better`, `level`, `worse`, `losing`, symmetric around
-  even. **Breadth** is what the position asked for: `concrete` when a move or two held,
-  `stable` when several did. The descriptor is simply the name of that pair, and each
-  column is a different failure with a different cure — a concrete position was a line to
-  find, a stable one a choice to get right.
+- **The verdict is a fall, not a starting point.** Where you landed is half the event:
+  coming down from winning to a position that is still better is not the same as coming
+  down to level, and neither is the same as coming down to lost. A label per starting band
+  could only ever say the first of them. So `TRANSITIONS` is a table of from → to, and the
+  breadth picks the column.
 
-  | | concrete | stable |
+  | the fall | concrete | stable |
   |---|---|---|
-  | winning | lost the thread | threw it |
-  | better | missed the follow-up | let the edge go |
-  | level | missed the line | a careless move |
-  | worse | missed the defence | made it worse |
-  | losing | missed the save | already lost |
+  | winning → better | missed the kill | let the win go |
+  | winning → level | lost the thread | threw it |
+  | winning → worse or losing | lost the thread | threw it away |
+  | better → better | missed the sharpest | eased off |
+  | better → level | missed the follow-up | let the edge go |
+  | better → worse or losing | missed the follow-up | gave it away |
+  | level → level | missed a chance | a loose move |
+  | level → worse | missed the line | a careless move |
+  | level → losing | missed the line | gave it away |
+  | worse → worse | missed the defence | made it worse |
+  | worse → losing | missed the defence | let it go |
+  | anything → mated | walked into mate | walked into mate |
 
-  The badge is coloured by standing, which is the axis that says how much was at stake;
-  the breadth is a word beside it, because two hues is two things to decode on a row you
-  scan.
+  The two columns are two different failures, and the names say which: a `concrete`
+  position had a line in it, so its names begin `missed`; a `stable` one had several
+  playable moves, so its names say what you did with them. Cells share a name where the
+  distinction stops carrying anything — falling from winning to worse and to losing is the
+  same mistake twice over. The badge is coloured by where you fell *from*, which is the
+  axis that says how much was at stake; the landing and the breadth are words beside it,
+  because three hues is three things to decode on a row you scan.
+- **The table is total, and most of it is unreachable.** A fault never leaves you winning
+  (`classifyMove` will not mark one that does) and is never played from a position already
+  lost, so the `winning → winning`, `losing` and `mate` rows exist only so that no
+  evaluation anyone ever sees can fall through it. The screen that explains the table
+  leaves them out; the code keeps them, because a table with holes is a crash waiting for
+  the first position nobody expected.
+- **`mate` is a band, and it is the floor.** An evaluation past half of `MATE_SCORE` is
+  the engine counting moves to mate rather than material, and there is nothing below it to
+  fall into — which is the whole reason it is worth separating from `losing`. There is no
+  matching band at the top: a forced mate *for* you is just winning, and you cannot lose a
+  game by climbing.
 - **A move holds when it keeps your band, not when it stays within a mistake of the
   best.** The old rule asked a centipawn question where the question is a band one. From a
   won or better position a candidate must leave you at least better, from level at least

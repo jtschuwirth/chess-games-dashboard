@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js'
 import { ENGINE_DEPTH } from './analysis'
+import { MATE_SCORE } from './engine-protocol'
 import { analyzeLines } from './engine'
 import { isFault } from './review'
 import { settings } from './settings'
@@ -30,22 +31,30 @@ import type { GameRecord, MoveVerdict, VerdictKind } from '@/types/chess'
 const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
 
 /**
- * Where you stood before the move, from your own side.
+ * Where a position stands, from your own side.
  *
  * ```
+ *   mate      a forced mate against you — the floor, nothing is below it
  *   losing   <= -winning
  *   worse     -winning .. -level
  *   level        -level .. +level
  *   better       +level .. +winning
  *   winning   >= +winning
  * ```
+ *
+ * `mate` is not a setting: an evaluation that deep is the engine reporting a forced
+ * mate rather than counting material, and there is no band under it to fall into.
  */
-export type Standing = 'losing' | 'worse' | 'level' | 'better' | 'winning'
+export type Standing = 'mate' | 'losing' | 'worse' | 'level' | 'better' | 'winning'
 
-/** Worst first, so two standings can be compared. */
-export const STANDINGS: Standing[] = ['losing', 'worse', 'level', 'better', 'winning']
+/** Worst first, so two standings can be compared and a fall can be measured. */
+export const STANDINGS: Standing[] = ['mate', 'losing', 'worse', 'level', 'better', 'winning']
+
+/** Past this the engine is counting moves to mate, not material. */
+const MATED = MATE_SCORE / 2
 
 export function standingOf(cp: number, config = settings()): Standing {
+  if (cp <= -MATED) return 'mate'
   if (cp >= config.winning) return 'winning'
   if (cp > config.level) return 'better'
   if (cp >= -config.level) return 'level'
@@ -224,40 +233,95 @@ export function countHolding(scores: number[], config = settings()): number {
 }
 
 /**
- * The descriptor, read off the two axes.
+ * The descriptor, read off where you fell from, where you landed, and what the position
+ * asked for.
  *
- * One label could not carry both and the panel read as a muddle because of it. Now the
- * standing says how much was at stake and the breadth says what the position asked for,
- * and the word in the badge is simply the name of that pair. Each column is a different
- * failure with a different cure: a concrete position was a line to find, a stable one was
- * a choice to get right.
+ * Where you landed is half the event. Coming down from winning to a position that is
+ * still better is not the same as coming down to level, and neither is the same as
+ * coming down to lost - one label per starting band could only ever say the first of
+ * them. So the table is a transition, and the breadth picks the column.
+ *
+ * The columns are two different failures: a `concrete` position had a line in it, so its
+ * names say `missed`; a `stable` one had several playable moves, so its names say what
+ * you did with them. Cells share a name where the distinction stops carrying anything -
+ * falling from winning to worse and to losing is the same mistake twice over.
+ *
+ * Some rows cannot occur. A marked move always leaves you under the winning cut and is
+ * never played from a lost position, so `winning -> winning`, and the `losing` and `mate`
+ * rows, are unreachable in practice; they are here because a table with holes in it is a
+ * crash waiting for the first evaluation nobody expected.
  */
-export const DESCRIPTOR: Record<Standing, Record<Breadth, VerdictKind>> = {
-  winning: { concrete: 'lost-the-thread', stable: 'threw-it' },
-  better: { concrete: 'missed-the-follow-up', stable: 'let-the-edge-go' },
-  level: { concrete: 'missed-the-line', stable: 'careless' },
-  worse: { concrete: 'missed-the-defence', stable: 'made-it-worse' },
-  losing: { concrete: 'missed-the-save', stable: 'already-lost' },
+interface Fall {
+  from: Standing
+  /** Every landing this row covers. */
+  to: Standing[]
+  concrete: VerdictKind
+  stable: VerdictKind
+}
+
+export const TRANSITIONS: Fall[] = [
+  { from: 'winning', to: ['winning', 'better'], concrete: 'missed-the-kill', stable: 'let-the-win-go' },
+  { from: 'winning', to: ['level'], concrete: 'lost-the-thread', stable: 'threw-it' },
+  { from: 'winning', to: ['worse', 'losing'], concrete: 'lost-the-thread', stable: 'threw-it-away' },
+  { from: 'winning', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
+
+  { from: 'better', to: ['winning', 'better'], concrete: 'missed-the-sharpest', stable: 'eased-off' },
+  { from: 'better', to: ['level'], concrete: 'missed-the-follow-up', stable: 'let-the-edge-go' },
+  { from: 'better', to: ['worse', 'losing'], concrete: 'missed-the-follow-up', stable: 'gave-it-away' },
+  { from: 'better', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
+
+  { from: 'level', to: ['winning', 'better', 'level'], concrete: 'missed-a-chance', stable: 'a-loose-move' },
+  { from: 'level', to: ['worse'], concrete: 'missed-the-line', stable: 'careless' },
+  { from: 'level', to: ['losing'], concrete: 'missed-the-line', stable: 'gave-it-away' },
+  { from: 'level', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
+
+  { from: 'worse', to: ['winning', 'better', 'level', 'worse'], concrete: 'missed-the-defence', stable: 'made-it-worse' },
+  { from: 'worse', to: ['losing'], concrete: 'missed-the-defence', stable: 'let-it-go' },
+  { from: 'worse', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
+
+  { from: 'losing', to: ['winning', 'better', 'level', 'worse', 'losing'], concrete: 'missed-the-save', stable: 'already-lost' },
+  { from: 'losing', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
+
+  { from: 'mate', to: ['winning', 'better', 'level', 'worse', 'losing', 'mate'], concrete: 'already-lost', stable: 'already-lost' },
+]
+
+export function describe(from: Standing, to: Standing, breadth: Breadth): VerdictKind {
+  const fall = TRANSITIONS.find(entry => entry.from === from && entry.to.includes(to))
+  return fall ? fall[breadth] : 'a-loose-move'
 }
 
 export function readVerdict(
-  input: { cpBefore: number; holds: number },
+  input: { cpBefore: number; cpAfter: number; holds: number },
   config = settings(),
 ): VerdictKind {
-  return DESCRIPTOR[standingOf(input.cpBefore, config)][breadthOf(input.holds, config)]
+  return describe(
+    standingOf(input.cpBefore, config),
+    standingOf(input.cpAfter, config),
+    breadthOf(input.holds, config),
+  )
 }
 
 export const VERDICT_LABEL: Record<VerdictKind, string> = {
-  'threw-it': 'threw it',
+  'walked-into-mate': 'walked into mate',
+  'missed-the-kill': 'missed the kill',
+  'let-the-win-go': 'let the win go',
   'lost-the-thread': 'lost the thread',
-  'let-the-edge-go': 'let the edge go',
+  'threw-it': 'threw it',
+  'threw-it-away': 'threw it away',
+  'missed-the-sharpest': 'missed the sharpest',
+  'eased-off': 'eased off',
   'missed-the-follow-up': 'missed the follow-up',
-  careless: 'a careless move',
+  'let-the-edge-go': 'let the edge go',
+  'gave-it-away': 'gave it away',
+  'missed-a-chance': 'missed a chance',
+  'a-loose-move': 'a loose move',
   'missed-the-line': 'missed the line',
-  'made-it-worse': 'made it worse',
+  careless: 'a careless move',
   'missed-the-defence': 'missed the defence',
-  'already-lost': 'already lost',
+  'made-it-worse': 'made it worse',
+  'let-it-go': 'let it go',
   'missed-the-save': 'missed the save',
+  'already-lost': 'already lost',
 }
 
 export const STANDING_LABEL: Record<Standing, string> = {
@@ -266,14 +330,7 @@ export const STANDING_LABEL: Record<Standing, string> = {
   level: 'level',
   worse: 'worse',
   losing: 'losing',
-}
-
-const STANDING_HINT: Record<Standing, string> = {
-  winning: 'You were winning.',
-  better: 'You had an edge rather than a win.',
-  level: 'There was nothing in it either way.',
-  worse: 'You were already defending.',
-  losing: 'The game was already gone.',
+  mate: 'mated',
 }
 
 const BREADTH_HINT: Record<Breadth, string> = {
@@ -281,14 +338,15 @@ const BREADTH_HINT: Record<Breadth, string> = {
   stable: 'Several moves held, so this was a choice to get right.',
 }
 
-/** The sentence behind a badge, composed from the pair it is the name of. */
-export function verdictHint(standing: Standing, breadth: Breadth): string {
-  return `${STANDING_HINT[standing]} ${BREADTH_HINT[breadth]}`
+/** The sentence behind a badge: the fall it names, then what the position asked for. */
+export function verdictHint(from: Standing, to: Standing, breadth: Breadth): string {
+  return `${STANDING_LABEL[from]} → ${STANDING_LABEL[to]}. ${BREADTH_HINT[breadth]}`
 }
 
 /**
- * Coloured by standing, which is the axis that says how much was at stake. The breadth
- * is a word beside it — two hues would be two things to decode on a row you scan.
+ * Coloured by where you fell FROM, which is the axis that says how much was at stake.
+ * Where you landed and what the position asked for are words beside it - three hues
+ * would be three things to decode on a row you scan.
  */
 export const STANDING_BADGE: Record<Standing, string> = {
   winning: 'bg-red-500/15 text-red-300 border-red-500/30',
@@ -296,6 +354,7 @@ export const STANDING_BADGE: Record<Standing, string> = {
   level: 'bg-zinc-700/30 text-zinc-400 border-zinc-700',
   worse: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   losing: 'bg-zinc-800 text-zinc-500 border-zinc-700',
+  mate: 'bg-zinc-800 text-zinc-500 border-zinc-700',
 }
 
 /** The plies this pass has something to say about: the ones the engine marked. */
@@ -344,7 +403,10 @@ export function verdictsOf(game: GameRecord, config = settings()): Record<string
             ...candidate,
             holds: holdsFrom(verdict.candidates![0].cp, candidate.cp, config),
           })),
-          verdict: readVerdict({ cpBefore: move.cpBefore, holds }, config),
+          verdict: readVerdict(
+            { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds },
+            config,
+          ),
         },
       ]
     }),
@@ -442,7 +504,10 @@ export async function judgeGame(
       best: candidates.moves[0].cp,
       holds,
       looked: candidates.moves.length,
-      verdict: readVerdict({ cpBefore: move.cpBefore, holds }, config),
+      verdict: readVerdict(
+        { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds },
+        config,
+      ),
       depth: candidates.depth,
       judgedAt: Date.now(),
     }

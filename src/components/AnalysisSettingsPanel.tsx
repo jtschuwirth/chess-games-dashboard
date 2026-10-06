@@ -2,12 +2,11 @@
 
 import { useState } from 'react'
 import {
-  DESCRIPTOR,
   STANDINGS,
   STANDING_BADGE,
   STANDING_LABEL,
+  TRANSITIONS,
   VERDICT_LABEL,
-  verdictHint,
   type Breadth,
   type Standing,
 } from '@/lib/verdict'
@@ -64,6 +63,26 @@ function Field({
 }
 
 const BREADTHS: Breadth[] = ['concrete', 'stable']
+
+/**
+ * The landings worth showing for a row.
+ *
+ * A fault never leaves you winning — `classifyMove` will not mark one that does — and
+ * never lands above where it started, so those cells exist only to keep the table total
+ * and would read as nonsense here.
+ */
+function landings(fall: { from: Standing; to: Standing[] }): Standing[] {
+  const ceiling = STANDINGS.indexOf(fall.from)
+  const shown = fall.to.filter(
+    to => to !== 'winning' && STANDINGS.indexOf(to) <= ceiling,
+  )
+  return shown.length > 0 ? shown : [fall.from]
+}
+
+/** The bands a marked move can actually be played from — see `classifyMove`. */
+const REACHABLE: Standing[] = STANDINGS.filter(
+  standing => standing !== 'losing' && standing !== 'mate',
+)
 
 /**
  * The numbers the analysis is a judgement about, and the table of what those judgements
@@ -226,10 +245,10 @@ export default function AnalysisSettingsPanel({
         </h3>
 
         <div className="overflow-x-auto -mx-5">
-          <table className="w-full text-sm min-w-[34rem]">
+          <table className="w-full text-sm min-w-[36rem]">
             <thead>
               <tr className="text-[10px] uppercase tracking-wide text-zinc-600">
-                <th className="text-left font-normal px-5 py-2">Where you stood</th>
+                <th className="text-left font-normal px-5 py-2">The fall</th>
                 {BREADTHS.map(breadth => (
                   <th key={breadth} className="text-left font-normal px-3 py-2">
                     {breadth}
@@ -243,28 +262,26 @@ export default function AnalysisSettingsPanel({
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/70">
-              {STANDINGS.slice()
-                .reverse()
-                .map(standing => (
-                  <tr key={standing}>
-                    <td className="px-5 py-2">
-                      <span
-                        className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${STANDING_BADGE[standing]}`}
-                      >
-                        {STANDING_LABEL[standing]}
-                      </span>
+              {TRANSITIONS.filter(fall => REACHABLE.includes(fall.from)).map((fall, index) => (
+                <tr key={index}>
+                  <td className="px-5 py-2 whitespace-nowrap">
+                    <span
+                      className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${STANDING_BADGE[fall.from]}`}
+                    >
+                      {STANDING_LABEL[fall.from]}
+                    </span>
+                    <span className="text-zinc-600"> → </span>
+                    <span className="text-xs text-zinc-400">
+                      {landings(fall).map(to => STANDING_LABEL[to]).join(' or ')}
+                    </span>
+                  </td>
+                  {BREADTHS.map(breadth => (
+                    <td key={breadth} className="px-3 py-2 text-zinc-300">
+                      {VERDICT_LABEL[fall[breadth]]}
                     </td>
-                    {BREADTHS.map(breadth => (
-                      <td
-                        key={breadth}
-                        className="px-3 py-2 text-zinc-300"
-                        title={verdictHint(standing as Standing, breadth)}
-                      >
-                        {VERDICT_LABEL[DESCRIPTOR[standing as Standing][breadth]]}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                  ))}
+                </tr>
+              ))}
             </tbody>
           </table>
         </div>
@@ -272,9 +289,11 @@ export default function AnalysisSettingsPanel({
         <p className="text-xs text-zinc-600">
           A move holds when it keeps you in your own band — from a won or better position
           it must leave you at least better, from level at least level, from worse at
-          least worse.
+          least worse. Rows starting from a lost position are left out: a move played
+          there is not marked at all.
         </p>
       </div>
+
     </section>
   )
 }
