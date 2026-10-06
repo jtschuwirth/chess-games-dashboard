@@ -42,6 +42,11 @@ node .claude/skills/game-analysis/scripts/pull.mjs
 Read-only; copies the user's documents into `.analysis-snapshot.json` at the repo root and
 prints what is in them. Re-run it when the user says they have analysed or read more.
 
+The scripts are in the TypeScript project (`tsconfig.json` names `.claude/skills/**/*.ts`
+explicitly, because a glob will not reach into a dot-directory), so `npx tsc --noEmit`
+checks them. Run it after touching one: an unchecked call here reported a clean-looking
+0% rather than failing.
+
 Then write a script in the scratchpad and run it from there:
 
 ```bash

@@ -94,7 +94,7 @@ export function markedMoves(games: GameRecord[]): MarkedMove[] {
   for (const game of games) {
     const stored = verdictsOf(game)
     const control = parseTimeControl(game.timeControl)
-    const clocks = alignClocks(game.clocks ?? null, game.moves.length)
+    const clocks = game.clocks ? alignClocks(game.clocks, game.moves.length) : null
     const spent = control && clocks ? timeSpentPerPly(clocks, control) : null
 
     for (const move of game.analysis?.moves ?? []) {
@@ -112,8 +112,9 @@ export function markedMoves(games: GameRecord[]): MarkedMove[] {
         from: standingOf(move.cpBefore),
         to: standingOf(move.cpAfter),
         verdict: verdict && !verdict.dismissed ? verdict : null,
-        breadth: verdict && !verdict.dismissed ? breadthOf(verdict.holds) : null,
-        secondsSpent: spent ? Math.round(spent[move.ply]) : null,
+        breadth:
+          verdict && !verdict.dismissed ? breadthOf(verdict.holds, verdict.looked) : null,
+        secondsSpent: spent === null ? null : Math.round(spent[move.ply]),
         secondsLeft: clocks ? Math.round(clocks[move.ply]) : null,
         tags: (game.review?.mistakes ?? []).find(entry => entry.ply === move.ply)?.tags ?? [],
       })

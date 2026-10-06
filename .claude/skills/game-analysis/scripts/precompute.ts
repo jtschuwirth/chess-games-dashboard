@@ -168,7 +168,10 @@ for (const [index, job] of todo.entries()) {
     best: scores[0],
     holds,
     looked: scores.length,
-    verdict: readVerdict({ cpBefore: job.cpBefore, cpAfter: job.cpAfter, holds }, config),
+    verdict: readVerdict(
+      { cpBefore: job.cpBefore, cpAfter: job.cpAfter, holds, looked: scores.length },
+      config,
+    ),
     depth: search.depth,
     judgedAt: Date.now(),
   }
