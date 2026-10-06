@@ -964,6 +964,16 @@ src/
 - **A variation's games include its sub-variations** (`gameMatchesNode` unions the subtree), so a
   parent's totals always cover its children even when a game transposed straight into a child.
 
+## Analysing the games
+`.claude/skills/game-analysis` answers questions about the stored games, and its one rule
+is that it never runs the engine. The app has already paid for the evaluations and the
+second pass; a question about them is a file read. `scripts/pull.mjs` copies the user's
+documents into a gitignored snapshot, `scripts/slice.ts` reads them the way `getGames`
+does — settings in force, marks re-derived — and a report says its coverage, because a
+breadth or a `holds` is only known for the marked moves someone has actually read. When
+the data is missing the gap is the finding: the first pass is a button on a game's page
+and the second is *Read N more* on the dashboard, and both are the user's to run.
+
 ## Conventions
 - **Imports**: `@/*` alias for `src/*`
 - **Components**: PascalCase exports, one per file
