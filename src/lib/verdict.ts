@@ -357,6 +357,63 @@ export const STANDING_BADGE: Record<Standing, string> = {
   mate: 'bg-zinc-800 text-zinc-500 border-zinc-700',
 }
 
+export interface VerdictTally {
+  /** Marked moves in the slice, read or not. */
+  marked: number
+  /** Of those, the ones the second pass has an answer for. */
+  read: number
+  /** Games holding a marked move nobody has read yet. */
+  pending: GameRecord[]
+  byVerdict: { kind: VerdictKind; count: number }[]
+  byStanding: Record<Standing, { concrete: number; stable: number }>
+}
+
+/**
+ * What the second pass makes of a whole slice, out of what is already stored.
+ *
+ * No engine and no search: the verdict is derived from the marked move and the stored
+ * `holds`, both of which are on disk. The only thing it cannot invent is a `holds` for a
+ * move nobody has read, which is what `pending` counts — the panel says so rather than
+ * quietly reporting a share of the moves it happens to know about.
+ */
+export function verdictTally(games: GameRecord[], config = settings()): VerdictTally {
+  const byVerdict = new Map<VerdictKind, number>()
+  const byStanding = Object.fromEntries(
+    STANDINGS.map(standing => [standing, { concrete: 0, stable: 0 }]),
+  ) as VerdictTally['byStanding']
+
+  let marked = 0
+  let read = 0
+  const pending: GameRecord[] = []
+
+  for (const game of games) {
+    const stored = verdictsOf(game, config)
+    const faults = (game.analysis?.moves ?? []).filter(move => isFault(move.tag))
+    marked += faults.length
+
+    if (faults.some(move => !stored[String(move.ply)])) pending.push(game)
+
+    for (const move of faults) {
+      const verdict = stored[String(move.ply)]
+      if (!verdict || verdict.dismissed) continue
+
+      read++
+      byVerdict.set(verdict.verdict, (byVerdict.get(verdict.verdict) ?? 0) + 1)
+      byStanding[standingOf(move.cpBefore, config)][breadthOf(verdict.holds, config)]++
+    }
+  }
+
+  return {
+    marked,
+    read,
+    pending,
+    byStanding,
+    byVerdict: [...byVerdict]
+      .map(([kind, count]) => ({ kind, count }))
+      .sort((a, b) => b.count - a.count),
+  }
+}
+
 /** The plies this pass has something to say about: the ones the engine marked. */
 export function judgeable(game: GameRecord): number[] {
   return (game.analysis?.moves ?? [])

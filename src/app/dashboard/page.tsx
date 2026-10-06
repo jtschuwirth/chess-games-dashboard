@@ -13,6 +13,7 @@ import ReviewPanel from '@/components/ReviewPanel'
 import Panel from '@/components/Section'
 import StatBlockCard from '@/components/StatBlockCard'
 import SyncPanel from '@/components/SyncPanel'
+import VerdictPanel from '@/components/VerdictPanel'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
 import { getGames, getOpenings, getPatterns, getProfile, getRatingHistory } from '@/lib/firestore'
@@ -569,6 +570,16 @@ function DashboardBody({ userId }: { userId: string }) {
       />
 
       <AccuracyPanel games={scoped} />
+
+      <VerdictPanel
+        userId={userId}
+        games={scoped}
+        onJudged={judged =>
+          setGames(prev =>
+            (prev ?? []).map(game => (game.id === judged.id ? judged : game)),
+          )
+        }
+      />
 
       <ReviewPanel
         patternTags={patternTagList}

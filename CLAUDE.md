@@ -76,7 +76,7 @@ src/
 │                               # PatternLineCard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
-│                               # AnalysisSettingsPanel,
+│                               # AnalysisSettingsPanel, VerdictPanel,
 │                               # HomeNav, RatingPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
@@ -564,6 +564,18 @@ src/
   is `lost the thread`. Both halves were needed: without the first, a piece up with an
   attack on top read as positional — including the one game in the data that was
   unarguably thrown; without the second, two pawns up scoring +2.6 read the same way.
+- **The slice's verdicts are a dashboard panel, read from storage.** Every figure in it
+  comes off disk — the verdict is derived from the marked move and the stored `holds`, so
+  the table is there the moment the page is. What it cannot invent is a reading for a move
+  nobody has asked about, which is why the coverage is in the heading rather than implied:
+  a mix drawn from a tenth of the marked moves is a mix of whichever tenth happened to get
+  opened, and a panel that did not say so would be quietly lying about a sample.
+- **The second pass gets a slice-wide run; the first pass still does not.** The rule
+  against batching was about cost, and the two passes do not cost the same: analysing a
+  game is eighty positions, reading its marked moves is about three. A hundred games is
+  minutes rather than hours, and the run is resumable — it skips what has been read, so
+  stopping it loses nothing. It still says how many positions it is about to search before
+  it starts, and it still stops on demand.
 - **A verdict can be thrown out, and the rejection is stored.** `dismissed` is a flag
   rather than a delete, because running the pass again must not hand back a reading you
   have already rejected — and the row stays on screen, greyed, so it is on record as
