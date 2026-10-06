@@ -410,6 +410,17 @@ src/
   ran hundreds of pixels below the board. Out of the flow, the board alone sets the row height
   and the moves scroll inside it. On a phone none of this applies: everything stacks and the list
   is capped at 28rem.
+- **The move list scrolls itself and never the page.** Keeping the move you have just
+  stepped to in view is `scrollIntoView({ block: 'nearest' })`, which is also what made the
+  game view unusable on a phone: it scrolls *every* scrollable ancestor up to the document,
+  and on a phone the list is stacked under the board rather than beside it — so each move
+  dragged the board off the top of the screen to bring the list into view. Every move of
+  every game did it. `MoveList` applies the same rule by hand to its own scroller, measured
+  with `getBoundingClientRect` rather than `offsetTop`, which would be relative to whichever
+  ancestor happens to be positioned — and that differs between the two layouts. Checked
+  against a real layout: a row already in view does not move it, one past either edge comes
+  flush to that edge, the list lands on the identical `scrollTop` either way, and the page
+  stays where it was instead of jumping 1500px.
 - **The tag picker holds its own open state per entry.** Deriving it from "has no tags yet" read
   well and behaved badly: picking the first tag closed the picker under you, and tagging a move
   usually takes more than one. It is a button and a conditional, not `<details>` — React nulls

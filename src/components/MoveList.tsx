@@ -50,11 +50,37 @@ export default function MoveList({
   /** Null while the board is following the game. */
   active: ActiveLine | null
 }) {
+  const listRef = useRef<HTMLDivElement | null>(null)
   const activeRef = useRef<HTMLButtonElement | null>(null)
 
-  /** Stepping with the arrow keys should not leave the move off screen. */
+  /**
+   * Stepping should not leave the move off screen, and should not move the page either.
+   *
+   * `scrollIntoView` was the obvious way to do the first and is what caused the second:
+   * it scrolls every scrollable ancestor up to the document, so on a phone — where the
+   * list is stacked under the board rather than beside it — advancing a move dragged the
+   * board off the top of the screen to bring the move list into view. Every move of a
+   * game did it, which made stepping through one unusable.
+   *
+   * So the list is scrolled by hand and nothing else is touched. The rule is
+   * `scrollIntoView`'s own `block: 'nearest'`: a move already in view stays where it is,
+   * and one past either edge is brought just inside it. Measured with rectangles rather
+   * than `offsetTop`, which would be relative to whichever ancestor happens to be
+   * positioned — and that differs between the phone layout and the desktop one.
+   */
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest' })
+    const list = listRef.current
+    const move = activeRef.current
+    if (!list || !move) return
+
+    const listBox = list.getBoundingClientRect()
+    const moveBox = move.getBoundingClientRect()
+
+    const above = moveBox.top - listBox.top
+    const below = moveBox.bottom - listBox.bottom
+
+    if (above < 0) list.scrollTop += above
+    else if (below > 0) list.scrollTop += below
   }, [current, active])
 
   const rows = Math.ceil(plies.length / 2)
@@ -68,7 +94,7 @@ export default function MoveList({
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto text-sm font-mono">
+    <div ref={listRef} className="flex-1 min-h-0 overflow-y-auto text-sm font-mono">
       {Array.from({ length: rows }, (_, row) => {
         const white = plies[row * 2]
         const black = plies[row * 2 + 1]
