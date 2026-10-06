@@ -57,7 +57,7 @@ const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
  */
 export function breadthOf(holds: number, looked: number, config = settings()): Breadth {
   if (holds <= config.narrow) return 'sharp'
-  return holds >= Math.min(looked, config.lines) ? 'stable' : 'open'
+  return holds >= Math.min(looked, config.lines) ? 'stable' : 'tight'
 }
 
 /** Your material minus theirs, in pawns, in a position. */
@@ -268,7 +268,7 @@ export const VERDICT_LABEL: Record<VerdictKind, string> = {
 
 const BREADTH_HINT: Record<Breadth, string> = {
   sharp: 'Only a move or two held, so this was a line to find.',
-  open: 'A few held, so there was room — but not much.',
+  tight: 'A few held, so there was room — but not much.',
   stable: 'Everything looked at held, so anything reasonable would have done.',
 }
 
@@ -313,7 +313,7 @@ export interface VerdictTally {
 export function verdictTally(games: GameRecord[], config = settings()): VerdictTally {
   const byVerdict = new Map<VerdictKind, number>()
   const byStanding = Object.fromEntries(
-    STANDINGS.map(standing => [standing, { sharp: 0, open: 0, stable: 0 }]),
+    STANDINGS.map(standing => [standing, { sharp: 0, tight: 0, stable: 0 }]),
   ) as VerdictTally['byStanding']
 
   let marked = 0

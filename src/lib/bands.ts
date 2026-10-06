@@ -71,16 +71,20 @@ export type Severity = 'inaccuracy' | 'mistake' | 'blunder'
  * position that forgave anything — and failing those two is not the same failure.
  *
  *   sharp    one or two held, so there was a line to find
- *   open     a few held, so there was room but not much
+ *   tight    a few held, so there was room but not much
  *   stable   everything looked at held, so anything reasonable would have done
+ *
+ * `tight` rather than `open`: an open position is a real and different thing, and these
+ * need not be one. It also sits beside `sharp` as a word about how much the position
+ * allows, which is the axis.
  */
-export type Breadth = 'sharp' | 'open' | 'stable'
+export type Breadth = 'sharp' | 'tight' | 'stable'
 
-export const BREADTHS: Breadth[] = ['sharp', 'open', 'stable']
+export const BREADTHS: Breadth[] = ['sharp', 'tight', 'stable']
 
 export const BREADTH_LABEL: Record<Breadth, string> = {
   sharp: 'sharp',
-  open: 'open',
+  tight: 'tight',
   stable: 'stable',
 }
 
@@ -103,7 +107,7 @@ export interface Fall {
   to: Standing[]
   severity: Severity
   sharp: string
-  open: string
+  tight: string
   stable: string
 }
 
@@ -118,32 +122,32 @@ export interface Fall {
  * for that one rather than for the twenty before it. Everywhere else a band is a band.
  */
 export const TRANSITIONS: Fall[] = [
-  { from: 'winning', to: ['winning', 'better'], severity: 'inaccuracy', sharp: 'missed-the-kill', open: 'slowed-it-down', stable: 'let-the-win-go' },
-  { from: 'winning', to: ['level'], severity: 'blunder', sharp: 'lost-the-thread', open: 'let-it-slip', stable: 'threw-it' },
-  { from: 'winning', to: ['worse', 'losing'], severity: 'blunder', sharp: 'lost-the-thread', open: 'turned-it-around', stable: 'threw-it-away' },
-  { from: 'winning', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', open: 'walked-into-mate', stable: 'walked-into-mate' },
+  { from: 'winning', to: ['winning', 'better'], severity: 'inaccuracy', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
+  { from: 'winning', to: ['level'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'let-it-slip', stable: 'threw-it' },
+  { from: 'winning', to: ['worse', 'losing'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'turned-it-around', stable: 'threw-it-away' },
+  { from: 'winning', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
-  { from: 'better', to: ['winning', 'better'], severity: 'inaccuracy', sharp: 'missed-the-sharpest', open: 'took-the-slow-road', stable: 'eased-off' },
-  { from: 'better', to: ['level'], severity: 'mistake', sharp: 'missed-the-follow-up', open: 'mishandled-the-edge', stable: 'let-the-edge-go' },
-  { from: 'better', to: ['worse', 'losing'], severity: 'blunder', sharp: 'missed-the-follow-up', open: 'lost-the-plot', stable: 'gave-it-away' },
-  { from: 'better', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', open: 'walked-into-mate', stable: 'walked-into-mate' },
+  { from: 'better', to: ['winning', 'better'], severity: 'inaccuracy', sharp: 'missed-the-sharpest', tight: 'took-the-slow-road', stable: 'eased-off' },
+  { from: 'better', to: ['level'], severity: 'mistake', sharp: 'missed-the-follow-up', tight: 'mishandled-the-edge', stable: 'let-the-edge-go' },
+  { from: 'better', to: ['worse', 'losing'], severity: 'blunder', sharp: 'missed-the-follow-up', tight: 'lost-the-plot', stable: 'gave-it-away' },
+  { from: 'better', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
-  { from: 'level', to: ['winning', 'better', 'level'], severity: 'inaccuracy', sharp: 'missed-a-chance', open: 'drifted', stable: 'a-loose-move' },
-  { from: 'level', to: ['worse'], severity: 'mistake', sharp: 'missed-the-line', open: 'went-the-wrong-way', stable: 'careless' },
-  { from: 'level', to: ['losing'], severity: 'blunder', sharp: 'missed-the-line', open: 'came-apart', stable: 'gave-it-away' },
-  { from: 'level', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', open: 'walked-into-mate', stable: 'walked-into-mate' },
+  { from: 'level', to: ['winning', 'better', 'level'], severity: 'inaccuracy', sharp: 'missed-a-chance', tight: 'drifted', stable: 'a-loose-move' },
+  { from: 'level', to: ['worse'], severity: 'mistake', sharp: 'missed-the-line', tight: 'went-the-wrong-way', stable: 'careless' },
+  { from: 'level', to: ['losing'], severity: 'blunder', sharp: 'missed-the-line', tight: 'came-apart', stable: 'gave-it-away' },
+  { from: 'level', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
-  { from: 'worse', to: ['winning', 'better', 'level', 'worse'], severity: 'inaccuracy', sharp: 'missed-the-defence', open: 'defended-badly', stable: 'made-it-worse' },
-  { from: 'worse', to: ['losing'], severity: 'mistake', sharp: 'missed-the-defence', open: 'cracked', stable: 'let-it-go' },
-  { from: 'worse', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', open: 'walked-into-mate', stable: 'walked-into-mate' },
+  { from: 'worse', to: ['winning', 'better', 'level', 'worse'], severity: 'inaccuracy', sharp: 'missed-the-defence', tight: 'defended-badly', stable: 'made-it-worse' },
+  { from: 'worse', to: ['losing'], severity: 'mistake', sharp: 'missed-the-defence', tight: 'cracked', stable: 'let-it-go' },
+  { from: 'worse', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
-  { from: 'losing', to: ['winning', 'better', 'level', 'worse', 'losing'], severity: 'inaccuracy', sharp: 'missed-the-save', open: 'hung-on-badly', stable: 'already-lost' },
+  { from: 'losing', to: ['winning', 'better', 'level', 'worse', 'losing'], severity: 'inaccuracy', sharp: 'missed-the-save', tight: 'hung-on-badly', stable: 'already-lost' },
   // the one fall into mate that is not a blunder: from a position already lost there is
   // nothing to point at instead, and calling it an error would be blaming you for the
   // move rather than for the twenty before it
-  { from: 'losing', to: ['mate'], severity: 'inaccuracy', sharp: 'walked-into-mate', open: 'walked-into-mate', stable: 'walked-into-mate' },
+  { from: 'losing', to: ['mate'], severity: 'inaccuracy', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
-  { from: 'mate', to: ['winning', 'better', 'level', 'worse', 'losing', 'mate'], severity: 'inaccuracy', sharp: 'already-lost', open: 'already-lost', stable: 'already-lost' },
+  { from: 'mate', to: ['winning', 'better', 'level', 'worse', 'losing', 'mate'], severity: 'inaccuracy', sharp: 'already-lost', tight: 'already-lost', stable: 'already-lost' },
 ]
 
 export function fallBetween(from: Standing, to: Standing): Fall {

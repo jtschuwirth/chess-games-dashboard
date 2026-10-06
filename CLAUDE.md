@@ -449,7 +449,7 @@ src/
   could only ever say the first of them. So `TRANSITIONS` is a table of from → to, and the
   breadth picks the column.
 
-  | the fall | sharp | open | stable |
+  | the fall | sharp | tight | stable |
   |---|---|---|---|
   | winning → better | missed the kill | slowed it down | let the win go |
   | winning → level | lost the thread | let it slip | threw it |
@@ -466,7 +466,7 @@ src/
   | anything → mated | walked into mate | walked into mate | walked into mate |
 
   The columns are three different failures, and the names say which: a `sharp` position
-  had a line in it, so its names begin `missed`; an `open` one had a few playable moves;
+  had a line in it, so its names begin `missed`; a `tight` one had a few playable moves;
   a `stable` one forgave anything, so its names say what you did with all that room. Cells share a name where the
   distinction stops carrying anything — falling from winning to worse and to losing is the
   same mistake twice over. The badge is coloured by where you fell *from*, which is the
@@ -498,8 +498,9 @@ src/
   move: your **material**, the engine's **score**, and **how many of its candidates held**.
   The last of those is the breadth, and it decides which column of the transition table
   the descriptor comes from.
-- **Breadth is three buckets, not two.** `sharp` is one or two moves holding, `open` a
-  few, `stable` everything the search looked at. Two was too coarse at the top: holding on
+- **Breadth is three buckets, not two.** `sharp` is one or two moves holding, `tight` a
+  few, `stable` everything the search looked at. `tight` rather than `open`, which reads
+  as an open position — a real and different thing these need not be. Two was too coarse at the top: holding on
   three of five is a position with room in it, holding on all five is a position that
   forgave anything, and failing those is not the same failure. `sharp` is `narrow` on the
   account — two, because the same idea often has two move orders and a position with one

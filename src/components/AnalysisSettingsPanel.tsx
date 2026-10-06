@@ -298,7 +298,7 @@ export default function AnalysisSettingsPanel({
                     {BREADTH_LABEL[breadth]}
                     <span className="normal-case tracking-normal text-zinc-700">
                       {breadth === 'sharp' && ` — ${draft.narrow} or fewer held`}
-                      {breadth === 'open' && ` — ${draft.narrow + 1} to ${draft.lines - 1}`}
+                      {breadth === 'tight' && ` — ${draft.narrow + 1} to ${draft.lines - 1}`}
                       {breadth === 'stable' && ' — all of them held'}
                     </span>
                   </th>
