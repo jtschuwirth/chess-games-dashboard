@@ -42,6 +42,9 @@ const option = (name: string) => {
 const limit = Number(option('limit') ?? Infinity)
 const control = option('control')
 
+/** Generous: this is a desktop, not a serverless function with a platform ceiling. */
+const SEARCH_LIMIT = 10 * 60_000
+
 /* ------------------------------------------------------------------- firestore */
 
 const env: Record<string, string> = {}
@@ -97,6 +100,7 @@ console.log(`about ${Math.round((todo.length * 6) / 60)} minutes\n`)
 
 /** Verdicts build up per game so one write covers a whole game. */
 const pending = new Map<string, Record<string, MoveVerdict>>()
+const skipped: string[] = []
 let done = 0
 
 async function flush(gameId: string) {
@@ -121,7 +125,20 @@ for (const [index, job] of todo.entries()) {
   if (!reached) continue
 
   const fen = chess.fen()
-  const search = await analyzeOnServer(fen, ENGINE_DEPTH, config.lines)
+
+  /*
+    A cleared hash and five lines on a dense middlegame can take minutes, and one slow
+    position must not end a run of hundreds. The move is skipped and reported; a later
+    run tries it again, because nothing was written for it.
+  */
+  let search
+  try {
+    search = await analyzeOnServer(fen, ENGINE_DEPTH, config.lines, SEARCH_LIMIT)
+  } catch (error) {
+    skipped.push(`${job.game.id} ply ${job.ply}: ${(error as Error).message}`)
+    continue
+  }
+
   const scores = search.moves.map(candidate => candidate.cp)
   const edge = materialEdge(fen, job.game.color)
   const holds = countHolding(scores, config)
@@ -168,4 +185,9 @@ for (const [index, job] of todo.entries()) {
 }
 
 for (const gameId of [...pending.keys()]) await flush(gameId)
-console.log(`\nwrote ${done} verdicts`)
+console.log('')
+console.log(`wrote ${done} verdicts`)
+if (skipped.length > 0) {
+  console.log(`${skipped.length} skipped, to be retried by a later run:`)
+  for (const line of skipped) console.log(`  ${line}`)
+}

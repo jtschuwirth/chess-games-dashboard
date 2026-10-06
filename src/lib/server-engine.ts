@@ -46,7 +46,14 @@ async function findWasm(): Promise<string> {
   throw new Error(`Could not find the engine's wasm. Looked in:\n${candidates.join('\n')}`)
 }
 
-/** Long enough that a slow cold start is not mistaken for a hung search. */
+/**
+ * Long enough that a slow cold start is not mistaken for a hung search, and short enough
+ * that the route gives up before the platform does — `maxDuration` there is 60 too.
+ *
+ * A caller that is not a serverless function can ask for longer, and the precompute
+ * runner does: a MultiPV search on a dense middlegame starts from a cleared hash and can
+ * take minutes, which is fine on a desktop and is not a hang.
+ */
 const SEARCH_TIMEOUT = 60_000
 
 interface EngineModule {
@@ -101,6 +108,7 @@ export async function analyzeOnServer(
   fen: string,
   depth: number,
   count = 1,
+  timeoutMs = SEARCH_TIMEOUT,
 ): Promise<Candidates> {
   const instance = await load()
 
@@ -110,7 +118,7 @@ export async function analyzeOnServer(
     const timer = setTimeout(() => {
       listener = () => {}
       reject(new Error('The engine did not finish in time.'))
-    }, SEARCH_TIMEOUT)
+    }, timeoutMs)
 
     listener = line => {
       if (typeof line !== 'string') return
