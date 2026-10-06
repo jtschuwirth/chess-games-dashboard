@@ -1,3 +1,5 @@
+import { SEVERITY_MARK } from './bands'
+import { settings, type Severity } from './settings'
 import type {
   Color,
   GameRecord,
@@ -303,22 +305,32 @@ function engineFindings(game: GameRecord): number {
  */
 export const FAULT_TAGS = ['??', '?']
 
-export function isFault(tag: string): boolean {
-  return FAULT_TAGS.includes(tag)
+/**
+ * Whether a mark is one you want to see.
+ *
+ * It used to be a fixed list of two. Now the grade comes from the band a move fell out
+ * of, so an inaccuracy is a move the position excused rather than a move that cost a
+ * little — and whether that is worth looking at is a matter of taste. `marks` on the
+ * account decides; the default is still `??` and `?`, which is what it has always shown.
+ */
+export function isFault(tag: string, marks = settings().marks): boolean {
+  const severity = (Object.keys(SEVERITY_MARK) as Severity[]).find(
+    key => SEVERITY_MARK[key] === tag,
+  )
+  return severity !== undefined && marks.includes(severity)
 }
 
 /**
- * What colour a mark is written in: `??` red, `?` amber, anything else muted.
+ * What colour a mark is written in: `??` red, `?` amber, `?!` muted, anything else plain.
  *
- * One map, because the two marks are a severity scale and the whole point of a scale is
- * that it means the same thing everywhere. It was copied into two components and
- * hardcoded in two more, and both hardcodes were wrong in opposite directions — the
- * game view's evaluation readout wrote every mark in amber, so a blunder read as a
- * mistake, and the drill wrote every one in red, so a mistake read as a blunder.
+ * One map, because the marks are a severity scale and a scale only works if it means the
+ * same thing everywhere. It was copied into two components and hardcoded in two more, and
+ * both hardcodes were wrong in opposite directions.
  */
 const MARK_COLOR: Record<string, string> = {
   '??': 'text-red-400',
   '?': 'text-amber-400',
+  '?!': 'text-zinc-500',
 }
 
 export function markColor(tag: string | null | undefined): string {

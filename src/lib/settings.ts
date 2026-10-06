@@ -12,6 +12,11 @@
  * of these re-reads your whole history without an engine running.
  */
 
+/** Repeated here rather than imported: `bands.ts` reads the settings, not the other way. */
+export type Severity = 'inaccuracy' | 'mistake' | 'blunder'
+
+export const SEVERITIES: Severity[] = ['inaccuracy', 'mistake', 'blunder']
+
 export interface AnalysisSettings {
   /** Within this many centipawns of even, the position is level. */
   level: number
@@ -21,10 +26,17 @@ export interface AnalysisSettings {
   narrow: number
   /** How many candidate moves the second pass asks the engine for. */
   lines: number
-  /** Centipawn loss above which a move is a mistake. */
+  /**
+   * Centipawn loss below which a move is not worth marking at all.
+   *
+   * The only thing centipawns decide any more. How bad a marked move is comes from the
+   * band it fell out of — see `lib/bands.ts` — because "how much did this cost" and "what
+   * did it cost you" are different questions, and from a won position they have very
+   * different answers.
+   */
   mistake: number
-  /** Centipawn loss above which a move is a blunder. */
-  blunder: number
+  /** Which marks to count as faults. The rest are recorded and left off the screen. */
+  marks: Severity[]
 }
 
 export const DEFAULT_SETTINGS: AnalysisSettings = {
@@ -33,20 +45,24 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   narrow: 2,
   lines: 5,
   mistake: 100,
-  blunder: 300,
+  // an inaccuracy is by definition a move the position excused; it is recorded, not shown
+  marks: ['mistake', 'blunder'],
 }
 
 /** What each one may be set to. A number outside its range would read as a broken app. */
-export const SETTING_RANGE: Record<keyof AnalysisSettings, { min: number; max: number }> = {
+export const NUMBERS = ['level', 'winning', 'narrow', 'lines', 'mistake'] as const
+
+export type NumberSetting = (typeof NUMBERS)[number]
+
+export const SETTING_RANGE: Record<NumberSetting, { min: number; max: number }> = {
   level: { min: 10, max: 300 },
   winning: { min: 100, max: 1500 },
   narrow: { min: 1, max: 8 },
   lines: { min: 2, max: 8 },
   mistake: { min: 20, max: 500 },
-  blunder: { min: 50, max: 1500 },
 }
 
-function clamp(value: unknown, key: keyof AnalysisSettings): number {
+function clamp(value: unknown, key: NumberSetting): number {
   const { min, max } = SETTING_RANGE[key]
   const number = Math.round(Number(value))
   if (!Number.isFinite(number)) return DEFAULT_SETTINGS[key]
@@ -62,14 +78,21 @@ function clamp(value: unknown, key: keyof AnalysisSettings): number {
  */
 export function normalizeSettings(raw: Partial<AnalysisSettings> | undefined): AnalysisSettings {
   const next: AnalysisSettings = { ...DEFAULT_SETTINGS }
+
   if (raw) {
-    for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AnalysisSettings)[]) {
+    for (const key of NUMBERS) {
       if (raw[key] !== undefined) next[key] = clamp(raw[key], key)
+    }
+
+    if (Array.isArray(raw.marks)) {
+      const kept = SEVERITIES.filter(severity => raw.marks?.includes(severity))
+      // nothing marked is a screen with nothing on it, which is never what was meant
+      if (kept.length > 0) next.marks = kept
     }
   }
 
+  // a level band wider than the winning one would leave `better` with nothing in it
   next.winning = Math.max(next.winning, next.level + 1)
-  next.blunder = Math.max(next.blunder, next.mistake + 1)
   return next
 }
 

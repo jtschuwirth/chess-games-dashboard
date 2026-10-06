@@ -11,7 +11,15 @@ import {
   type Standing,
 } from '@/lib/verdict'
 import { saveSettings } from '@/lib/firestore'
-import { SETTING_RANGE, normalizeSettings, type AnalysisSettings } from '@/lib/settings'
+import { SEVERITY_LABEL, SEVERITY_MARK } from '@/lib/bands'
+import {
+  SETTING_RANGE,
+  SEVERITIES,
+  normalizeSettings,
+  type AnalysisSettings,
+  type NumberSetting,
+  type Severity,
+} from '@/lib/settings'
 
 /** In pawns on screen, in centipawns underneath. Nobody thinks in centipawns. */
 function pawns(cp: number): string {
@@ -64,6 +72,13 @@ function Field({
 
 const BREADTHS: Breadth[] = ['concrete', 'stable']
 
+/** The same scale the marks use everywhere else. */
+const MARK_TONE: Record<Severity, string> = {
+  blunder: 'text-red-400',
+  mistake: 'text-amber-400',
+  inaccuracy: 'text-zinc-500',
+}
+
 /**
  * The landings worth showing for a row.
  *
@@ -109,7 +124,7 @@ export default function AnalysisSettingsPanel({
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const set = (key: keyof AnalysisSettings) => (value: number) => {
+  const set = (key: NumberSetting) => (value: number) => {
     setDraft(prev => ({ ...prev, [key]: value }))
     setSaved(false)
   }
@@ -167,23 +182,13 @@ export default function AnalysisSettingsPanel({
           max={SETTING_RANGE.narrow.max}
         />
         <Field
-          label="Mistake from"
-          hint="Centipawns given away before a move is marked ?"
+          label="Mark from"
+          hint="Below this a move is left alone. How bad a marked one is comes from the band it fell out of, not from this."
           value={draft.mistake}
           unit={pawnText(draft.mistake)}
           onChange={set('mistake')}
           min={SETTING_RANGE.mistake.min}
           max={SETTING_RANGE.mistake.max}
-          step={10}
-        />
-        <Field
-          label="Blunder from"
-          hint="And before it is marked ??"
-          value={draft.blunder}
-          unit={pawnText(draft.blunder)}
-          onChange={set('blunder')}
-          min={SETTING_RANGE.blunder.min}
-          max={SETTING_RANGE.blunder.max}
           step={10}
         />
         <Field
@@ -218,6 +223,42 @@ export default function AnalysisSettingsPanel({
           ))}
       </div>
 
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs uppercase tracking-wide text-zinc-500">Show</span>
+        <div className="flex gap-1.5 flex-wrap">
+          {SEVERITIES.map(severity => {
+            const on = draft.marks.includes(severity)
+            return (
+              <button
+                key={severity}
+                type="button"
+                onClick={() => {
+                  // never all off: a screen with nothing on it is not a setting anyone wants
+                  const next = on
+                    ? draft.marks.filter(mark => mark !== severity)
+                    : SEVERITIES.filter(mark => mark === severity || draft.marks.includes(mark))
+                  if (next.length === 0) return
+                  setDraft(prev => ({ ...prev, marks: next }))
+                  setSaved(false)
+                }}
+                className={`px-2 py-1 rounded-md border text-xs transition-colors ${
+                  on
+                    ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+                    : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'
+                }`}
+              >
+                <span className="font-mono">{SEVERITY_MARK[severity]}</span>{' '}
+                {SEVERITY_LABEL[severity]}
+              </button>
+            )
+          })}
+        </div>
+        <span className="text-xs text-zinc-600">
+          Everything is recorded either way; this is what reaches a screen, a count and a
+          review.
+        </span>
+      </div>
+
       <div className="flex items-center gap-3">
         <button
           onClick={save}
@@ -249,6 +290,7 @@ export default function AnalysisSettingsPanel({
             <thead>
               <tr className="text-[10px] uppercase tracking-wide text-zinc-600">
                 <th className="text-left font-normal px-5 py-2">The fall</th>
+                <th className="text-left font-normal px-3 py-2">Counts as</th>
                 {BREADTHS.map(breadth => (
                   <th key={breadth} className="text-left font-normal px-3 py-2">
                     {breadth}
@@ -275,9 +317,28 @@ export default function AnalysisSettingsPanel({
                       {landings(fall).map(to => STANDING_LABEL[to]).join(' or ')}
                     </span>
                   </td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    <span
+                      className={`font-mono ${MARK_TONE[fall.severity]}`}
+                      title={
+                        draft.marks.includes(fall.severity)
+                          ? 'shown'
+                          : 'recorded, but left off the screen'
+                      }
+                    >
+                      {SEVERITY_MARK[fall.severity]}
+                    </span>{' '}
+                    <span
+                      className={
+                        draft.marks.includes(fall.severity) ? 'text-zinc-300' : 'text-zinc-600'
+                      }
+                    >
+                      {SEVERITY_LABEL[fall.severity]}
+                    </span>
+                  </td>
                   {BREADTHS.map(breadth => (
                     <td key={breadth} className="px-3 py-2 text-zinc-300">
-                      {VERDICT_LABEL[fall[breadth]]}
+                      {VERDICT_LABEL[fall[breadth] as keyof typeof VERDICT_LABEL]}
                     </td>
                   ))}
                 </tr>
@@ -287,10 +348,10 @@ export default function AnalysisSettingsPanel({
         </div>
 
         <p className="text-xs text-zinc-600">
-          A move holds when it keeps you in your own band — from a won or better position
-          it must leave you at least better, from level at least level, from worse at
-          least worse. Rows starting from a lost position are left out: a move played
-          there is not marked at all.
+          A move holds when it costs no more than an inaccuracy, which is the same rule
+          that grades the move you played — so a move can no longer be flagged while the
+          second pass counts it as having held. Rows starting from a lost position are
+          left out.
         </p>
       </div>
 

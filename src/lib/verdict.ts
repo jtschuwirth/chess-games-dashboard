@@ -1,6 +1,14 @@
 import { Chess } from 'chess.js'
 import { ENGINE_DEPTH } from './analysis'
-import { MATE_SCORE } from './engine-protocol'
+import {
+  STANDINGS,
+  STANDING_LABEL,
+  TRANSITIONS,
+  fallBetween,
+  holdsMove,
+  standingOf,
+  type Standing,
+} from './bands'
 import { analyzeLines } from './engine'
 import { isFault } from './review'
 import { settings } from './settings'
@@ -29,38 +37,6 @@ import type { GameRecord, MoveVerdict, VerdictKind } from '@/types/chess'
 
 /** Pawns, for the material count. The king is not material you can win. */
 const VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
-
-/**
- * Where a position stands, from your own side.
- *
- * ```
- *   mate      a forced mate against you — the floor, nothing is below it
- *   losing   <= -winning
- *   worse     -winning .. -level
- *   level        -level .. +level
- *   better       +level .. +winning
- *   winning   >= +winning
- * ```
- *
- * `mate` is not a setting: an evaluation that deep is the engine reporting a forced
- * mate rather than counting material, and there is no band under it to fall into.
- */
-export type Standing = 'mate' | 'losing' | 'worse' | 'level' | 'better' | 'winning'
-
-/** Worst first, so two standings can be compared and a fall can be measured. */
-export const STANDINGS: Standing[] = ['mate', 'losing', 'worse', 'level', 'better', 'winning']
-
-/** Past this the engine is counting moves to mate, not material. */
-const MATED = MATE_SCORE / 2
-
-export function standingOf(cp: number, config = settings()): Standing {
-  if (cp <= -MATED) return 'mate'
-  if (cp >= config.winning) return 'winning'
-  if (cp > config.level) return 'better'
-  if (cp >= -config.level) return 'level'
-  if (cp > -config.winning) return 'worse'
-  return 'losing'
-}
 
 /**
  * What the position asked of you: a line to find, or a choice to get right.
@@ -207,23 +183,16 @@ export function materialLabel(by: Record<string, number> | undefined): string {
 /**
  * Whether a candidate keeps you where you were.
  *
- * Not "within a mistake of the best move" — that asked a question about centipawns when
- * the question is about bands. A move holds when it does not drop you out of your
- * standing: from a won or better position it must leave you at least better, from level
- * at least level, from worse at least worse. Winning and better share a floor because
- * coming down from +6 to +2 is not losing anything you were holding; it is still a
- * better game.
+ * One line, because it is the same question the classifier asks of the move you played:
+ * `holds` in `lib/bands.ts` is "costs no more than an inaccuracy". They used to be two
+ * rules in two units, and a move could be marked while this one counted it as holding.
  *
  * Measured against the best line of the *same* search, never against the stored
- * `cpBefore`. A MultiPV search prunes less than a plain one and comes back with different
- * numbers for the same position — comparing across the two would be the depth trap in
- * another costume.
+ * `cpBefore`: a MultiPV search prunes less and comes back with different numbers for the
+ * same position, so comparing across the two would be the depth trap in another costume.
  */
 export function holdsFrom(best: number, score: number, config = settings()): boolean {
-  const standing = standingOf(best, config)
-  const floor: Standing = standing === 'winning' ? 'better' : standing
-
-  return STANDINGS.indexOf(standingOf(score, config)) >= STANDINGS.indexOf(floor)
+  return holdsMove(best, score, config)
 }
 
 /** How many of the engine's candidates held. Never zero: the best move always holds. */
@@ -233,61 +202,13 @@ export function countHolding(scores: number[], config = settings()): number {
 }
 
 /**
- * The descriptor, read off where you fell from, where you landed, and what the position
- * asked for.
+ * The descriptor, read off the fall and what the position asked for.
  *
- * Where you landed is half the event. Coming down from winning to a position that is
- * still better is not the same as coming down to level, and neither is the same as
- * coming down to lost - one label per starting band could only ever say the first of
- * them. So the table is a transition, and the breadth picks the column.
- *
- * The columns are two different failures: a `concrete` position had a line in it, so its
- * names say `missed`; a `stable` one had several playable moves, so its names say what
- * you did with them. Cells share a name where the distinction stops carrying anything -
- * falling from winning to worse and to losing is the same mistake twice over.
- *
- * Some rows cannot occur. A marked move always leaves you under the winning cut and is
- * never played from a lost position, so `winning -> winning`, and the `losing` and `mate`
- * rows, are unreachable in practice; they are here because a table with holes in it is a
- * crash waiting for the first evaluation nobody expected.
+ * The table itself lives in `lib/bands.ts`, beside the severity it also carries: one row
+ * says both what a fall costs and what it is called, so the two cannot drift.
  */
-interface Fall {
-  from: Standing
-  /** Every landing this row covers. */
-  to: Standing[]
-  concrete: VerdictKind
-  stable: VerdictKind
-}
-
-export const TRANSITIONS: Fall[] = [
-  { from: 'winning', to: ['winning', 'better'], concrete: 'missed-the-kill', stable: 'let-the-win-go' },
-  { from: 'winning', to: ['level'], concrete: 'lost-the-thread', stable: 'threw-it' },
-  { from: 'winning', to: ['worse', 'losing'], concrete: 'lost-the-thread', stable: 'threw-it-away' },
-  { from: 'winning', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
-
-  { from: 'better', to: ['winning', 'better'], concrete: 'missed-the-sharpest', stable: 'eased-off' },
-  { from: 'better', to: ['level'], concrete: 'missed-the-follow-up', stable: 'let-the-edge-go' },
-  { from: 'better', to: ['worse', 'losing'], concrete: 'missed-the-follow-up', stable: 'gave-it-away' },
-  { from: 'better', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
-
-  { from: 'level', to: ['winning', 'better', 'level'], concrete: 'missed-a-chance', stable: 'a-loose-move' },
-  { from: 'level', to: ['worse'], concrete: 'missed-the-line', stable: 'careless' },
-  { from: 'level', to: ['losing'], concrete: 'missed-the-line', stable: 'gave-it-away' },
-  { from: 'level', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
-
-  { from: 'worse', to: ['winning', 'better', 'level', 'worse'], concrete: 'missed-the-defence', stable: 'made-it-worse' },
-  { from: 'worse', to: ['losing'], concrete: 'missed-the-defence', stable: 'let-it-go' },
-  { from: 'worse', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
-
-  { from: 'losing', to: ['winning', 'better', 'level', 'worse', 'losing'], concrete: 'missed-the-save', stable: 'already-lost' },
-  { from: 'losing', to: ['mate'], concrete: 'walked-into-mate', stable: 'walked-into-mate' },
-
-  { from: 'mate', to: ['winning', 'better', 'level', 'worse', 'losing', 'mate'], concrete: 'already-lost', stable: 'already-lost' },
-]
-
 export function describe(from: Standing, to: Standing, breadth: Breadth): VerdictKind {
-  const fall = TRANSITIONS.find(entry => entry.from === from && entry.to.includes(to))
-  return fall ? fall[breadth] : 'a-loose-move'
+  return fallBetween(from, to)[breadth] as VerdictKind
 }
 
 export function readVerdict(
@@ -322,15 +243,6 @@ export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'let-it-go': 'let it go',
   'missed-the-save': 'missed the save',
   'already-lost': 'already lost',
-}
-
-export const STANDING_LABEL: Record<Standing, string> = {
-  winning: 'winning',
-  better: 'better',
-  level: 'level',
-  worse: 'worse',
-  losing: 'losing',
-  mate: 'mated',
 }
 
 const BREADTH_HINT: Record<Breadth, string> = {
@@ -583,3 +495,6 @@ export async function judgeGame(
 
   return judged
 }
+
+export { STANDINGS, STANDING_LABEL, TRANSITIONS, standingOf }
+export type { Standing }

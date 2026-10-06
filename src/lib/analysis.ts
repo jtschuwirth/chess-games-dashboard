@@ -1,5 +1,6 @@
 import { Chess } from 'chess.js'
 import { analyzePosition, MATE_SCORE } from './engine'
+import { SEVERITY_MARK, gradeOf } from './bands'
 import { isFault } from './review'
 import { settings, type AnalysisSettings } from './settings'
 import type { GameRecord, StoredAnalysis } from '@/types/chess'
@@ -7,8 +8,8 @@ import type { GameRecord, StoredAnalysis } from '@/types/chess'
 /** Annotation symbols, as used in the chess-courses annotator. */
 export type MoveTag = '??' | '?' | '?!' | '!' | '!!'
 
-/** Kept as a name for the pair; the values live on the account — see `lib/settings.ts`. */
-export type Thresholds = Pick<AnalysisSettings, 'blunder' | 'mistake' | 'winning'>
+/** What the classifier reads off the account — see `lib/settings.ts`. */
+export type Thresholds = Pick<AnalysisSettings, 'mistake' | 'winning' | 'level'>
 
 /**
  * One depth for everything the app evaluates itself: a single game's analysis, the
@@ -24,16 +25,23 @@ export type Thresholds = Pick<AnalysisSettings, 'blunder' | 'mistake' | 'winning
 export const ENGINE_DEPTH = 21
 
 /**
- * The chess-courses rule, which is context-sensitive by design:
+ * How a move is graded, which is now two questions in order.
  *
- * - `cpBefore > -winning` — no blunder mark when you were already lost; nothing
- *   left to throw away.
- * - `cpAfter < winning` — no blunder mark when you are still clearly winning after
- *   it; the game is not in danger.
- * - Otherwise a big loss is only `?!`: careless, but the context softens it.
+ * First, is it worth marking at all: a move that gives away less than `mistake` is left
+ * alone, because every position drifts a little and marking that is marking noise.
  *
- * Going from clearly winning to level therefore does get the full mark, because
- * `cpAfter` has fallen back inside the decided band.
+ * Then, how bad it was — and that comes from the band it fell out of, not from the size
+ * of the loss. The old rule graded by centipawns with two guards bolted on to stop it
+ * calling a slip in a decided position a blunder. The guards were the tell: what the rule
+ * wanted to know all along was what the move cost *you*, and from a won position five
+ * pawns of evaluation and nothing at all are the same answer. Simplifying from +9 to +3.5
+ * is now an inaccuracy, where it used to be a blunder and used to make the winning band
+ * the noisiest row in every table.
+ *
+ * It also makes one rule out of two. A move "holds" when it costs no more than an
+ * inaccuracy, which is exactly the rule the second pass applies to the engine's
+ * candidates — so a move can no longer be flagged while the second pass counts it as
+ * having held.
  */
 export function classifyMove(
   cpBefore: number,
@@ -41,14 +49,10 @@ export function classifyMove(
   wasBestMove: boolean,
   thresholds: Thresholds = settings(),
 ): MoveTag {
-  const cpLoss = cpBefore - cpAfter
-  // the same cut that makes a position won or lost: past it there is nothing to throw
-  const stillInPlay = cpAfter < thresholds.winning && cpBefore > -thresholds.winning
+  const severity = gradeOf(cpBefore, cpAfter, thresholds)
+  if (severity === null) return wasBestMove ? '!!' : '!'
 
-  if (cpLoss > thresholds.blunder && stillInPlay) return '??'
-  if (cpLoss > thresholds.mistake && stillInPlay) return '?'
-  if (cpLoss > thresholds.mistake) return '?!'
-  return wasBestMove ? '!!' : '!'
+  return SEVERITY_MARK[severity] as MoveTag
 }
 
 export interface AnalyzedMove {

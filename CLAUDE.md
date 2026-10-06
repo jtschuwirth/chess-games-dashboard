@@ -95,6 +95,7 @@ src/
 │   ├── engine-protocol.ts      # what an evaluation is, shared by both engines
 │   ├── server-engine.ts        # the same engine under Node, behind /api/engine
 │   ├── analysis.ts             # move classification and the annotated PGN
+│   ├── bands.ts                # standings, falls, severities — the bottom of the analysis
 │   ├── settings.ts             # the thresholds the analysis is a judgement about
 │   ├── verdict.ts              # the second pass: what kind of mistake a marked move was
 │   ├── termination.ts          # one ending vocabulary across the two providers
@@ -127,27 +128,34 @@ src/
   `lib/clocks.ts`: opening setup (1-4), variation development (5-10), structure definition (11-15),
   tactical / strategic duel (16-30), pre-endgame (31+). They are contiguous with no overlap — the
   original sketch had 16-30 and 30+ both containing move 30.
-- **Move classification follows the chess-courses standard**, which is context-sensitive on
-  purpose. With `cpLoss = cpBefore - cpAfter` from your own perspective:
-  `??` when the loss clears the blunder threshold *and* `cpAfter < 300` *and* `cpBefore > -300`;
-  `?` likewise at the mistake threshold; a big loss failing either guard is only `?!`. So a slip
-  while already lost is not a blunder — there was nothing left to lose — and one while still
-  clearly winning is only careless. Going from winning back to level *does* get the full mark,
-  because `cpAfter` has fallen inside the decided band. Defaults are 300 / 100 centipawns,
-  and `DECIDED` is 300 too: three pawns down is not a game you were going to save, so a
-  slip there explains nothing, while between one pawn and three you are worse and still
-  playing — which is the mistake worth having. It was two pawns, which cut off the band
-  where most of the instructive defending happens.
-  **`?!` is recorded but never shown.** It is by definition the mark for a costly move the
-  context excused — +12.4 to +9.8 earns one — so putting it on screen or offering it up for
-  review would argue against the rule that produced it. `FAULT_TAGS` in `lib/review.ts` is the
-  one list of marks that reach a screen or a PGN: `??` and `?`.
-- **`??` is red and `?` is amber, from one place.** The two marks are a severity scale, and a
-  scale is only a scale if it says the same thing everywhere. The map was copied into two
-  components and hardcoded in two more, and both hardcodes were wrong in opposite directions: the
-  game view's evaluation readout wrote every mark amber, so a blunder read as a mistake, and the
-  drill wrote every one red, so a mistake read as a blunder. `markColor` in `lib/review.ts` is now
-  the only answer, and it returns muted for anything that is not a fault.
+- **A move is graded by the band it fell out of, not by what it cost.** Centipawn loss
+  asks "how much did this cost"; the question is "what did it cost *you*", and from a won
+  position those have different answers. Simplifying from +9.0 to +3.5 gives away five
+  pawns of evaluation and changes nothing about the game. Under the old rule that was a
+  blunder, which made the winning band the noisiest row in every table and most of it
+  noise — the fault rate there fell from 9.5% to 4.1% when this landed, and `winning` went
+  from one of the worst bands to the safest. So: staying in your band is an **inaccuracy**
+  whatever it cost, falling out of it is a **mistake**, and falling further is a
+  **blunder**. The one exception is `winning → better`, graded an inaccuracy because the
+  winning band has no ceiling — coming down inside it is the only fall that does not
+  change what the position is for.
+- **One function grades the move you played and the candidates you did not.** `gradeOf` in
+  `lib/bands.ts` returns a severity or null; `classifyMove` turns it into a mark and the
+  second pass turns it into whether a candidate held. They were two rules in two units
+  saying nearly the same thing, and a move could be flagged while the second pass counted
+  it as having held — which is exactly what turned up on a real row. A test walks 30,000
+  evaluation pairs and asserts the two can never disagree.
+- **The threshold is part of that rule, and leaving it out was the first attempt's bug.**
+  A band boundary is a line in the sand: +1.01 to +0.99 crosses from better to level and
+  costs two centipawns. Grading that as a mistake is grading jitter, and counting it as a
+  candidate that failed to hold is the same jitter wearing the other hat. `mistake` is now
+  the only thing centipawns decide — whether a move is worth marking at all — and the
+  blunder threshold is gone, because how bad a marked move is comes from the fall.
+- **`?!` is recorded and shown only if you ask.** It was never shown at all, on the
+  reasoning that it is the mark a context excused. That reasoning is now literal rather
+  than approximate: an inaccuracy is a move that stayed in its band. `marks` on the account
+  says which severities reach a screen, a count and a review, and defaults to `?` and `??`,
+  which is what the app has always shown.
 - **The engine runs in the browser by default, and on the server on request.** `setEngineMode`
   picks, per device, and `analyzePosition` hides which one answered — the four callers never know.
   Browser is the default because it is free; the server exists for phones, where the local engine
@@ -427,6 +435,10 @@ src/
   Changing a band is now a constant and a deploy. (`annotatedPgn` is the exception: it is
   a copy of the game written once, and carries the marks of the analysis that produced it
   until the game is analysed again.)
+- **The verdict and the grade come off one table.** `TRANSITIONS` in `lib/bands.ts` has a
+  row per fall carrying both what it costs and what it is called, so a severity and a
+  descriptor can never drift apart — and the screen that explains them is one table with a
+  column for each.
 - **The verdict is a fall, not a starting point.** Where you landed is half the event:
   coming down from winning to a position that is still better is not the same as coming
   down to level, and neither is the same as coming down to lost. A label per starting band
