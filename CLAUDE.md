@@ -552,10 +552,18 @@ src/
   Marked moves that counted as holding went from 45 of 242 to 0.
 
   Direction was the thing to check before trusting any of it, since a one-sided gap would
-  inflate `sharp` by construction rather than measure it. It is symmetric: median 0cp,
-  single-PV higher in 46% of positions and lower in 49%. The slice still moves — sharp
-  43% → 49%, stable 41% → 34% — because `stable` is capped at what was looked at, so a
-  rising reference can push a reading out of it while a falling one has nowhere to add.
+  inflate `sharp` by construction rather than measure it. Between two searches at the same
+  depth it is close to even — median +4cp, single-PV higher in 57% of positions and lower
+  in 37%, same band 93% of the time.
+
+  The first reading of that said median 0cp and 17% band disagreement, and it was wrong,
+  because the sample mixed depths: half the analysed games were still at the old depth of
+  12 while the second pass has always run at 21. Matched pairs disagree about the band 7%
+  of the time; the depth-12 ones disagreed 29% of the time and ran 54cp low on average. So
+  most of what looked like a MultiPV artefact was a depth artefact. `reconcile` takes both
+  depths and falls back to the search's own top line when the first pass is the shallower
+  of the two — nothing in the data carries a shallow analysis now, but `ENGINE_DEPTH` has
+  moved once already, and on the day it moves again every stored analysis is shallow.
 
   All of it is derived on read. `cpBefore`, `cpAfter` and the raw MultiPV scores are the
   measurements and all three stay on disk untouched, `best` included; every verdict

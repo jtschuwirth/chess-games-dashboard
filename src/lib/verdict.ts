@@ -256,13 +256,29 @@ export interface Reconciled {
  * about it.
  *
  * Direction was the thing worth checking before trusting any of this, because a
- * systematic gap would inflate `sharp` by construction rather than measure it. It is
- * symmetric: median 0cp, single-PV higher in 46% of positions and lower in 49%.
+ * systematic gap would inflate `sharp` by construction rather than measure it. Between
+ * two searches at the same depth it is close to even: median +4cp, single-PV higher in
+ * 57% of positions and lower in 37%, and the two land in the same band 93% of the time.
+ *
+ * `analysisDepth` is what keeps that true. A first pass left at an older, shallower
+ * depth is not a better reading of anything — it is the depth trap itself — and the
+ * numbers say so loudly: against depth-21 candidates, depth-12 `cpBefore` values ran
+ * 54cp low on average and disagreed about the band 29% of the time, against 7% for a
+ * matched pair. That is also how the depth-12 analyses still in the data were found, so
+ * the guard exists even though nothing carries one today: `ENGINE_DEPTH` has moved once
+ * already, and when it moves again every stored analysis is shallow for a while.
  */
 export function reconcile(
   move: { san: string; cpBefore: number; cpAfter: number },
   candidates: Scored[],
+  analysisDepth: number,
+  searchDepth: number,
 ): Reconciled {
+  // a shallower first pass has nothing to contribute: fall back to the search's own line
+  if (analysisDepth < searchDepth) {
+    return { reference: candidates[0].cp, scores: candidates.map(candidate => candidate.cp) }
+  }
+
   return {
     reference: move.cpBefore,
     scores: candidates.map((candidate, rank) => {
@@ -566,7 +582,9 @@ export function verdictsOf(game: GameRecord, config = settings()): Record<string
         under one `level` and shown under another would be two different answers wearing
         one number. Older verdicts kept no candidates and keep the count they were given.
       */
-      const read = verdict.candidates ? reconcile(move, verdict.candidates) : null
+      const read = verdict.candidates
+        ? reconcile(move, verdict.candidates, game.analysis?.depth ?? 0, verdict.depth)
+        : null
       const holds = read ? countHolding(read.reference, read.scores, config) : verdict.holds
       const looked = read ? read.scores.length : verdict.looked
 
@@ -674,7 +692,7 @@ export async function judgeGame(
       return { san, cp: candidate.cp }
     })
 
-    const read = reconcile(move, named)
+    const read = reconcile(move, named, game.analysis?.depth ?? 0, candidates.depth)
     const holds = countHolding(read.reference, read.scores, config)
     const scored = named.map((candidate, rank) => ({
       ...candidate,

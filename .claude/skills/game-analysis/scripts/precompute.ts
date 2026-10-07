@@ -165,7 +165,7 @@ for (const [index, job] of todo.entries()) {
     return { san, cp: candidate.cp }
   })
 
-  const read = reconcile(job, named)
+  const read = reconcile(job, named, job.game.analysis?.depth ?? 0, search.depth)
   const holds = countHolding(read.reference, read.scores, config)
   const scored = named.map((candidate, rank) => ({
     ...candidate,
