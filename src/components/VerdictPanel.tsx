@@ -9,17 +9,30 @@ import { terminateEngine } from '@/lib/engine'
 import { saveVerdicts } from '@/lib/firestore'
 import {
   BREADTHS,
+  BREADTH_HINT,
   BREADTH_LABEL,
   STANDINGS,
   STANDING_BADGE,
+  STANDING_BAR,
   STANDING_LABEL,
   VERDICT_LABEL,
   judgeGame,
   pendingPlies,
   verdictTally,
+  verdictTooltip,
+  type Breadth,
   type Standing,
 } from '@/lib/verdict'
-import type { GameRecord } from '@/types/chess'
+import type { GameRecord, VerdictKind } from '@/types/chess'
+
+/**
+ * One template for the header, the rows and the totals, so the columns cannot drift.
+ *
+ * Sized to its contents rather than stretched: a `1fr` label column pushed the badges
+ * and their figures to opposite ends of a 1024px panel with a hand's width of nothing
+ * between them. Four and a half rem holds the longest badge there is.
+ */
+const MATRIX = 'grid grid-cols-[4.5rem_3rem_3rem_3rem_3.5rem] gap-x-2 items-center'
 
 /**
  * What the second pass makes of this slice.
@@ -96,10 +109,23 @@ export default function VerdictPanel({
     )
   }
 
-  const rows = STANDINGS.filter(standing =>
-    BREADTHS.some(breadth => tally.byStanding[standing][breadth] > 0),
-  )
+  /* Reversed: `STANDINGS` runs worst-first, and a fall is read from the top down. */
+  const rows = [...STANDINGS]
+    .reverse()
+    .filter(standing => BREADTHS.some(breadth => tally.byStanding[standing][breadth] > 0))
   const widest = Math.max(1, ...tally.byVerdict.map(row => row.count))
+
+  /*
+    The margins of the matrix. The bottom row is the one finding people actually quote
+    off this panel — how the whole slice splits between a line to find and a position
+    that forgave anything — and without it that has to be done by eye down a column.
+  */
+  const downThe = (breadth: Breadth) =>
+    STANDINGS.reduce((sum, standing) => sum + tally.byStanding[standing][breadth], 0)
+  const across = (standing: Standing) =>
+    BREADTHS.reduce((sum, breadth) => sum + tally.byStanding[standing][breadth], 0)
+  const share = (count: number) =>
+    tally.read === 0 ? 0 : Math.round((count / tally.read) * 100)
 
   return (
     <Panel
@@ -141,61 +167,175 @@ export default function VerdictPanel({
       {error && <p className="text-xs text-red-400">{error}</p>}
 
       {tally.read === 0 ? (
-        <p className="text-sm text-zinc-500">
-          None of them read yet.
-        </p>
+        <p className="text-sm text-zinc-500">None of them read yet.</p>
       ) : (
-        <div className="grid md:grid-cols-2 gap-5">
-          <div className="flex flex-col gap-1">
-            {tally.byVerdict.map(row => (
-              <div key={row.kind} className="grid grid-cols-[1fr_2.5rem] gap-2 items-center">
-                <span className="min-w-0">
-                  <span className="text-xs text-zinc-300">{VERDICT_LABEL[row.kind]}</span>
-                  <span
-                    className="block h-1.5 mt-0.5 bg-zinc-700 rounded-full"
-                    style={{ width: `${(row.count / widest) * 100}%` }}
-                  />
-                </span>
-                <span className="text-xs font-mono text-zinc-500 text-right tabular-nums">
-                  {row.count}
-                </span>
-              </div>
-            ))}
-          </div>
-
+        <div className="flex flex-col gap-4">
+          {/*
+            The matrix first, because it is four rows against the list's eighteen and
+            because it is the legend: the bars below are drawn in the colours of these
+            badges, one segment per band a descriptor was said of.
+          */}
           <div className="flex flex-col gap-1.5">
-            <div className="grid grid-cols-[1fr_3.5rem_3.5rem_3.5rem] gap-2 text-[10px] uppercase tracking-wide text-zinc-600">
-              <span>Where you stood</span>
+            {/*
+              The heading sits above the matrix rather than in its first cell, where
+              "Where you stood" wrapped to three lines at phone width and made the
+              header taller than the rows under it. It also gives the panel two labelled
+              blocks instead of one labelled and one not.
+            */}
+            <h3 className="text-[10px] uppercase tracking-wide text-zinc-600">
+              Where you stood
+            </h3>
+
+            <div
+              className={`${MATRIX} text-[10px] uppercase tracking-wide text-zinc-600`}
+            >
+              <span />
               {BREADTHS.map(breadth => (
-                <span key={breadth} className="text-right">
+                <span
+                  key={breadth}
+                  title={BREADTH_HINT[breadth]}
+                  className="text-right cursor-help"
+                >
                   {BREADTH_LABEL[breadth]}
                 </span>
               ))}
+              <span className="text-right text-zinc-500">all</span>
             </div>
 
             {rows.map(standing => (
-              <div
-                key={standing}
-                className="grid grid-cols-[1fr_3.5rem_3.5rem_3.5rem] gap-2 items-center"
-              >
+              <div key={standing} className={MATRIX}>
                 <span
-                  className={`justify-self-start text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${STANDING_BADGE[standing as Standing]}`}
+                  title={`${across(standing)} of the ${tally.read} readings fell from a ${STANDING_LABEL[standing]} position`}
+                  className={`justify-self-start text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border cursor-help ${STANDING_BADGE[standing]}`}
                 >
-                  {STANDING_LABEL[standing as Standing]}
+                  {STANDING_LABEL[standing]}
                 </span>
                 {BREADTHS.map(breadth => (
-                  <span
+                  <Count
                     key={breadth}
-                    className="text-sm font-mono text-zinc-300 text-right tabular-nums"
-                  >
-                    {tally.byStanding[standing][breadth]}
-                  </span>
+                    value={tally.byStanding[standing][breadth]}
+                    title={`${STANDING_LABEL[standing]}, ${BREADTH_LABEL[breadth]}. ${BREADTH_HINT[breadth]}`}
+                  />
                 ))}
+                <Count value={across(standing)} muted />
               </div>
             ))}
+
+            <div className={`${MATRIX} border-t border-zinc-800 pt-1.5`}>
+              <span className="text-[10px] uppercase tracking-wide text-zinc-600">all</span>
+              {BREADTHS.map(breadth => (
+                <span key={breadth} className="text-right">
+                  <span className="block text-sm font-mono text-zinc-300 tabular-nums">
+                    {downThe(breadth)}
+                  </span>
+                  <span className="block text-[10px] font-mono text-zinc-600 tabular-nums">
+                    {share(downThe(breadth))}%
+                  </span>
+                </span>
+              ))}
+              <Count value={tally.read} muted />
+            </div>
+          </div>
+
+          {/*
+            And the detail under it, two columns deep so eighteen descriptors are nine
+            rows rather than a column of bars twice the height of everything else in the
+            panel. Each says what it is the name of on hover — see `verdictRecipe`.
+          */}
+          <div className="border-t border-zinc-800 pt-4">
+            <h3 className="text-[10px] uppercase tracking-wide text-zinc-600 mb-2">
+              What each one was
+            </h3>
+            <div className="columns-1 sm:columns-2 gap-x-8">
+              {tally.byVerdict.map(row => (
+                <Descriptor
+                  key={row.kind}
+                  kind={row.kind}
+                  count={row.count}
+                  byStanding={row.byStanding}
+                  widest={widest}
+                />
+              ))}
+            </div>
           </div>
         </div>
       )}
     </Panel>
+  )
+}
+
+/** A figure in the matrix. Zero is dimmed rather than shouted, since most cells are low. */
+function Count({
+  value,
+  title,
+  muted = false,
+}: {
+  value: number
+  title?: string
+  /** The margins, which are a sum of the cells beside them rather than a reading. */
+  muted?: boolean
+}) {
+  return (
+    <span
+      title={title}
+      className={`text-sm font-mono text-right tabular-nums ${title ? 'cursor-help' : ''} ${
+        value === 0 ? 'text-zinc-700' : muted ? 'text-zinc-500' : 'text-zinc-300'
+      }`}
+    >
+      {value}
+    </span>
+  )
+}
+
+/**
+ * One descriptor, its count, and a bar in the colours of the bands it was said of.
+ *
+ * Drawn from the readings rather than from the table: nearly every descriptor names
+ * cells of one row and comes out a single colour, but three span two bands — `gave it
+ * away` is said of a stable fall from better and of one from level — and a single
+ * colour for those would be half wrong. Split, the bar answers which of them were
+ * yours, which is the question having one name for two falls raises.
+ *
+ * The recipe is a tooltip rather than a line on the row. Nearly every descriptor would
+ * read fine inline, but `walked into mate` names fifteen cells, so printing them would
+ * be four lines of noise on every row to serve the one that needs it. `cursor-help` is
+ * what says there is something to hover, rather than a sentence telling you to.
+ */
+function Descriptor({
+  kind,
+  count,
+  byStanding,
+  widest,
+}: {
+  kind: VerdictKind
+  count: number
+  byStanding: Record<Standing, number>
+  /** The largest count in the slice, which is what the bars are drawn against. */
+  widest: number
+}) {
+  const bands = [...STANDINGS].reverse().filter(standing => byStanding[standing] > 0)
+
+  return (
+    <div
+      title={verdictTooltip(kind, byStanding)}
+      className="break-inside-avoid pb-2.5 cursor-help"
+    >
+      <div className="flex items-baseline gap-2">
+        <span className="flex-1 min-w-0 truncate text-xs text-zinc-300">
+          {VERDICT_LABEL[kind]}
+        </span>
+        <span className="text-xs font-mono text-zinc-500 tabular-nums">{count}</span>
+      </div>
+      {/* a track behind the bar, so a short one reads as a share rather than floating */}
+      <span className="flex h-2 mt-1 rounded-full bg-zinc-800/80 overflow-hidden">
+        {bands.map(standing => (
+          <span
+            key={standing}
+            className={`h-full shrink-0 ${STANDING_BAR[standing]}`}
+            style={{ width: `${(byStanding[standing] / widest) * 100}%` }}
+          />
+        ))}
+      </span>
+    </div>
   )
 }

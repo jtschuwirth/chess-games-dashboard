@@ -602,6 +602,37 @@ src/
   nobody has asked about, which is why the coverage is in the heading rather than implied:
   a mix drawn from a tenth of the marked moves is a mix of whichever tenth happened to get
   opened, and a panel that did not say so would be quietly lying about a sample.
+- **The panel is a summary and a detail, not two columns of equal billing.** It was
+  eighteen descriptor bars beside a four-row grid, which made the grid an island in a
+  column of whitespace half the height of the bars — and they are not equal things. The
+  grid goes first, sized to its contents rather than stretched, best band at the top the
+  way the transition table itself reads, and carrying its own margins: the bottom row is
+  the figure anyone actually quotes off this panel, how a whole slice splits between a
+  line to find and a position that forgave anything, and without it that had to be done
+  by eye down a column. The list runs underneath, two columns deep, so eighteen names are
+  nine rows. The grid then earns its place twice over, because it is also the legend — a
+  descriptor's bar is drawn in the colour of the badge for the band it was said of, so
+  the two halves of the panel read as one thing.
+- **A descriptor says what it is the name of, on hover; the bar says which were yours.**
+  `missed the line` is a cell of the transition table and means nothing on its own, where
+  `sharp · level → worse` is the whole definition. It is a tooltip rather than a line on
+  the row because the descriptors do not share evenly: twenty-nine of the thirty-two name
+  cells of a single row and would read fine inline, while `walked into mate` names
+  fifteen — so printing them would be four lines of noise on every row to serve the one
+  that needs it. The recipe also drops the half of each row that exists only to make the
+  table total, since a marked move never leaves you better off than you were:
+  `losing → winning or better or level or worse or losing` is `losing → losing`.
+
+  Three descriptors are said of two different bands, and for those the recipe raises the
+  question it cannot answer by itself — `gave it away` is a stable fall from better *and*
+  a stable fall from level, and which of them were yours is the part worth knowing. So
+  `verdictTally` keeps the bands behind each descriptor, the bar is drawn in segments,
+  and the tooltip prints your count against each line. Only where the lines have distinct
+  bands: `missed the line` is two lines both from level, and a count against each would
+  be the same figure printed twice. A band you have no readings from keeps its line and
+  loses the figure, because the recipe is what the descriptor *is* and `— 0` five times
+  over is not worth reading. For the other twenty-nine nothing changes: one band, one
+  colour, no figures to disambiguate.
 - **The second pass gets a slice-wide run; the first pass still does not.** The rule
   against batching was about cost, and the two passes do not cost the same: analysing a
   game is eighty positions, reading its marked moves is about three. A hundred games is

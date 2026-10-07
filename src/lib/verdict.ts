@@ -266,10 +266,108 @@ export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'hung-on-badly': 'hung on badly',
 }
 
-const BREADTH_HINT: Record<Breadth, string> = {
+export const BREADTH_HINT: Record<Breadth, string> = {
   sharp: 'Only a move or two held, so this was a line to find.',
   tight: 'A few held, so there was room — but not much.',
   stable: 'Everything looked at held, so anything reasonable would have done.',
+}
+
+/**
+ * Every fall and breadth that is called this.
+ *
+ * A descriptor is the name of a cell in the transition table, and most of them name
+ * exactly one — but not all: `missed the line` is what a sharp fall out of level is
+ * called whether it lands in worse or in losing, `gave it away` is said of a stable fall
+ * from better and of one from level, and `walked into mate` is said of all of them. So a
+ * descriptor's recipe is a list rather than a value, and this is what builds it.
+ */
+export interface Recipe {
+  from: Standing
+  /** The landings this row covers, as a fault can actually reach them. */
+  to: Standing[]
+  /** The breadths of that row carrying this name — all three where they agree. */
+  breadths: Breadth[]
+}
+
+/**
+ * The landings worth naming: a marked move never leaves you better off than you were,
+ * so the half of each row that exists only to make the table total says nothing to a
+ * reader. `losing → winning or better or level or worse or losing` is `losing → losing`.
+ */
+function landings(fall: (typeof TRANSITIONS)[number]): Standing[] {
+  const ceiling = STANDINGS.indexOf(fall.from)
+  const reachable = fall.to.filter(to => STANDINGS.indexOf(to) <= ceiling)
+  return reachable.length > 0 ? reachable : fall.to
+}
+
+/** Built once: seventeen rows against at most thirty-two names. */
+const RECIPES = ((): Map<VerdictKind, Recipe[]> => {
+  const out = new Map<VerdictKind, Recipe[]>()
+
+  for (const fall of TRANSITIONS) {
+    const breadthsByKind = new Map<string, Breadth[]>()
+    for (const breadth of BREADTHS) {
+      breadthsByKind.set(fall[breadth], [...(breadthsByKind.get(fall[breadth]) ?? []), breadth])
+    }
+
+    for (const [kind, breadths] of breadthsByKind) {
+      const key = kind as VerdictKind
+      out.set(key, [...(out.get(key) ?? []), { from: fall.from, to: landings(fall), breadths }])
+    }
+  }
+
+  return out
+})()
+
+export function recipesFor(kind: VerdictKind): Recipe[] {
+  return RECIPES.get(kind) ?? []
+}
+
+/**
+ * What a descriptor is the name of, written out: `sharp · level → worse`.
+ *
+ * It belongs in a tooltip rather than on the row. Nearly every descriptor has one
+ * recipe, but `walked into mate` has five, and a list that printed them all would be
+ * four lines of noise on every other row to serve the one that needs it.
+ */
+function recipeLine(recipe: Recipe): string {
+  const breadth =
+    recipe.breadths.length === BREADTHS.length
+      ? 'any'
+      : recipe.breadths.map(entry => BREADTH_LABEL[entry]).join(' or ')
+  const landed = recipe.to.map(entry => STANDING_LABEL[entry]).join(' or ')
+  return `${breadth} · ${STANDING_LABEL[recipe.from]} → ${landed}`
+}
+
+export function verdictRecipe(kind: VerdictKind): string {
+  return recipesFor(kind).map(recipeLine).join('\n')
+}
+
+/**
+ * The recipe, with your own count against each band where that is not ambiguous.
+ *
+ * A descriptor that spans two bands — `gave it away` is said of a stable fall from
+ * better and of one from level — raises the question the recipe alone cannot answer:
+ * which of them were yours. The tally knows, so the line says so. Where a single band
+ * covers two of the lines, as `missed the line` does for level, the count is left off
+ * rather than printed twice: the row's own figure already covers both.
+ */
+export function verdictTooltip(
+  kind: VerdictKind,
+  byStanding: Partial<Record<Standing, number>> = {},
+): string {
+  const recipes = recipesFor(kind)
+  const bands = new Set(recipes.map(recipe => recipe.from))
+  const countable = bands.size === recipes.length && bands.size > 1
+
+  const lines = recipes.map(recipe => {
+    // a band you have no readings from keeps its line and loses the figure: the recipe
+    // is what the descriptor is, and "— 0" five times over is not worth reading
+    const count = countable ? (byStanding[recipe.from] ?? 0) : 0
+    return `${recipeLine(recipe)}${count > 0 ? ` — ${count}` : ''}`
+  })
+
+  return `${VERDICT_LABEL[kind]}\n${lines.join('\n')}`
 }
 
 /** The sentence behind a badge: the fall it names, then what the position asked for. */
@@ -291,6 +389,16 @@ export const STANDING_BADGE: Record<Standing, string> = {
   mate: 'bg-zinc-800 text-zinc-500 border-zinc-700',
 }
 
+/** A bar in the same hue as that badge, so the two halves of the panel read as one. */
+export const STANDING_BAR: Record<Standing, string> = {
+  winning: 'bg-red-500/50',
+  better: 'bg-amber-500/50',
+  level: 'bg-zinc-400/40',
+  worse: 'bg-sky-500/50',
+  losing: 'bg-zinc-600',
+  mate: 'bg-zinc-600',
+}
+
 export interface VerdictTally {
   /** Marked moves in the slice, read or not. */
   marked: number
@@ -298,7 +406,8 @@ export interface VerdictTally {
   read: number
   /** Games holding a marked move nobody has read yet. */
   pending: GameRecord[]
-  byVerdict: { kind: VerdictKind; count: number }[]
+  /** Each descriptor, with the bands its readings fell from — usually just the one. */
+  byVerdict: { kind: VerdictKind; count: number; byStanding: Record<Standing, number> }[]
   byStanding: Record<Standing, Record<Breadth, number>>
 }
 
@@ -311,7 +420,7 @@ export interface VerdictTally {
  * quietly reporting a share of the moves it happens to know about.
  */
 export function verdictTally(games: GameRecord[], config = settings()): VerdictTally {
-  const byVerdict = new Map<VerdictKind, number>()
+  const byVerdict = new Map<VerdictKind, Record<Standing, number>>()
   const byStanding = Object.fromEntries(
     STANDINGS.map(standing => [standing, { sharp: 0, tight: 0, stable: 0 }]),
   ) as VerdictTally['byStanding']
@@ -332,10 +441,15 @@ export function verdictTally(games: GameRecord[], config = settings()): VerdictT
       if (!verdict || verdict.dismissed) continue
 
       read++
-      byVerdict.set(verdict.verdict, (byVerdict.get(verdict.verdict) ?? 0) + 1)
-      byStanding[standingOf(move.cpBefore, config)][
-        breadthOf(verdict.holds, verdict.looked, config)
-      ]++
+      const from = standingOf(move.cpBefore, config)
+
+      const seen =
+        byVerdict.get(verdict.verdict) ??
+        (Object.fromEntries(STANDINGS.map(standing => [standing, 0])) as Record<Standing, number>)
+      seen[from]++
+      byVerdict.set(verdict.verdict, seen)
+
+      byStanding[from][breadthOf(verdict.holds, verdict.looked, config)]++
     }
   }
 
@@ -345,7 +459,11 @@ export function verdictTally(games: GameRecord[], config = settings()): VerdictT
     pending,
     byStanding,
     byVerdict: [...byVerdict]
-      .map(([kind, count]) => ({ kind, count }))
+      .map(([kind, counts]) => ({
+        kind,
+        count: STANDINGS.reduce((sum, standing) => sum + counts[standing], 0),
+        byStanding: counts,
+      }))
       .sort((a, b) => b.count - a.count),
   }
 }
