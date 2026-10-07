@@ -39,6 +39,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    The plan says what it has been worth — your rating going in against where it stands
    now — and every week says the same over its own seven days, read from the rating
    history with nothing to press. Weeks fold, and more can be added as the plan runs on.
+   Editing is local until you press Save, and what you have not saved is kept on the
+   device, so closing the tab or switching app does not cost you it.
 8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
@@ -112,6 +114,7 @@ src/
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
 │   ├── days.ts                 # day keys, the 6am rule, calendar arithmetic
 │   ├── plan.ts                 # study plans: weeks, dates, counted tasks, progress
+│   ├── plan-draft.ts           # a plan edited and not yet saved, kept on the device
 │   ├── rating-history.ts       # daily closing ratings, the tracked pools, series
 │   ├── version.ts              # which build this is, from Vercel's commit env var
 │   ├── stats.ts                # StatBlock / computeSplit
@@ -1095,8 +1098,30 @@ src/
   each time the symptom was the same: handlers in one React batch all read from the same rendered
   snapshot, so the last won. Three quick ticks landed as one, and after that was fixed at the day
   level, three clicks on a `+` still moved a count from 0 to 1 because the row was computing
-  `task.done + 1` from its own stale prop. A ref carries the newest plan forward synchronously, so
-  edits in one batch compose all the way down.
+  `task.done + 1` from its own stale prop. The page's own `save` is now a plain
+  `setPlan(current => update(current))`: React applies queued updaters in order against the latest
+  state, which is the composition it needs. It used to carry a ref holding the newest plan, and the
+  only thing that ever needed the new value *synchronously* was the Firestore write on every edit —
+  so when that went, the ref went with it. Checked on the real cards: three clicks dispatched in one
+  synchronous burst move a count from 0 to 3.
+- **A plan is saved by a button, and what is unsaved lives on the device.** Every edit used to
+  write the whole document, which lost data in two ways at once. A write *replaces* the document
+  and several in flight are not ordered, so an earlier snapshot could land last and undo the three
+  edits after it. And on a phone, switching app suspends the tab: anything not yet sent existed
+  only in React state, so coming back showed whatever had reached the server. Both were reported
+  as "my changes revert". Now an edit changes the screen and an effect writes the whole plan into
+  localStorage under `plan-draft:{uid}:{planId}`; Save is one `updatePlan` for everything since
+  the last press, and clears the draft. A draft found on load outranks Firestore — it exists only
+  because edits were made and not saved — so it is restored rather than offered, with a line
+  saying when it was written and a Discard beside Save for the case where it is not wanted.
+  `beforeunload` warns on closing the tab, which is a courtesy and not the safety net: the draft
+  survives that too, which is why there is no matching guard on the in-app links.
+- **The day's note is written on every keystroke, not debounced.** It used to sit in the
+  textarea's own state for 800ms before reaching the plan, which was the right trade when a change
+  went straight to Firestore and is the wrong one now that it goes to a draft on the device: a
+  debounce is a window in which the last thing you typed exists nowhere that survives the tab
+  being suspended. Weeks fold, so only the open week's seven cards re-render, and a localStorage
+  write of a small JSON document per keystroke is not something a keyboard can outrun.
 - **A finished day or week folds on arrival, and never under your hand.** Whether one starts open
   is decided once, in a lazy `useState` initialiser; after that it is plain state. Deriving it
   every render would fold the card away as you ticked its last box, which is exactly how the

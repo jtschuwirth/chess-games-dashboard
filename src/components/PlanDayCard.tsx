@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import StatusTag from '@/components/StatusTag'
 import {
@@ -25,9 +25,6 @@ const RESULT_LABEL: Record<GameResult, string> = {
   loss: 'Loss',
   draw: 'Draw',
 }
-
-/** How long after the last keystroke a note is written. */
-const NOTE_DEBOUNCE_MS = 800
 
 function StepButton({
   label,
@@ -215,23 +212,8 @@ export default function PlanDayCard({
    */
   const [open, setOpen] = useState(() => isToday || !isDayComplete(day))
 
-  const [note, setNote] = useState(day.note)
-
   const { done, total } = dayProgress(day)
   const played = useMemo(() => gamesOn(games, date), [games, date])
-
-  /**
-   * The note is written once the typing stops rather than once per keystroke. The effect
-   * cancels its own timer on the next change, so holding a key never queues a write per
-   * character, and it does nothing at all once the typed text and the stored text agree —
-   * which is what stops the write it just made from starting another.
-   */
-  useEffect(() => {
-    if (note === day.note) return
-
-    const id = setTimeout(() => onChange(current => ({ ...current, note })), NOTE_DEBOUNCE_MS)
-    return () => clearTimeout(id)
-  }, [note, day.note, onChange])
 
   function patchTask(taskIndex: number, update: (current: PlanTask) => PlanTask) {
     onChange(current => ({
@@ -311,9 +293,20 @@ export default function PlanDayCard({
 
           <div className="flex flex-col gap-1.5">
             <span className="text-xs uppercase tracking-wide text-zinc-500">Note</span>
+            {/*
+              Written into the plan on every keystroke, not debounced into it. The debounce
+              was there so a held key did not queue a write per character — which mattered
+              when a change went straight to Firestore and does not now that it goes to a
+              draft on the device. It also meant the last 800ms of typing lived nowhere but
+              this textarea, so switching app mid-sentence lost it, which is the whole
+              complaint.
+            */}
             <textarea
-              value={note}
-              onChange={event => setNote(event.target.value)}
+              value={day.note ?? ''}
+              onChange={event => {
+                const note = event.target.value
+                onChange(current => ({ ...current, note }))
+              }}
               rows={2}
               placeholder="How it went, and what to carry into tomorrow"
               className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600 resize-y"

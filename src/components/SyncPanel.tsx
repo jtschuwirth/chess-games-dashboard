@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Chip from '@/components/Chip'
 import { Spinner } from '@/components/PageShell'
 import Panel from '@/components/Section'
-import { formatDay } from '@/lib/days'
+import { formatMoment } from '@/lib/days'
 import { saveGames, saveProfile } from '@/lib/firestore'
 import { fetchProviderGames } from '@/lib/sync'
 import { SOURCE_LABEL, TIME_CLASSES } from '@/types/chess'
@@ -23,17 +23,6 @@ const SOURCES: ProviderSource[] = ['chesscom', 'lichess']
 
 function toggle<T>(values: T[], value: T): T[] {
   return values.includes(value) ? values.filter(v => v !== value) : [...values, value]
-}
-
-/**
- * "Sun 5 Oct, 14:20", spelled out rather than handed to `toLocaleString`, which renders
- * differently on the server and in the browser.
- */
-function formatMoment(ms: number): string {
-  const date = new Date(ms)
-  const hours = String(date.getHours()).padStart(2, '0')
-  const minutes = String(date.getMinutes()).padStart(2, '0')
-  return `${formatDay(ms)}, ${hours}:${minutes}`
 }
 
 /**

@@ -82,6 +82,17 @@ export function formatDay(ms: number): string {
   return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]}`
 }
 
+/**
+ * "Sun 5 Oct, 14:20", spelled out rather than handed to `toLocaleString`, which renders
+ * one way on the server and another in the browser and makes React cry hydration.
+ */
+export function formatMoment(ms: number): string {
+  const date = new Date(ms)
+  const hours = String(date.getHours()).padStart(2, '0')
+  const minutes = String(date.getMinutes()).padStart(2, '0')
+  return `${formatDay(ms)}, ${hours}:${minutes}`
+}
+
 /** "28 Sep", for an axis where the weekday is noise. */
 export function formatShortDay(ms: number): string {
   const date = new Date(ms)
