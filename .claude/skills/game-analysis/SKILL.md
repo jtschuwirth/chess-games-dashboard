@@ -73,11 +73,32 @@ console.log(coverage(marked))
 | stored | `analysis.moves` — `cpBefore`, `cpAfter` per move of theirs, at depth 21 |
 | stored | `verdicts[ply]` — `holds`, `looked`, `candidates`, `pieces`, from the second pass |
 | stored | `clocks`, `review`, ratings, `openingName` |
+| derived on read | the material and the piece inventory at **any** ply, by replaying `moves` — `materialByPly` |
 | derived on read | the mark (`??`/`?`/`?!`), from the band the move fell out of |
 | derived on read | the standing, the breadth, the descriptor, the counts |
 
 Derived means a settings change re-reads the whole history for free. It also means a
 number you quote is the number on the user's screen, which is the point.
+
+## Two different holes, and they are not the same hole
+
+**Not read yet** is the second pass's: `verdict` is null, and anything about breadth or
+`holds` is drawn from whichever moves happened to get opened. Print `coverage(marked)`.
+
+**Analysed by an older build** is the first pass's, and it is worse because it is
+invisible. `markedMoves` and `ownMoves` skip those games, as the app does, so a report
+written through them is safe by default — but say how many were skipped when it matters:
+
+```ts
+import { staleGames } from '<skill>/scripts/slice'
+const skipped = staleGames(scoped)   // re-analysing these is the user's to run
+```
+
+This was a real and expensive mistake. Half the analysed games sat at depth 12 for months
+after the depth moved to 21; a report built here without the filter folded them into the
+same averages, and because a shallower engine finds fewer mistakes *and* scores them
+smaller, every figure was off in a direction nobody could see. `ANALYSIS_VERSION` and the
+dashboard's **Analysed by an older build** filter exist because of it.
 
 ## Coverage is part of the answer
 

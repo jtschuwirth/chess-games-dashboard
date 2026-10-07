@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import AnalyseButton from '@/components/AnalyseButton'
 import StatusTag from '@/components/StatusTag'
+import { ENGINE_DEPTH, isStale } from '@/lib/analysis'
 import { hasReview, trainableMistakes } from '@/lib/review'
 import type { GameRecord, GameResult } from '@/types/chess'
 import { SOURCE_LABEL } from '@/types/chess'
@@ -33,6 +34,7 @@ export default function GameRow({
 }) {
   const reviewed = hasReview(game)
   const tags = trainableMistakes(game.review).flatMap(mistake => mistake.tags)
+  const stale = isStale(game)
 
   return (
     <div className="flex items-start gap-4 px-5 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors">
@@ -83,11 +85,16 @@ export default function GameRow({
             */}
             {game.analysis ? (
               <StatusTag
-                tone="engine"
+                tone={stale ? 'stale' : 'engine'}
                 mono
-                title={`The engine has been over this game at depth ${game.analysis.depth}`}
+                title={
+                  stale
+                    ? `Analysed at depth ${game.analysis.depth} by an older build — its numbers are not comparable with depth ${ENGINE_DEPTH}, so it is left out of the accuracy and clock figures. Re-analyse to bring it back in.`
+                    : `The engine has been over this game at depth ${game.analysis.depth}`
+                }
               >
                 ⚙ d{game.analysis.depth}
+                {stale && ' · old'}
               </StatusTag>
             ) : null}
 

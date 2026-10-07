@@ -1,3 +1,4 @@
+import { isStale } from '@/lib/analysis'
 import { endingPhaseOf, timeControlKey } from '@/lib/clocks'
 import { hasReview, tagsOf } from '@/lib/review'
 import type { Color, GameRecord, Source } from '@/types/chess'
@@ -50,10 +51,11 @@ export interface GameCriteria {
   /**
    * Narrow to what the engine found. 'blunder' / 'mistake' keep games containing at
    * least one; 'clean' keeps analysed games with neither; 'analysed' keeps anything
-   * already analysed, and 'unanalysed' exactly the ones it has never seen. Null leaves
-   * the set alone.
+   * already analysed, and 'unanalysed' exactly the ones it has never seen. 'stale' keeps
+   * the ones analysed by an older build, which is the list to re-run. Null leaves the set
+   * alone.
    */
-  mistakes: 'blunder' | 'mistake' | 'clean' | 'analysed' | 'unanalysed' | null
+  mistakes: 'blunder' | 'mistake' | 'clean' | 'analysed' | 'unanalysed' | 'stale' | null
   /**
    * Your own review: 'yes' for games you have taken apart, 'no' for the ones still
    * waiting. Null leaves the set alone.
@@ -123,6 +125,7 @@ export function matchesCriteria(
       if (criteria.mistakes === 'blunder' && analysis.blunders === 0) return false
       if (criteria.mistakes === 'mistake' && analysis.mistakes === 0) return false
       if (criteria.mistakes === 'clean' && analysis.blunders + analysis.mistakes > 0) return false
+      if (criteria.mistakes === 'stale' && !isStale(game)) return false
     }
   }
 

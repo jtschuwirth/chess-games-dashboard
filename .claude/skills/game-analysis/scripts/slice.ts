@@ -7,6 +7,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { normalizeAnalysis } from '@/lib/analysis'
+import { isComparable } from '@/lib/accuracy'
 import { alignClocks, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
 import { isFault } from '@/lib/review'
 import { applySettings, normalizeSettings, settings } from '@/lib/settings'
@@ -87,11 +88,17 @@ export interface MarkedMove {
  * `verdict` is null for a move nobody has read. That is a real hole and the caller has to
  * say so rather than quietly reporting a share of the moves it happens to know about —
  * `coverage` below is there to be printed.
+ *
+ * Games analysed by an older build are skipped, the same as everywhere else in the app.
+ * This is not theoretical: half the analysed games sat at depth 12 for months after the
+ * depth moved to 21, and a report built here without the filter put them straight into
+ * the same averages — a shallower engine finds fewer mistakes and scores them smaller, so
+ * the numbers were wrong in a direction nobody could see.
  */
 export function markedMoves(games: GameRecord[]): MarkedMove[] {
   const out: MarkedMove[] = []
 
-  for (const game of games) {
+  for (const game of games.filter(isComparable)) {
     const stored = verdictsOf(game)
     const control = parseTimeControl(game.timeControl)
     const clocks = game.clocks ? alignClocks(game.clocks, game.moves.length) : null
@@ -124,9 +131,21 @@ export function markedMoves(games: GameRecord[]): MarkedMove[] {
   return out
 }
 
-/** Your own moves in a slice, which is the denominator for any rate. */
+/**
+ * Your own moves in a slice, which is the denominator for any rate.
+ *
+ * Comparable games only, for the reason given on `markedMoves` — a denominator drawn
+ * from a different build is the quietest way to get a rate wrong.
+ */
 export function ownMoves(games: GameRecord[]) {
-  return games.flatMap(game => (game.analysis?.moves ?? []).map(move => ({ game, move })))
+  return games
+    .filter(isComparable)
+    .flatMap(game => (game.analysis?.moves ?? []).map(move => ({ game, move })))
+}
+
+/** Games in the slice the engine has been over, but not at the current version. */
+export function staleGames(games: GameRecord[]): GameRecord[] {
+  return games.filter(game => game.analysis && !isComparable(game))
 }
 
 export function coverage(moves: MarkedMove[]): string {

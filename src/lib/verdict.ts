@@ -91,9 +91,21 @@ const PIECE_ORDER = ['q', 'r', 'b', 'n', 'p']
 export function materialEdge(
   fen: string,
   you: 'white' | 'black',
-): { pawns: number; by: Record<string, number>; mine: Inventory; theirs: Inventory } {
-  const board = new Chess(fen).board()
+): Material {
+  return materialOn(new Chess(fen).board(), you)
+}
 
+export interface Material {
+  /** The difference in pawn units, from your side. */
+  pawns: number
+  /** The imbalance, by piece type: what each side has that the other does not. */
+  by: Record<string, number>
+  mine: Inventory
+  theirs: Inventory
+}
+
+/** The same reading from a board already in hand, which a replay has on every ply. */
+function materialOn(board: ReturnType<Chess['board']>, you: 'white' | 'black'): Material {
   const mine: Inventory = {}
   const theirs: Inventory = {}
   let pawns = 0
@@ -111,6 +123,38 @@ export function materialEdge(
   }
 
   return { pawns, by: imbalanceOf({ mine, theirs }), mine, theirs }
+}
+
+/**
+ * What was on the board at every move of yours, derived rather than stored.
+ *
+ * The second pass stores material for the moves it reads, which answers "what was on the
+ * board when I went wrong" and cannot answer "how often do I go wrong when a piece down"
+ * — that needs the same reading for the moves where nothing went wrong, which is most of
+ * them. Storing it per move would be the obvious fix and the wrong one: material is a
+ * pure function of `game.moves`, which is already on disk, so it is derivable for every
+ * game the app has ever seen, including the ones the engine has never looked at. Nothing
+ * needs re-running and nothing new is written.
+ *
+ * One replay per game, keyed by ply — the position *before* that ply, which is the one
+ * the move was chosen in. `positionKeyMap` already replays every game on the dashboard
+ * for the opening filter, so the cost is known and small.
+ */
+export function materialByPly(game: GameRecord): Map<number, Material> {
+  const chess = new Chess()
+  const out = new Map<number, Material>()
+
+  for (let ply = 0; ply < game.moves.length; ply++) {
+    out.set(ply, materialOn(chess.board(), game.color))
+    try {
+      chess.move(game.moves[ply])
+    } catch {
+      // a game that will not replay stops here; the plies already read are still good
+      break
+    }
+  }
+
+  return out
 }
 
 /** What one side has, by piece type. Kings left out; they are not material. */

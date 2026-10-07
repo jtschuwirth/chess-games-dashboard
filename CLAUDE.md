@@ -597,6 +597,33 @@ src/
   against the first pass's two. Faults are 7% of your moves, about 2.7 a game, which puts
   the second pass at under twenty seconds. It also skips moves already judged, so it
   resumes rather than restarting.
+- **An analysis carries the version that wrote it.** `ANALYSIS_VERSION` is stored on
+  every analysis and `isStale` compares it; the dashboard's Engine filter has
+  **Analysed by an older build** beside **Not analysed yet**, and such a game's depth
+  badge turns amber and says `old`. It tracks the *measurements* only — the depth, and
+  what is recorded per move. Every judgement is derived on read, so moving a band,
+  renaming a descriptor or changing what counts as a fault leaves every stored analysis
+  exactly as valid as it was. The rule: if re-running the engine would produce different
+  **numbers**, bump it; if it would only produce different **words**, do not. Analyses
+  written before the field existed are classified on read rather than migrated — depth is
+  the only measurement that has ever moved, so `ENGINE_DEPTH` means version 1 and anything
+  shallower means 0. `isComparable` is now this and nothing else, so one rule decides what
+  belongs in an average. It exists because 138 analyses sat at depth 12 for months after
+  the depth moved, invisible except to someone who went looking: a shallower engine finds
+  fewer mistakes *and* scores them smaller, so they dragged every figure down in a
+  direction nothing on screen could show. `markedMoves` and `ownMoves` in the analysis
+  skill skip them too, which is where that went wrong in the first place.
+- **Material is derived for every move, not stored.** The second pass records what was on
+  the board for the moves it reads, which answers "what was in front of me when I went
+  wrong" and cannot answer "how often do I go wrong a pawn down" — that needs the same
+  reading for the moves where nothing went wrong, which is most of them. Storing it per
+  move is the obvious fix and the wrong one: material is a pure function of `game.moves`,
+  already on disk, so `materialByPly` replays the game once and has it for every ply of
+  every game the app has ever seen — including the thousand the engine has never looked
+  at. No re-run, no new field, no migration. Checked against all 712 readings the second
+  pass had stored independently: the pawn difference agrees on every one, and so does the
+  full inventory wherever the older verdicts carried it. The stored copies stay, because
+  they are what the second pass measured and removing them would be churn.
 - **The verdict keeps the board, not just the difference.** `pieces` holds what each side
   has, by type, kings aside — the difference falls out of it and the inventory answers
   what the difference cannot: whether the queens were off, whether this was a rook ending,

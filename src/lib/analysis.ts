@@ -25,6 +25,23 @@ export type Thresholds = Pick<AnalysisSettings, 'mistake' | 'winning' | 'level'>
 export const ENGINE_DEPTH = 21
 
 /**
+ * Which build of the first pass wrote an analysis, so a stale one can be found.
+ *
+ * It tracks the *measurements* only — the depth, and what is recorded per move. The
+ * judgements are all derived on read, so moving a band, renaming a descriptor or
+ * changing what counts as a fault leaves every stored analysis exactly as valid as it
+ * was and must not bump this. The rule is: if re-running the engine would produce
+ * different numbers, bump it; if it would only produce different *words*, do not.
+ *
+ * Version 1 is depth 21. Version 0 is everything shallower, which is how the analyses
+ * left at depth 12 are classified without having stored a version at all — the same
+ * normalise-on-read habit as `betterMovesOf` and the pre-game ratings. They were found
+ * by hand, months after the depth moved, and they had been quietly polluting every
+ * figure the second pass produced in the meantime. That is what this is for.
+ */
+export const ANALYSIS_VERSION = 1
+
+/**
  * How a move is graded, which is now two questions in order.
  *
  * First, is it worth marking at all: a move that gives away less than `mistake` is left
@@ -70,6 +87,7 @@ export interface AnalyzedMove {
 }
 
 export interface GameAnalysis {
+  version: number
   depth: number
   analyzedAt: number
   /** Your own moves only — this is about your mistakes, not your opponents'. */
@@ -150,6 +168,7 @@ export async function analyzeGame(game: GameRecord, options: AnalyzeOptions): Pr
   }
 
   return {
+    version: ANALYSIS_VERSION,
     depth: options.depth,
     analyzedAt: Date.now(),
     moves,
@@ -157,6 +176,21 @@ export async function analyzeGame(game: GameRecord, options: AnalyzeOptions): Pr
     mistakes: moves.filter(move => move.tag === '?').length,
     inaccuracies: moves.filter(move => move.tag === '?!').length,
   }
+}
+
+/**
+ * Which version wrote this analysis, for the ones written before the field existed.
+ *
+ * Depth is the only measurement that has ever moved, so it is enough to tell them apart:
+ * an analysis at `ENGINE_DEPTH` is current, anything shallower is not.
+ */
+export function analysisVersion(analysis: StoredAnalysis): number {
+  return analysis.version ?? (analysis.depth === ENGINE_DEPTH ? ANALYSIS_VERSION : 0)
+}
+
+/** An analysed game whose numbers no longer match what the engine would produce today. */
+export function isStale(game: GameRecord): boolean {
+  return game.analysis !== undefined && analysisVersion(game.analysis) < ANALYSIS_VERSION
 }
 
 /**

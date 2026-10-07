@@ -144,6 +144,11 @@ export interface GameReview {
 
 /** What `analyzeGame` produced, flattened for Firestore. */
 export interface StoredAnalysis {
+  /**
+   * Which build of the first pass wrote this — see `ANALYSIS_VERSION`. Absent on
+   * everything written before the field existed, where the depth says it instead.
+   */
+  version?: number
   depth: number
   analyzedAt: number
   blunders: number

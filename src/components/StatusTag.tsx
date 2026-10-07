@@ -1,5 +1,6 @@
 /**
- * What has been done to a game, as a bordered pill: reviewed, and analysed at a depth.
+ * What has been done to a game, as a bordered pill: reviewed, and analysed at a depth —
+ * or analysed by a build whose numbers no longer count, which is the third state.
  *
  * One component for both views rather than two copies of the same class list, because
  * the whole point of these markers is that a row in the list and the title of the game
@@ -20,6 +21,12 @@ const TONES = {
    * side read as one thing in two shades.
    */
   engine: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+  /**
+   * The engine's, but from a build whose numbers no longer match. Amber rather than
+   * violet because it is a thing to act on, and amber is already what this app uses for
+   * "worth your attention but nothing is broken".
+   */
+  stale: 'bg-amber-500/15 text-amber-200 border-amber-500/30',
 } as const
 
 export type TagTone = keyof typeof TONES

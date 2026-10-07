@@ -1,4 +1,4 @@
-import { ENGINE_DEPTH } from './analysis'
+import { isStale } from './analysis'
 import { alignClocks, parseTimeControl, timeSpentPerPly } from './clocks'
 import { isFault } from './review'
 import type { GameRecord, GameResult } from '@/types/chess'
@@ -7,13 +7,14 @@ import type { GameRecord, GameResult } from '@/types/chess'
  * Two readings over games the engine has already been through: how much you give away
  * per move, and whether it depends on how long you thought.
  *
- * Both only count games analysed at `ENGINE_DEPTH`. A shallower engine finds fewer
- * mistakes and scores them smaller, so mixing depths would show you improving at the
+ * Both only count games analysed by the current build. A shallower engine finds fewer
+ * mistakes and scores them smaller, so mixing versions would show you improving at the
  * moment the depth changed — which is exactly what happened here when it settled at 21
- * and older games kept their 12. One depth or the number means nothing.
+ * and older games kept their 12. One depth or the number means nothing, and `isStale` is
+ * now the single place that decides which games are on the same footing.
  */
 export function isComparable(game: GameRecord): boolean {
-  return game.analysis?.depth === ENGINE_DEPTH
+  return game.analysis !== undefined && !isStale(game)
 }
 
 /** How many games in a slice the engine has looked at closely enough to count. */

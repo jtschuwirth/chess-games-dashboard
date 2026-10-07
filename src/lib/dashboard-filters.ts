@@ -30,7 +30,7 @@ function readRating(raw: string | null): number | null {
   return Number.isFinite(value) && value > 0 ? Math.round(value) : null
 }
 
-const MISTAKE_VALUES = ['blunder', 'mistake', 'clean', 'analysed', 'unanalysed'] as const
+const MISTAKE_VALUES = ['blunder', 'mistake', 'clean', 'analysed', 'unanalysed', 'stale'] as const
 
 function readMistakes(raw: string | null): GameCriteria['mistakes'] {
   return MISTAKE_VALUES.includes(raw as (typeof MISTAKE_VALUES)[number])
