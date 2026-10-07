@@ -196,18 +196,82 @@ export function materialLabel(by: Record<string, number> | undefined): string {
  * `holds` in `lib/bands.ts` is "costs no more than an inaccuracy". They used to be two
  * rules in two units, and a move could be marked while this one counted it as holding.
  *
- * Measured against the best line of the *same* search, never against the stored
- * `cpBefore`: a MultiPV search prunes less and comes back with different numbers for the
- * same position, so comparing across the two would be the depth trap in another costume.
+ * The reference it is measured against is `reconcile`'s, not the MultiPV search's own
+ * top line — see there for why.
  */
 export function holdsFrom(best: number, score: number, config = settings()): boolean {
   return holdsMove(best, score, config)
 }
 
-/** How many of the engine's candidates held. Never zero: the best move always holds. */
-export function countHolding(scores: number[], config = settings()): number {
-  if (scores.length === 0) return 0
-  return scores.filter(score => holdsFrom(scores[0], score, config)).length
+/**
+ * How many of the candidates held, against a reference given rather than assumed.
+ *
+ * It used to take the reference from `scores[0]`, which is the assumption `reconcile`
+ * exists to undo. Nearly always still one, since the top line usually carries the
+ * reference itself; zero is possible and means the move you played was the search's own
+ * first choice and still did not hold, which is worth seeing rather than rounding up.
+ */
+export function countHolding(
+  reference: number,
+  scores: number[],
+  config = settings(),
+): number {
+  return scores.filter(score => holdsFrom(reference, score, config)).length
+}
+
+/** A candidate as stored: the move, and what the MultiPV search scored it. */
+interface Scored {
+  san: string
+  cp: number
+}
+
+export interface Reconciled {
+  /** What best play is worth, which is what every candidate is measured against. */
+  reference: number
+  /** Each candidate's score, in the stored order. */
+  scores: number[]
+}
+
+/**
+ * The candidate scores, with the first pass's dedicated reading used wherever it has one.
+ *
+ * Both passes search at depth 21 and they do not agree, because MultiPV has to keep five
+ * lines alive and so searches each of them less: across 633 marked moves the two readings
+ * of the same position differ by a median of 20cp, and in 17% of them they land in
+ * different bands. That is what put `better → level · stable 5/5` on one row — the mark
+ * came from one number (+101, better) and the breadth from the other (+87, level), with
+ * the band edge at 100 sitting between them.
+ *
+ * The rule now is that a dedicated search beats a shared one. The first pass evaluated
+ * two of these positions on their own: the one before your move, which is what best play
+ * is worth, and the one after it, which is what your move is worth. Both are depth 21 and
+ * both are already stored, so this is a change in how the numbers are read, not in what
+ * is measured — every verdict on disk re-reads under it for free.
+ *
+ * The earlier rule was the opposite, and its reasoning was that comparing numbers across
+ * two searches is the depth trap in another costume. That is a real cost and it is still
+ * paid here: the remaining candidates keep their MultiPV scores, so the list mixes two
+ * searches. It buys the thing that matters more — the move you played is now graded
+ * against the same number that marked it, so the two passes cannot contradict each other
+ * about it.
+ *
+ * Direction was the thing worth checking before trusting any of this, because a
+ * systematic gap would inflate `sharp` by construction rather than measure it. It is
+ * symmetric: median 0cp, single-PV higher in 46% of positions and lower in 49%.
+ */
+export function reconcile(
+  move: { san: string; cpBefore: number; cpAfter: number },
+  candidates: Scored[],
+): Reconciled {
+  return {
+    reference: move.cpBefore,
+    scores: candidates.map((candidate, rank) => {
+      // the move you played, where the first pass measured the position it led to
+      if (candidate.san === move.san) return move.cpAfter
+      // the top line is best play, which is what `cpBefore` is the value of
+      return rank === 0 ? move.cpBefore : candidate.cp
+    }),
+  }
 }
 
 /**
@@ -502,9 +566,9 @@ export function verdictsOf(game: GameRecord, config = settings()): Record<string
         under one `level` and shown under another would be two different answers wearing
         one number. Older verdicts kept no candidates and keep the count they were given.
       */
-      const scores = verdict.candidates?.map(candidate => candidate.cp)
-      const holds = scores ? countHolding(scores, config) : verdict.holds
-      const looked = scores ? scores.length : verdict.looked
+      const read = verdict.candidates ? reconcile(move, verdict.candidates) : null
+      const holds = read ? countHolding(read.reference, read.scores, config) : verdict.holds
+      const looked = read ? read.scores.length : verdict.looked
 
       return [
         ply,
@@ -512,9 +576,12 @@ export function verdictsOf(game: GameRecord, config = settings()): Record<string
           ...verdict,
           holds,
           looked,
-          candidates: verdict.candidates?.map(candidate => ({
+          // the scores go out reconciled as well, so the list on screen is the list the
+          // count was taken from rather than a second opinion sitting beside it
+          candidates: verdict.candidates?.map((candidate, rank) => ({
             ...candidate,
-            holds: holdsFrom(verdict.candidates![0].cp, candidate.cp, config),
+            cp: read ? read.scores[rank] : candidate.cp,
+            holds: read ? holdsFrom(read.reference, read.scores[rank], config) : candidate.holds,
           })),
           verdict: readVerdict(
             { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds, looked },
@@ -584,15 +651,14 @@ export async function judgeGame(
     const candidates = await analyzeLines(fen, ENGINE_DEPTH, config.lines)
     const edge = materialEdge(fen, game.color)
     const material = edge.pawns
-    const scores = candidates.moves.map(candidate => candidate.cp)
-    const holds = countHolding(scores, config)
-
     /*
       The candidates are kept, not just counted. The search has already done the work of
       finding them, and "how many held" is the one question that does not answer the one
       you actually have in front of the board, which is what to play instead.
+
+      Named before they are scored, because `reconcile` finds the move you played by its
+      SAN — and the search only knows it as coordinates.
     */
-    const best = scores[0]
     const named = candidates.moves.map(candidate => {
       const board = new Chess(fen)
       let san = candidate.uci
@@ -605,20 +671,29 @@ export async function judgeGame(
       } catch {
         // an unreadable move keeps its coordinates rather than dropping the line
       }
-      return { san, cp: candidate.cp, holds: holdsFrom(best, candidate.cp, config) }
+      return { san, cp: candidate.cp }
     })
+
+    const read = reconcile(move, named)
+    const holds = countHolding(read.reference, read.scores, config)
+    const scored = named.map((candidate, rank) => ({
+      ...candidate,
+      holds: holdsFrom(read.reference, read.scores[rank], config),
+    }))
 
     const reading: MoveVerdict = {
       ply: move.ply,
       material,
       materialBy: edge.by,
       pieces: { mine: edge.mine, theirs: edge.theirs },
-      candidates: named,
+      candidates: scored,
+      // the search's own top line, kept as the measurement it is: `reconcile` replaces
+      // it on read, and a stored number nobody can get back to is a number lost
       best: candidates.moves[0].cp,
       holds,
       looked: candidates.moves.length,
       verdict: readVerdict(
-        { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds, looked: scores.length },
+        { cpBefore: move.cpBefore, cpAfter: move.cpAfter, holds, looked: read.scores.length },
         config,
       ),
       depth: candidates.depth,

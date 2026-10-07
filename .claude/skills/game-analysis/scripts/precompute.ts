@@ -29,6 +29,7 @@ import {
   holdsFrom,
   materialEdge,
   readVerdict,
+  reconcile,
   verdictsOf,
 } from '@/lib/verdict'
 import type { GameRecord, MoveVerdict } from '@/types/chess'
@@ -80,6 +81,7 @@ const games = snapshot.docs
 interface Job {
   game: GameRecord
   ply: number
+  san: string
   cpBefore: number
   cpAfter: number
 }
@@ -90,7 +92,13 @@ for (const game of games) {
   for (const move of game.analysis?.moves ?? []) {
     if (!isFault(move.tag, config.marks)) continue
     if (stored[String(move.ply)]) continue
-    jobs.push({ game, ply: move.ply, cpBefore: move.cpBefore, cpAfter: move.cpAfter })
+    jobs.push({
+      game,
+      ply: move.ply,
+      san: move.san,
+      cpBefore: move.cpBefore,
+      cpAfter: move.cpAfter,
+    })
   }
 }
 
@@ -139,10 +147,9 @@ for (const [index, job] of todo.entries()) {
     continue
   }
 
-  const scores = search.moves.map(candidate => candidate.cp)
   const edge = materialEdge(fen, job.game.color)
-  const holds = countHolding(scores, config)
 
+  // named first: `reconcile` finds the move that was played by its SAN
   const named = search.moves.map(candidate => {
     const board = new Chess(fen)
     let san = candidate.uci
@@ -155,8 +162,15 @@ for (const [index, job] of todo.entries()) {
     } catch {
       // an unreadable move keeps its coordinates rather than dropping the line
     }
-    return { san, cp: candidate.cp, holds: holdsFrom(scores[0], candidate.cp, config) }
+    return { san, cp: candidate.cp }
   })
+
+  const read = reconcile(job, named)
+  const holds = countHolding(read.reference, read.scores, config)
+  const scored = named.map((candidate, rank) => ({
+    ...candidate,
+    holds: holdsFrom(read.reference, read.scores[rank], config),
+  }))
 
   const verdicts = pending.get(job.game.id) ?? {}
   verdicts[String(job.ply)] = {
@@ -164,12 +178,13 @@ for (const [index, job] of todo.entries()) {
     material: edge.pawns,
     materialBy: edge.by,
     pieces: { mine: edge.mine, theirs: edge.theirs },
-    candidates: named,
-    best: scores[0],
+    candidates: scored,
+    // the search's own top line, kept as the measurement it is — see judgeGame
+    best: search.moves[0].cp,
     holds,
-    looked: scores.length,
+    looked: read.scores.length,
     verdict: readVerdict(
-      { cpBefore: job.cpBefore, cpAfter: job.cpAfter, holds, looked: scores.length },
+      { cpBefore: job.cpBefore, cpAfter: job.cpAfter, holds, looked: read.scores.length },
       config,
     ),
     depth: search.depth,

@@ -253,7 +253,13 @@ export interface MoveVerdict {
    * held" does not answer the question you actually have, which is what to play instead.
    */
   candidates?: { san: string; cp: number; holds: boolean }[]
-  /** The best score in that search, from your side. Not the stored `cpBefore`. */
+  /**
+   * The MultiPV search's own top line, from your side.
+   *
+   * Not what the candidates are measured against — `reconcile` uses the first pass's
+   * `cpBefore` for that. This is kept because it is a measurement, and it is the only
+   * record of what the shared search made of the position on its own.
+   */
   best: number
   /** How many of the candidates looked at would not have been a fault. */
   holds: number

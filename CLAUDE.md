@@ -527,12 +527,43 @@ src/
   separate searches, which cannot be compared with each other any more than two depths
   can. One `MultiPV 5` search returns five lines scored against each other, and a move
   "holds" when `classifyMove` would not call it a fault, which is the same rule that
-  marked the move in the first place. The reference is `moves[0].cp` from *that* search,
-  never the stored `cpBefore`: MultiPV prunes less, so the two disagree — by 2.5 pawns on
-  one position in testing — and mixing them would be the depth trap in another costume.
+  marked the move in the first place.
   `analyzeLines(fen, depth, count)` is the entry point for both engines, `analyzePosition`
   is the one-line reading of it, and the cache records how many lines were asked for so a
   position with three legal moves does not look uncached for ever.
+- **A dedicated search beats a shared one, and `reconcile` is where that is decided.**
+  The reference used to be `moves[0].cp` from the MultiPV search itself, on the reasoning
+  that comparing numbers across two searches is the depth trap in another costume. The
+  trouble is that it puts two readings of one position on the same row. Both passes run at
+  depth 21 and they do not agree, because MultiPV has to keep five lines alive and so
+  searches each of them less: across 633 marked moves the two readings differ by a median
+  of 20cp, and 17% of them land in *different bands*. That is what produced
+  `better → level · stable 5/5` on a real row — the mark came from +101 (better) and the
+  breadth from +87 (level), with the band edge at 100 between them, and the move you
+  played was among the five that "held".
+
+  So the first pass's numbers win wherever it has one. It evaluated two of these positions
+  on their own: the one before your move, which is what best play is worth and is now the
+  reference, and the one after it, which is what *your* move is worth and is now its entry
+  in the candidate list. Everything else keeps its MultiPV score, because nothing better
+  exists for it. The cost is real and is the old note's point: the list now mixes two
+  searches. It buys the thing that matters more — the move you played is graded against
+  the same number that marked it, so the two passes cannot contradict each other about it.
+  Marked moves that counted as holding went from 45 of 242 to 0.
+
+  Direction was the thing to check before trusting any of it, since a one-sided gap would
+  inflate `sharp` by construction rather than measure it. It is symmetric: median 0cp,
+  single-PV higher in 46% of positions and lower in 49%. The slice still moves — sharp
+  43% → 49%, stable 41% → 34% — because `stable` is capped at what was looked at, so a
+  rising reference can push a reading out of it while a falling one has nowhere to add.
+
+  All of it is derived on read. `cpBefore`, `cpAfter` and the raw MultiPV scores are the
+  measurements and all three stay on disk untouched, `best` included; every verdict
+  already stored re-reads under the new rule for free, and nothing needs the engine again.
+  One approximation is worth knowing: the first pass does not store *which* move it
+  thought best, so the top line is shown carrying `cpBefore`. That is the value of best
+  play either way, but if the two searches preferred different moves it is the value of a
+  move the list does not name.
 - **A multi-line search clears the hash first, and that is what makes a verdict
   reproducible.** The second pass turns small differences between candidates into a
   category, and a hash carrying the rest of the game moves those differences: one position
