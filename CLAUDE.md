@@ -872,6 +872,21 @@ src/
   since then it is the only thing on the page worth doing. Pasting a PGN stays on the
   profile page: an upload is a game you brought in to study, not your record, and it is not
   something you do weekly.
+- **The first sync is seeding and every later one is topping up.** They are different
+  sizes of job, so the count defaults to the last 100 on an account that has never
+  synced and the last 10 on one that has. Ten exists because it is what a routine sync
+  actually needs — you open the dashboard after an evening's play and want the four
+  games you just finished — and it is not only faster: `saveGames` rewrites every game
+  it fetches, so asking for fifty is fifty document writes to bring in four, against the
+  cost model the rest of the app is built around. The default is decided once, at mount,
+  and after that it is an ordinary choice with the chips right there.
+- **A sync that fetched nothing it already had says so.** That is what makes a small
+  default safe. If every game fetched was new, the window never reached back to anything
+  already stored, so there is no way to know it caught everything — whatever number was
+  asked for. Without the warning, picking too small a number is something you discover
+  weeks later as a hole in the data; with it, the sync tells you to run a larger one.
+  The test is `added.length === fetched.length` rather than anything about the count,
+  which is why it holds for 1000 as well as for 10.
 - **Every dashboard panel folds, and stays folded.** The page is long and most visits are about
   one thing, so each panel carries the same `+`/`−` a review entry has. One difference decides the
   implementation: a review is a form you fill once, while the dashboard is a page you open daily,

@@ -11,7 +11,14 @@ import { fetchProviderGames } from '@/lib/sync'
 import { SOURCE_LABEL, TIME_CLASSES } from '@/types/chess'
 import type { GameRecord, ProviderSource, SyncedGame, TimeClass, UserProfile } from '@/types/chess'
 
-const COUNTS = [50, 100, 200, 500, 1000]
+/**
+ * Ten is there because it is what a routine sync actually needs.
+ *
+ * You open the dashboard after an evening's play and want the four games you just
+ * finished; fifty is five times over, and not a free five times — `saveGames` rewrites
+ * every game it fetches, so a fifty-game sync is fifty document writes to bring in four.
+ */
+const COUNTS = [10, 50, 100, 200, 500, 1000]
 const SOURCES: ProviderSource[] = ['chesscom', 'lichess']
 
 function toggle<T>(values: T[], value: T): T[] {
@@ -55,10 +62,16 @@ export default function SyncPanel({
 
   const [sources, setSources] = useState<ProviderSource[]>(['chesscom', 'lichess'])
   const [timeClasses, setTimeClasses] = useState<TimeClass[]>(['blitz', 'rapid'])
-  const [count, setCount] = useState(100)
+  /*
+    The first run is seeding an empty dashboard and the rest are topping it up, which
+    are different sizes of job. Decided once, at mount, from whether this account has
+    ever synced — after that it is an ordinary choice and the chips are right there.
+  */
+  const [count, setCount] = useState(() => (profile.lastSyncAt ? 10 : 100))
   const [running, setRunning] = useState(false)
   const [messages, setMessages] = useState<string[]>([])
   const [error, setError] = useState<string | null>(null)
+  const [shortfall, setShortfall] = useState(false)
 
   const active = sources.filter(source => usernames[source])
   const canSync = active.length > 0 && timeClasses.length > 0 && !running
@@ -67,6 +80,7 @@ export default function SyncPanel({
     setRunning(true)
     setError(null)
     setMessages([])
+    setShortfall(false)
 
     try {
       const fetched: SyncedGame[] = []
@@ -90,6 +104,15 @@ export default function SyncPanel({
       notes.push(
         `Saved ${added.length} new game(s) and refreshed ${updated} already stored.`,
       )
+
+      /*
+        What makes a small default safe. If every game fetched was new, the window never
+        reached back to anything already stored — so there is no way to know it caught
+        everything, whatever number was asked for. Saying so turns "I picked too small a
+        number" from something you find out weeks later into something the sync tells you.
+      */
+      setShortfall(fetched.length > 0 && added.length === fetched.length)
+
       setMessages(notes)
       onSynced(added)
     } catch (caught) {
@@ -180,6 +203,13 @@ export default function SyncPanel({
             <li key={i}>· {message}</li>
           ))}
         </ul>
+      )}
+
+      {shortfall && (
+        <p className="text-xs text-amber-400">
+          Every game fetched was new, so this did not reach back to anything already
+          stored — there may be more. Sync a larger number to be sure.
+        </p>
       )}
     </Panel>
   )
