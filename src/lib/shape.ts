@@ -15,7 +15,8 @@
 import { ACCURACY_CAP } from './accuracy'
 import { standingOf, type Standing } from './bands'
 import { settings } from './settings'
-import type { GameRecord } from '@/types/chess'
+import { endingOf } from './termination'
+import type { GameRecord, GameResult } from '@/types/chess'
 
 /**
  * The evaluation at every half-move, in your frame, clamped.
@@ -240,15 +241,30 @@ export const GAME_NAMES: Record<Arc, Record<Texture, string>> = {
   },
 }
 
-export function arcOf(shape: GameShape, config = settings()): Arc {
-  const { peak, trough, end } = standingsOf(shape, config)
+/** What the final evaluation says the result should have been. */
+export function boardSaid(shape: GameShape, config = settings()): GameResult {
+  const end = standingOf(shape.end, config)
+  if (end === 'winning' || end === 'better') return 'win'
+  if (end === 'level') return 'draw'
+  return 'loss'
+}
 
-  const ahead = end === 'winning' || end === 'better'
-  const behind = end === 'losing' || end === 'worse' || end === 'mate'
+/**
+ * What became of the lead, decided by the result and coloured in by the graph.
+ *
+ * The result leads, and it did not at first — the arc read the final evaluation instead,
+ * on the reasoning that the graph is the honest story and a game lost on the clock from a
+ * won position is still a game you held. That reads as a contradiction on the row it
+ * appears on: `stole a wild one` against a loss, `a wild draw` against a win. The result
+ * is what the game was actually worth, so it picks the family and the graph says how you
+ * got there; where the two disagree, `offBoardOf` names it outright.
+ */
+export function arcOf(shape: GameShape, result: GameResult, config = settings()): Arc {
+  const { peak, trough } = standingsOf(shape, config)
 
-  if (ahead) return trough === 'losing' || trough === 'mate' ? 'recovered' : 'held'
-  if (behind) return peak === 'winning' ? 'threw' : 'never-had-it'
-  return 'shared'
+  if (result === 'draw') return 'shared'
+  if (result === 'win') return trough === 'losing' || trough === 'mate' ? 'recovered' : 'held'
+  return peak === 'winning' ? 'threw' : 'never-had-it'
 }
 
 export function textureOf(shape: GameShape): Texture {
@@ -256,11 +272,52 @@ export function textureOf(shape: GameShape): Texture {
   return shape.swings === 1 ? 'turned' : 'traded'
 }
 
+/**
+ * How a point went somewhere the board was not sending it.
+ *
+ * Four per cent of analysed games, and every one of them a flag, a repetition, an
+ * abandonment or a resignation. They are the games the graph describes worst: you can be
+ * dead lost and win, and no reading of the evaluations will ever say why. The ending will
+ * — so where the result and the board disagree, the ending names the game and the arc is
+ * left as the supporting figure it deserves to be.
+ *
+ * Null when the two agree, which is the other 96%.
+ */
+export function offBoardOf(game: GameRecord, shape: GameShape, config = settings()): string | null {
+  const said = boardSaid(shape, config)
+  if (said === game.result) return null
+
+  const ending = endingOf(game)
+
+  if (game.result === 'win') {
+    // `said` is from your side, so a board that said loss is one they were winning
+    if (ending === 'flagged') return said === 'loss' ? 'saved by the flag' : 'won on the clock'
+    if (ending === 'resignation') {
+      return said === 'loss' ? 'they resigned a won game' : 'they resigned a draw'
+    }
+    if (ending === 'abandoned') return 'they walked away'
+    return 'won it off the board'
+  }
+
+  if (game.result === 'loss') {
+    if (ending === 'flagged') return said === 'win' ? 'flagged a won game' : 'flagged a level one'
+    if (ending === 'resignation') {
+      return said === 'win' ? 'resigned a won game' : 'resigned a level one'
+    }
+    if (ending === 'abandoned') return 'walked away from it'
+    return 'lost it off the board'
+  }
+
+  return said === 'win' ? 'drew a won game' : 'escaped with a draw'
+}
+
 export interface GameTelling {
   arc: Arc
   texture: Texture
-  /** The name of that pair, which is the descriptor itself. */
+  /** The name of the game: the ending where it overrode the board, the pair otherwise. */
   name: string
+  /** Set when the point went somewhere the evaluations were not sending it. */
+  offBoard: string | null
   shape: GameShape
 }
 
@@ -269,9 +326,11 @@ export function tellingOf(game: GameRecord, config = settings()): GameTelling | 
   const shape = shapeOf(game, config)
   if (!shape) return null
 
-  const arc = arcOf(shape, config)
+  const arc = arcOf(shape, game.result, config)
   const texture = textureOf(shape)
-  return { arc, texture, name: GAME_NAMES[arc][texture], shape }
+  const offBoard = offBoardOf(game, shape, config)
+
+  return { arc, texture, offBoard, name: offBoard ?? GAME_NAMES[arc][texture], shape }
 }
 
 /** The sentence behind a badge: what became of the lead, and how often it moved. */
@@ -284,8 +343,12 @@ export function tellingHint(telling: GameTelling, config = settings()): string {
       ? 'The lead never changed hands.'
       : `The lead changed hands ${swings === 1 ? 'once' : `${swings} times`}.`
 
+  const board = telling.offBoard
+    ? ` The board was not sending the point this way — ${GAME_NAMES[telling.arc][telling.texture]} on the evaluations alone.`
+    : ''
+
   return (
     `Best you stood: ${peak}. Worst: ${trough}. ${lead} ` +
-    `Settled with ${Math.round((1 - (telling.shape.settledAt ?? 1)) * 100)}% of the game left.`
+    `Settled with ${Math.round((1 - (telling.shape.settledAt ?? 1)) * 100)}% of the game left.${board}`
   )
 }

@@ -21,7 +21,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    same filter, the way clicking a variation row sets the opening. A game the engine has
    never seen carries a control to analyse it right there in the list; press it on several
    and they queue up rather than fighting each other for the one engine.
-5. `/games/{id}` — one game: what kind of game it was, a board you can step through, the engine's marks on the move list,
+5. `/games/{id}` — one game: the eval graph and what kind of game it was, folded away at the
+   top; a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
    pass over the marked moves says what *kind* of mistake each was — a line missed, a
    won game thrown, an edge mishandled — and any reading can be thrown out. Reached from any
@@ -82,7 +83,7 @@ src/
 │                               # PatternLineCard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
-│                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel,
+│                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
 │                               # HomeNav, RatingPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
@@ -698,16 +699,43 @@ src/
   something precise about a single move, and one table reading like the other would suggest
   they are the same kind of thing.
 
-  Three choices are worth knowing. The series is clamped to ±1000 like the accuracy figure,
-  or a single forced mate would be the whole of a game's measured movement. The arc reads
-  `peak`, `trough` and `end` rather than the result, so a game lost on the clock from a won
-  position is still `held it` — which is the honest reading of the graph and the point of
-  having one. And the texture counts crossings of the *level band* rather than of zero:
-  drifting either side of 0.00 is not the lead changing hands.
+  The series is clamped to ±1000 like the accuracy figure, or a single forced mate would be
+  the whole of a game's measured movement; and the texture counts crossings of the *level
+  band* rather than of zero, since drifting either side of 0.00 is not the lead changing
+  hands.
+- **The result leads and the ending breaks the tie; the graph says how you got there.**
+  The arc read the final evaluation at first, on the reasoning that the graph is the honest
+  story and a game lost on the clock from a won position is still one you held. On the row
+  it appears on, that reads as a contradiction: `stole a wild one` against a loss, `a wild
+  draw` against a win — both of which turned up. So the result picks the family (a win is
+  `held it` or `recovered`, a loss is `threw it` or `never had it`, a draw is `shared`) and
+  `peak`/`trough` colour it in. No name can disagree with its own result now, checked across
+  every analysed game.
+
+  Where the two genuinely disagree — 4% of games, every one a flag, a repetition, an
+  abandonment or a resignation — the *ending* names the game outright, because that is
+  what actually settled it and no reading of the evaluations will ever say so.
+  `saved by the flag` is a game you were dead lost and won on the clock; `they resigned a
+  draw` is an opponent who did not find it; `resigned a level one` and `flagged a won game`
+  are the same thing from the other side, and both are in this data. The arc survives as
+  the supporting figure — a game is still `recovered` on the grid when the flag saved it,
+  which is true — and the panel's own list counts the name the game carries, so those few
+  appear as themselves rather than hiding inside a cell.
 
   The table carves the real data: 13 of 15 cells populated over 270 games, the two empty
   ones exactly the impossible pair, and the arcs almost pure against the result — `held it`
   won 99%, `threw it` won 0%, `recovered` 95%.
+- **The graph is drawn from White's side, and the figures beside it have no side at all.**
+  The player's frame was tried first, because "how did this go for me" wants up to mean
+  good. It put two frames in one panel: a line rising to the right beside a figure reading
+  −9.0, since every number on that page goes through `formatEval` and that flips. One of
+  them had to move and the one with company stayed — the readout under the board, the
+  engine panel and the review are all White's, as is every chess site. The axis names the
+  colours and marks which one is you, and the figures are *band names* rather than numbers:
+  "best you stood: winning" is true from either end of the board. The panel is folded by
+  default and remembered, like the dashboard's, and the marked moves sit under the line as
+  buttons rather than dots on it — a circle on a `100x100` viewBox stretched to the panel's
+  width is an ellipse, and the one thing a mark has to do is be the right shape to press.
 - **The slice's verdicts are a dashboard panel, read from storage.** Every figure in it
   comes off disk — the verdict is derived from the marked move and the stored `holds`, so
   the table is there the moment the page is. What it cannot invent is a reading for a move

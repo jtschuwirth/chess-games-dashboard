@@ -35,6 +35,7 @@ export default function ShapePanel({ games }: { games: GameRecord[] }) {
   const read = useMemo(() => {
     const analysed = games.filter(game => game.analysis && isComparable(game))
     const grid = new Map<string, Cell>()
+    const names = new Map<string, Cell>()
     let total = 0
 
     for (const game of analysed) {
@@ -42,18 +43,29 @@ export default function ShapePanel({ games }: { games: GameRecord[] }) {
       if (!telling) continue
 
       total++
-      const key = `${telling.arc}|${telling.texture}`
-      const cell = grid.get(key) ?? { games: 0, won: 0, drawn: 0 }
+      const cell = grid.get(`${telling.arc}|${telling.texture}`) ?? { games: 0, won: 0, drawn: 0 }
       cell.games++
       if (game.result === 'win') cell.won++
       if (game.result === 'draw') cell.drawn++
-      grid.set(key, cell)
+      grid.set(`${telling.arc}|${telling.texture}`, cell)
+
+      /*
+        The list below counts the name the game actually carries, not the cell it sits in.
+        Those differ for the few the ending decided rather than the board: a game is still
+        `recovered` on the grid when you were lost and they flagged, and it is still called
+        `saved by the flag`, which is the part worth reading.
+      */
+      const named = names.get(telling.name) ?? { games: 0, won: 0, drawn: 0 }
+      named.games++
+      if (game.result === 'win') named.won++
+      if (game.result === 'draw') named.drawn++
+      names.set(telling.name, named)
     }
 
     /** The biggest cell, which is what the bars below are drawn against. */
-    const widest = Math.max(1, ...[...grid.values()].map(cell => cell.games))
+    const widest = Math.max(1, ...[...names.values()].map(cell => cell.games))
 
-    return { grid, total, widest, analysed: analysed.length, all: games.length }
+    return { grid, names, total, widest, analysed: analysed.length, all: games.length }
   }, [games])
 
   if (read.total === 0) {
@@ -150,20 +162,17 @@ export default function ShapePanel({ games }: { games: GameRecord[] }) {
             What each one was
           </h3>
           <div className="columns-1 sm:columns-2 gap-x-8">
-            {rows.flatMap(arc =>
-              TEXTURES.map(texture => {
-                const cell = read.grid.get(`${arc}|${texture}`)
-                if (!cell) return null
-
-                return (
+            {[...read.names]
+              .sort((a, b) => b[1].games - a[1].games)
+              .map(([name, cell]) => (
                   <div
-                    key={`${arc}|${texture}`}
-                    title={`${ARC_LABEL[arc]}, ${TEXTURE_LABEL[texture]}`}
+                    key={name}
+                    title={`${cell.won} won, ${cell.drawn} drawn, ${cell.games - cell.won - cell.drawn} lost`}
                     className="break-inside-avoid pb-2.5 cursor-help"
                   >
                     <div className="flex items-baseline gap-2">
                       <span className="flex-1 min-w-0 truncate text-xs text-zinc-300">
-                        {GAME_NAMES[arc][texture]}
+                        {name}
                       </span>
                       <span className="text-xs font-mono text-zinc-500 tabular-nums">
                         {cell.games}
@@ -187,9 +196,7 @@ export default function ShapePanel({ games }: { games: GameRecord[] }) {
                       />
                     </span>
                   </div>
-                )
-              }),
-            )}
+              ))}
           </div>
         </div>
       </div>
