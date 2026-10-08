@@ -13,6 +13,7 @@ import RatingPanel from '@/components/RatingPanel'
 import ReviewPanel from '@/components/ReviewPanel'
 import Panel from '@/components/Section'
 import StatBlockCard from '@/components/StatBlockCard'
+import ShapePanel from '@/components/ShapePanel'
 import SyncPanel from '@/components/SyncPanel'
 import VerdictPanel from '@/components/VerdictPanel'
 import ThinkPanel from '@/components/ThinkPanel'
@@ -597,6 +598,8 @@ function DashboardBody({ userId }: { userId: string }) {
       />
 
       <AccuracyPanel games={scoped} />
+
+      <ShapePanel games={scoped} />
 
       <VerdictPanel
         userId={userId}

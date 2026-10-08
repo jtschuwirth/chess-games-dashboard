@@ -15,12 +15,13 @@ win/draw/loss splits for all games or for the games that followed one of those l
    mean leaving the page. The Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
    own rating band — the Control chips list the clocks you have actually played. Read overall / as White / as Black stats, the clock KPI, and the game phase
-   analysis, plus a table breaking the slice down by sub-variation. The "Ended in" dropdown scopes
+   analysis, a table of what kind of games these were, plus a table breaking the slice
+   down by sub-variation. The "Ended in" dropdown scopes
    to games that finished in one phase (`?phase=11-15`); clicking a phase's *ended* count sets the
    same filter, the way clicking a variation row sets the opening. A game the engine has
    never seen carries a control to analyse it right there in the list; press it on several
    and they queue up rather than fighting each other for the one engine.
-5. `/games/{id}` — one game: a board you can step through, the engine's marks on the move list,
+5. `/games/{id}` — one game: what kind of game it was, a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
    pass over the marked moves says what *kind* of mistake each was — a line missed, a
    won game thrown, an edge mishandled — and any reading can be thrown out. Reached from any
@@ -81,7 +82,7 @@ src/
 │                               # PatternLineCard,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
-│                               # AnalysisSettingsPanel, VerdictPanel,
+│                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel,
 │                               # HomeNav, RatingPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
@@ -102,6 +103,7 @@ src/
 │   ├── analysis.ts             # move classification and the annotated PGN
 │   ├── analysis-queue.ts       # one first pass at a time, wherever it was started from
 │   ├── bands.ts                # standings, falls, severities — the bottom of the analysis
+│   ├── shape.ts                # the shape of a whole game, read off its eval graph
 │   ├── settings.ts             # the thresholds the analysis is a judgement about
 │   ├── verdict.ts              # the second pass: what kind of mistake a marked move was
 │   ├── termination.ts          # one ending vocabulary across the two providers
@@ -665,6 +667,33 @@ src/
   is `lost the thread`. Both halves were needed: without the first, a piece up with an
   attack on top read as positional — including the one game in the data that was
   unarguably thrown; without the second, two pawns up scoring +2.6 read the same way.
+- **A game has a descriptor too, and the result is a poor substitute for it.** A win is a
+  forty-move squeeze or a gift on move nine; a loss is one you were never in or one you had
+  won. W/D/L puts those together. `lib/shape.ts` takes them apart, off data already on
+  disk: `cpBefore` and `cpAfter` for every move of yours, laid end to end, *are* the
+  evaluation at every half-move the game passed through — your move and then the reply,
+  alternating, all in your frame. Nothing is stored and nothing is re-run.
+
+  It is the move descriptor one level up, and deliberately the same shape: a table of
+  **arc** × **texture**, where the arc is what became of the lead (`held it`, `recovered`,
+  `threw it`, `never had it`, `shared`) and the texture is how many times it actually
+  changed hands (`steady`, `turned once`, `traded`). Two of the fifteen cells cannot
+  happen — you cannot throw a won game or rescue a lost one without the lead moving — and
+  are named anyway, for the reason `TRANSITIONS` keeps rows no evaluation reaches. The
+  names avoid the move vocabulary on purpose: `threw it` and `lost the thread` already mean
+  something precise about a single move, and one table reading like the other would suggest
+  they are the same kind of thing.
+
+  Three choices are worth knowing. The series is clamped to ±1000 like the accuracy figure,
+  or a single forced mate would be the whole of a game's measured movement. The arc reads
+  `peak`, `trough` and `end` rather than the result, so a game lost on the clock from a won
+  position is still `held it` — which is the honest reading of the graph and the point of
+  having one. And the texture counts crossings of the *level band* rather than of zero:
+  drifting either side of 0.00 is not the lead changing hands.
+
+  The table carves the real data: 13 of 15 cells populated over 270 games, the two empty
+  ones exactly the impossible pair, and the arcs almost pure against the result — `held it`
+  won 99%, `threw it` won 0%, `recovered` 95%.
 - **The slice's verdicts are a dashboard panel, read from storage.** Every figure in it
   comes off disk — the verdict is derived from the marked move and the stored `holds`, so
   the table is there the moment the page is. What it cannot invent is a reading for a move

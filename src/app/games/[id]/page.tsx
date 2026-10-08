@@ -31,6 +31,7 @@ import {
   knownTags,
   markColor,
 } from '@/lib/review'
+import { ARC_BADGE, tellingHint, tellingOf } from '@/lib/shape'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
 import type {
@@ -427,6 +428,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     ? variation.fens[variation.index]
     : replay.fens[Math.min(cursor + 1, replay.fens.length - 1)]
   const analysed = game.analysis
+  const telling = tellingOf(game)
   const shownMove = analysed?.moves.find(move => move.ply === cursor)
 
   return (
@@ -499,6 +501,19 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             >
               ⚙ d{analysed.depth}
             </StatusTag>
+          )}
+          {/*
+            What kind of game it was, which the result does not say: a win is a squeeze
+            or a gift, and a loss is one you were never in or one you had won. Read off
+            the stored evaluations, so it costs nothing and appears with the analysis.
+          */}
+          {telling && (
+            <span
+              title={tellingHint(telling)}
+              className={`px-2 py-0.5 text-xs rounded-full border shrink-0 cursor-help ${ARC_BADGE[telling.arc]}`}
+            >
+              {telling.name}
+            </span>
           )}
           <a
             href={game.url}
