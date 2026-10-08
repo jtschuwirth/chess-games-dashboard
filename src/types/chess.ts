@@ -420,6 +420,15 @@ export interface StudyPlan {
   startDate: number
   weeks: PlanWeek[]
   createdAt: number
+  /**
+   * When any device last saved it. Stamped by the write, not carried in `planBody`, so a
+   * save can never round-trip a stale one — and absent on plans written before it existed.
+   *
+   * It is what lets an unsaved draft on this device be told apart from an older one: a
+   * draft edited before the stored plan was last saved is not newer work, it is work
+   * another device has already moved past.
+   */
+  updatedAt?: number
 }
 
 export type NewStudyPlan = Omit<StudyPlan, 'id'>

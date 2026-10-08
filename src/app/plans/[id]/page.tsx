@@ -63,15 +63,22 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
         const found = plans.find(entry => entry.id === planId) ?? null
 
         /*
-          A draft on this device outranks what Firestore has, because it is by definition
-          the newer of the two: it exists only because edits were made and not saved. It
-          is restored rather than offered, and the page says so and offers to throw it
-          away — being asked a question before you can see your own plan is worse.
+          A draft on this device usually outranks what Firestore has, because it exists
+          only where edits were made and not saved. It is restored rather than offered,
+          and the page says so and offers to throw it away — being asked a question before
+          you can see your own plan is worse.
+
+          Unless another device has saved since it was written. Then it is not newer work,
+          it is work that has already been moved past, and restoring it would quietly undo
+          whatever the phone did. `updatedAt` is what tells them apart; a plan from before
+          that field existed has none, and falls back to the draft winning.
         */
         const draft = found ? readDraft(userId, planId) : null
         const body = found ? planBody(found) : null
+        const superseded =
+          draft !== null && found?.updatedAt !== undefined && draft.editedAt < found.updatedAt
 
-        if (found && draft && body && planChanged(draft.plan, body)) {
+        if (found && draft && body && !superseded && planChanged(draft.plan, body)) {
           setPlan({ ...found, ...draft.plan })
           setRestored(draft.editedAt)
         } else {

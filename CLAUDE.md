@@ -1206,6 +1206,26 @@ src/
   only thing that ever needed the new value *synchronously* was the Firestore write on every edit —
   so when that went, the ref went with it. Checked on the real cards: three clicks dispatched in one
   synchronous burst move a count from 0 to 3.
+- **Plans come from the server, and they are the one collection that does.** Everything
+  else here is cache-first because Firestore bills per document and the games collection
+  is a thousand of them. A plan is the opposite on both counts: there are one or two, and
+  it is the thing you tick off on a phone during the day and open on a laptop in the
+  evening. Cache-first meant the laptop showed what the laptop last saw — four blitz games
+  ticked off on the phone, an empty day on the desktop — because a write from another
+  device never reaches this one's cache, and the plan page has no Refresh button to force
+  one. Two billed reads a visit is the right price for a page that is wrong without them.
+  `getPlans` defaults `fresh` rather than leaving it to callers, so it cannot be forgotten
+  at a new call site.
+- **A draft only outranks the server until the server moves past it.** The device's
+  unsaved work is newer than Firestore by definition — it exists *because* it was not
+  saved — which is why it is restored rather than offered. That stops being true the
+  moment another device saves: then the draft is not newer work, it is work already moved
+  past, and restoring it would quietly undo whatever the phone did. `updatedAt` is stamped
+  by `updatePlan` itself, not carried in `planBody`, so a save can neither forget it nor
+  round-trip a stale one — and the comparison is `draft.editedAt < plan.updatedAt`. A plan
+  written before the field existed has none and falls back to the draft winning, which is
+  the safer way to be wrong: a visible banner offering Discard beats silently dropping
+  work nobody can get back.
 - **A plan is saved by a button, and what is unsaved lives on the device.** Every edit used to
   write the whole document, which lost data in two ways at once. A write *replaces* the document
   and several in flight are not ordered, so an earlier snapshot could land last and undo the three

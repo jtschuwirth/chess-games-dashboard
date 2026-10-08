@@ -415,16 +415,30 @@ export async function deletePattern(userId: string, patternId: string): Promise<
 
 const PLANS = 'studyPlans'
 
+/**
+ * Plans come from the server, not the cache, and they are the one collection that does.
+ *
+ * Everything else here is cache-first because Firestore bills per document and the games
+ * collection is a thousand of them. A plan is the opposite on both counts: there are one
+ * or two, and it is the thing you tick off on a phone during the day and open on a laptop
+ * in the evening. Cache-first meant the laptop showed what the laptop last saw — four
+ * blitz games ticked off on the phone, and an empty day on the desktop — because a write
+ * from another device never reaches this one's cache. Two billed reads a visit is the
+ * right price for a page that is wrong without them.
+ */
 export async function getPlans(userId: string, options?: ReadOptions): Promise<StudyPlan[]> {
   const ref = collection(db, 'users', userId, PLANS)
-  const snapshot = await readDocs(query(ref, orderBy('startDate', 'desc')), options)
+  const snapshot = await readDocs(query(ref, orderBy('startDate', 'desc')), {
+    fresh: true,
+    ...options,
+  })
   // the one place a stored plan becomes the shape the rest of the code expects
   return snapshot.docs.map(d => normalizePlan({ ...d.data(), id: d.id } as StudyPlan))
 }
 
 export async function savePlan(userId: string, plan: NewStudyPlan): Promise<string> {
   const ref = collection(db, 'users', userId, PLANS)
-  const docRef = await addDoc(ref, plan)
+  const docRef = await addDoc(ref, { ...plan, updatedAt: Date.now() })
   return docRef.id
 }
 
@@ -439,7 +453,9 @@ export async function updatePlan(
   planId: string,
   plan: NewStudyPlan,
 ): Promise<void> {
-  await setDoc(doc(db, 'users', userId, PLANS, planId), plan)
+  // stamped here rather than by the caller: a timestamp nobody can forget to set, and
+  // one that never travels in `planBody`, where it would be compared and written back
+  await setDoc(doc(db, 'users', userId, PLANS, planId), { ...plan, updatedAt: Date.now() })
 }
 
 export async function deletePlan(userId: string, planId: string): Promise<void> {
