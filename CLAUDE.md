@@ -750,9 +750,23 @@ src/
   engine panel and the review are all White's, as is every chess site. The axis names the
   colours and marks which one is you, and the figures are *band names* rather than numbers:
   "best you stood: winning" is true from either end of the board. The panel is folded by
-  default and remembered, like the dashboard's, and the marked moves sit under the line as
-  buttons rather than dots on it — a circle on a `100x100` viewBox stretched to the panel's
-  width is an ellipse, and the one thing a mark has to do is be the right shape to press.
+  default and remembered, like the dashboard's.
+
+  It is drawn the way a chess site draws one, because the first attempt was not and read as
+  a widget: the chart runs flush to the panel's edges with `-mx-5`, like the two wide
+  tables, since a chart inset by five millimetres of card looks like a control rather than
+  the thing you came for. The fills are the dominant element and the line is thin over
+  them. The phase dividers are the app's own `GAME_PHASES`, so the chart can be read as
+  "this went wrong in the duel" rather than "four fifths of the way along" — only the ones
+  the game actually reached, labelled under the stretch each owns, and the labels drop to
+  their move numbers below `sm` because five words do not fit across a phone.
+
+  Everything that must not be stretched lives *over* the SVG rather than inside it. The
+  chart is `preserveAspectRatio="none"`, so a circle in its coordinates is an ellipse at
+  whatever width the panel happens to be and text is worse; the colour markers, the phase
+  labels and the engine's marks are absolutely positioned HTML on top. The marks are held a
+  hair off each edge — one on the last move of a game is centred on the chart's own border,
+  and half a dot outside it reads as a rendering fault.
 - **The slice's verdicts are a dashboard panel, read from storage.** Every figure in it
   comes off disk — the verdict is derived from the marked move and the stored `holds`, so
   the table is there the moment the page is. What it cannot invent is a reading for a move
