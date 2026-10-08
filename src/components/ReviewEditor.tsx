@@ -43,7 +43,7 @@ interface Draft {
   ply: number
   san: string
   moveNumber: number
-  /** Other moves this entry covers — the same mistake, played again. */
+  /** Other moves this entry covers: you made this same mistake there too. */
   repeats: MistakeRepeat[]
   intent: string
   cause: string
@@ -813,7 +813,7 @@ export default function ReviewEditor({
                       : undefined
                   }
                 >
-                  Played again at
+                  Same mistake at
                 </Label>
 
                 <div className="flex gap-1.5 flex-wrap">

@@ -119,12 +119,14 @@ export interface ReviewedMistake {
   cpBefore: number | null
   cpAfter: number | null
   /**
-   * Other moves that are this same mistake, played again before you saw it.
+   * Other moves where you made this same mistake before you saw it.
    *
-   * Not entries of their own: one idea you failed to see for four moves running is one
-   * thing that went wrong, and writing it up four times would say the same sentence four
-   * times and count the tag four times. They carry no answers — the parent's cause, tags
-   * and alternatives are theirs. Absent on reviews written before this existed.
+   * The moves themselves are different — that is rather the point. One idea you failed to
+   * see for four turns running produces four different moves and is one thing that went
+   * wrong, so these are not entries of their own: writing it up four times would say the
+   * same sentence four times and count the tag four times. They carry no answers — the
+   * parent's cause, tags and alternatives are theirs. Absent on reviews written before
+   * this existed.
    */
   repeats?: MistakeRepeat[]
 }
