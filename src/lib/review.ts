@@ -4,6 +4,7 @@ import type {
   Color,
   GameRecord,
   GameReview,
+  MistakeRepeat,
   ProposedMove,
   ReviewedMistake,
   StoredAnalysis,
@@ -13,6 +14,15 @@ import type {
  * A review names one to three moves. The cap is the whole method: a post-mortem that
  * blames every move explains nothing, so you are forced to pick the moves that
  * actually decided the game.
+ */
+/**
+ * How many moves one review may take apart. A post-mortem that blames every move
+ * explains nothing, so the cap forces a choice.
+ *
+ * It counts entries, not moves: an entry can carry repeats — the same mistake played
+ * again before you saw it — and those are free. The cap is there to stop you writing
+ * three unrelated explanations, not to stop one explanation covering the four moves it
+ * actually covers.
  */
 export const MAX_REVIEW_MISTAKES = 3
 
@@ -178,7 +188,33 @@ export function trainableMistakes(review: GameReview | undefined): ReviewedMista
   return (review?.mistakes ?? []).filter(mistake => !mistake.unreasonable)
 }
 
-/** Tags a game contributes to the pattern counts, de-duplicated within the game. */
+/**
+ * The moves an entry covers besides its own, normalised on read.
+ *
+ * Same habit as `betterMovesOf` and the pre-game ratings: reviews written before repeats
+ * existed have no field, and they are not wrong for lacking one.
+ */
+export function repeatsOf(mistake: ReviewedMistake): MistakeRepeat[] {
+  return mistake.repeats ?? []
+}
+
+/** Every ply a review speaks about: the entries, and everything they cover. */
+export function reviewedPlies(review: GameReview | undefined): Set<number> {
+  const plies = new Set<number>()
+  for (const mistake of review?.mistakes ?? []) {
+    plies.add(mistake.ply)
+    for (const repeat of repeatsOf(mistake)) plies.add(repeat.ply)
+  }
+  return plies
+}
+
+/**
+ * Tags a game contributes to the pattern counts, de-duplicated within the game.
+ *
+ * A repeat adds nothing here, which is the point of it being a repeat: four moves of one
+ * idea you did not see is one thing to train, and counting it four times would let a
+ * single bad evening outweigh a month.
+ */
 export function tagsOf(game: GameRecord): string[] {
   const tags = new Set<string>()
   for (const mistake of trainableMistakes(game.review)) {

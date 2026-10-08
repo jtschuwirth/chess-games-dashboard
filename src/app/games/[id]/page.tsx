@@ -30,6 +30,7 @@ import {
   isFault,
   knownTags,
   markColor,
+  reviewedPlies,
 } from '@/lib/review'
 import { ARC_BADGE, tellingHint, tellingOf } from '@/lib/shape'
 import { endingOf } from '@/lib/termination'
@@ -305,10 +306,8 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     [linesByPly, replay.fens],
   )
 
-  const reviewedPlies = useMemo(
-    () => new Set((game?.review?.mistakes ?? []).map(mistake => mistake.ply)),
-    [game],
-  )
+  // every ply the review speaks about, including the ones an entry covers as repeats
+  const reviewed = useMemo(() => reviewedPlies(game?.review), [game])
 
   const tree = useMemo(() => buildOpeningTree(openings), [openings])
 
@@ -702,7 +701,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
               setShown(index)
             }}
             tags={engineTags}
-            reviewed={reviewedPlies}
+            reviewed={reviewed}
             secondsByPly={spentByPly}
             yourColor={game.color}
             linesByPly={linesByPly}

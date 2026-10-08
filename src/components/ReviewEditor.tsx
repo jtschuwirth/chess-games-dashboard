@@ -8,6 +8,7 @@ import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
   MAX_REVIEW_MISTAKES,
+  repeatsOf,
   TAG_GROUPS,
   betterMovesOf,
   candidateMoves,
@@ -16,7 +17,13 @@ import {
   markColor,
   missingFrom,
 } from '@/lib/review'
-import type { GameRecord, GameReview, ProposedMove, ReviewedMistake } from '@/types/chess'
+import type {
+  GameRecord,
+  GameReview,
+  MistakeRepeat,
+  ProposedMove,
+  ReviewedMistake,
+} from '@/types/chess'
 
 /** How a proposed move turned out when the engine looked at it. */
 type Verdict = { cpBefore: number; cpAfter: number; tag: MoveTag } | 'failed'
@@ -36,6 +43,8 @@ interface Draft {
   ply: number
   san: string
   moveNumber: number
+  /** Other moves this entry covers — the same mistake, played again. */
+  repeats: MistakeRepeat[]
   intent: string
   cause: string
   signal: string
@@ -51,6 +60,7 @@ function draftFrom(mistake: ReviewedMistake): Draft {
     ply: mistake.ply,
     san: mistake.san,
     moveNumber: mistake.moveNumber,
+    repeats: repeatsOf(mistake),
     intent: mistake.intent ?? '',
     cause: mistake.cause,
     signal: mistake.signal,
@@ -231,9 +241,14 @@ export default function ReviewEditor({
     }
   }, [alternatives])
 
-  const taken = new Set(drafts.map(draft => draft.ply))
+  /** Every ply already spoken for, as an entry of its own or as somebody's repeat. */
+  const taken = new Set(
+    drafts.flatMap(draft => [draft.ply, ...draft.repeats.map(repeat => repeat.ply)]),
+  )
+  /** Marked moves nobody has claimed: what you can take apart, and what a repeat can be. */
   const candidates = candidateMoves(game.analysis).filter(move => !taken.has(move.ply))
   const full = drafts.length >= MAX_REVIEW_MISTAKES
+
 
   function add(ply: number, cpBefore: number | null = null, cpAfter: number | null = null) {
     const move = plyByIndex.get(ply)
@@ -247,6 +262,7 @@ export default function ReviewEditor({
           ply,
           san: move.san,
           moveNumber: move.moveNumber,
+          repeats: [],
           intent: '',
           cause: '',
           signal: '',
@@ -320,6 +336,9 @@ export default function ReviewEditor({
       ply: draft.ply,
       san: draft.san,
       moveNumber: draft.moveNumber,
+      // only when there are any: Firestore rejects a document carrying `undefined`, and
+      // an empty array on every entry ever written is noise in the document
+      ...(draft.repeats.length > 0 ? { repeats: draft.repeats } : {}),
       intent: draft.intent.trim(),
       cause: draft.cause.trim(),
       signal: draft.signal.trim(),
@@ -778,6 +797,64 @@ export default function ReviewEditor({
                 </div>
               )}
             </div>
+
+            {/*
+              The same idea missed for several moves running is one mistake, not four.
+              Attaching the later moves here keeps them out of the entry list, out of the
+              three-entry cap and out of the tag counts, while still recording that it
+              went on — which is the part worth seeing later.
+            */}
+            {!draft.unreasonable && (
+              <div className="flex flex-col gap-1.5 border-t border-zinc-800 pt-3">
+                <Label
+                  hint={
+                    candidates.length === 0 && draft.repeats.length === 0
+                      ? 'Every other marked move is already spoken for.'
+                      : undefined
+                  }
+                >
+                  Played again at
+                </Label>
+
+                <div className="flex gap-1.5 flex-wrap">
+                  {draft.repeats.map(repeat => (
+                    <button
+                      key={repeat.ply}
+                      type="button"
+                      onClick={() =>
+                        patch(draft.ply, {
+                          repeats: draft.repeats.filter(entry => entry.ply !== repeat.ply),
+                        })
+                      }
+                      title="This one is its own mistake after all"
+                      className="px-2.5 py-0.5 text-xs rounded-full border border-sky-500/40 bg-sky-500/10 text-sky-300 hover:border-sky-400 transition-colors font-mono"
+                    >
+                      {plyLabel(repeat.ply, repeat.san)} ×
+                    </button>
+                  ))}
+
+                  {candidates.map(move => (
+                    <button
+                      key={move.ply}
+                      type="button"
+                      onClick={() =>
+                        patch(draft.ply, {
+                          repeats: [
+                            ...draft.repeats,
+                            { ply: move.ply, san: move.san, moveNumber: move.moveNumber },
+                          ].sort((a, b) => a.ply - b.ply),
+                        })
+                      }
+                      title="The same mistake as this entry — covered by it, not written up again"
+                      className="px-2.5 py-0.5 text-xs rounded-full border border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300 transition-colors font-mono"
+                    >
+                      + {plyLabel(move.ply, move.san)}
+                      <span className={markColor(move.tag)}> {move.tag}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer border-t border-zinc-800 pt-3">
               <input

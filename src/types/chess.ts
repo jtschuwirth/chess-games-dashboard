@@ -118,6 +118,26 @@ export interface ReviewedMistake {
   /** The engine's numbers when you reviewed it, so the entry survives a re-analysis. */
   cpBefore: number | null
   cpAfter: number | null
+  /**
+   * Other moves that are this same mistake, played again before you saw it.
+   *
+   * Not entries of their own: one idea you failed to see for four moves running is one
+   * thing that went wrong, and writing it up four times would say the same sentence four
+   * times and count the tag four times. They carry no answers — the parent's cause, tags
+   * and alternatives are theirs. Absent on reviews written before this existed.
+   */
+  repeats?: MistakeRepeat[]
+}
+
+/**
+ * A move covered by another entry. The move text is stored beside the ply for the same
+ * reason the evaluations are: a re-analysis can change which plies are marked, and an
+ * entry has to stay readable when it does.
+ */
+export interface MistakeRepeat {
+  ply: number
+  san: string
+  moveNumber: number
 }
 
 /**

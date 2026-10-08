@@ -257,6 +257,20 @@ src/
   ones are stored, since the point is a move you could actually have played. Each proposed move
   is a row of its own with its own reasoning: a bare move is a line to memorise, while the reason
   is the part that transfers to the next game.
+- **One mistake can cover several moves.** The same idea missed for four turns running is
+  one thing that went wrong, not four, and writing it up four times would say the same
+  sentence four times and count the tag four times — letting one bad evening outweigh a
+  month. An entry carries `repeats`: other marked moves it also speaks for. They hold the
+  move and nothing else, because the parent's cause, tags and alternatives are already
+  theirs, and `missingFrom` asks them for nothing. The cap stays at three because it counts
+  *entries*: it is there to stop three unrelated explanations, not to stop one explanation
+  covering the four moves it actually covers. A ply claimed as a repeat leaves the list of
+  moves to take apart, so nothing can be both a parent and a child. `tagsOf` counts the
+  parent once, which is the whole point; `reviewedPlies` returns both, so the move list
+  marks every move the review speaks about rather than only the ones with an entry under
+  them. Absent on everything written before this, and read through `repeatsOf` rather than
+  migrated — same habit as `betterMovesOf`. It is written to Firestore only when there are
+  any, since an `undefined` field rejects the whole document.
 - **The first question is what you were trying to do, and it came last.** Without it a review
   records that a move was bad and never records the thinking that produced it, which is the part
   that repeats — the same faulty idea reaches for a different move next game. `intent` is
