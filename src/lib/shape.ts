@@ -15,7 +15,7 @@
 import { ACCURACY_CAP } from './accuracy'
 import { standingOf, type Standing } from './bands'
 import { settings } from './settings'
-import { endingOf } from './termination'
+import { endingOf, type Ending } from './termination'
 import type { GameRecord, GameResult } from '@/types/chess'
 
 /**
@@ -283,32 +283,76 @@ export function textureOf(shape: GameShape): Texture {
  *
  * Null when the two agree, which is the other 96%.
  */
+export interface OffBoard {
+  /** The point you actually got. */
+  result: GameResult
+  /** What the final evaluation was sending your way, from your side. */
+  board: GameResult
+  /** The endings this row names. Empty is the catch-all for that pair, and comes last. */
+  endings: Ending[]
+  name: string
+}
+
+/**
+ * How a point went somewhere the board was not sending it, as a table rather than a
+ * cascade — the same reason `TRANSITIONS` is one: the screen that explains a rule should
+ * be able to render the rule, not a prose copy of it that drifts.
+ *
+ * Read top down; the first row matching the result, the board and the ending wins, and a
+ * row with no endings catches everything else for that pair. `board` is from your side,
+ * so `loss` is a board that was sending the point to *them*.
+ */
+export const OFF_BOARD: OffBoard[] = [
+  { result: 'win', board: 'loss', endings: ['flagged'], name: 'saved by the flag' },
+  { result: 'win', board: 'loss', endings: ['resignation'], name: 'they resigned a won game' },
+  { result: 'win', board: 'loss', endings: ['abandoned'], name: 'they walked away' },
+  { result: 'win', board: 'loss', endings: [], name: 'won it off the board' },
+
+  { result: 'win', board: 'draw', endings: ['flagged'], name: 'won on the clock' },
+  { result: 'win', board: 'draw', endings: ['resignation'], name: 'they resigned a draw' },
+  { result: 'win', board: 'draw', endings: ['abandoned'], name: 'they walked away' },
+  { result: 'win', board: 'draw', endings: [], name: 'won it off the board' },
+
+  { result: 'loss', board: 'win', endings: ['flagged'], name: 'flagged a won game' },
+  { result: 'loss', board: 'win', endings: ['resignation'], name: 'resigned a won game' },
+  { result: 'loss', board: 'win', endings: ['abandoned'], name: 'walked away from it' },
+  { result: 'loss', board: 'win', endings: [], name: 'lost it off the board' },
+
+  { result: 'loss', board: 'draw', endings: ['flagged'], name: 'flagged a level one' },
+  { result: 'loss', board: 'draw', endings: ['resignation'], name: 'resigned a level one' },
+  { result: 'loss', board: 'draw', endings: ['abandoned'], name: 'walked away from it' },
+  { result: 'loss', board: 'draw', endings: [], name: 'lost it off the board' },
+
+  { result: 'draw', board: 'win', endings: [], name: 'drew a won game' },
+  { result: 'draw', board: 'loss', endings: [], name: 'escaped with a draw' },
+]
+
 export function offBoardOf(game: GameRecord, shape: GameShape, config = settings()): string | null {
-  const said = boardSaid(shape, config)
-  if (said === game.result) return null
+  const board = boardSaid(shape, config)
+  if (board === game.result) return null
 
   const ending = endingOf(game)
+  const row =
+    OFF_BOARD.find(
+      entry =>
+        entry.result === game.result && entry.board === board && entry.endings.includes(ending),
+    ) ??
+    OFF_BOARD.find(
+      entry => entry.result === game.result && entry.board === board && entry.endings.length === 0,
+    )
 
-  if (game.result === 'win') {
-    // `said` is from your side, so a board that said loss is one they were winning
-    if (ending === 'flagged') return said === 'loss' ? 'saved by the flag' : 'won on the clock'
-    if (ending === 'resignation') {
-      return said === 'loss' ? 'they resigned a won game' : 'they resigned a draw'
-    }
-    if (ending === 'abandoned') return 'they walked away'
-    return 'won it off the board'
+  return row?.name ?? null
+}
+
+/** Every name a game can carry, for a filter that offers them. */
+export function gameNames(): { grouped: { arc: Arc; names: string[] }[]; offBoard: string[] } {
+  return {
+    grouped: ARCS.map(arc => ({
+      arc,
+      names: [...new Set(TEXTURES.map(texture => GAME_NAMES[arc][texture]))],
+    })),
+    offBoard: [...new Set(OFF_BOARD.map(row => row.name))],
   }
-
-  if (game.result === 'loss') {
-    if (ending === 'flagged') return said === 'win' ? 'flagged a won game' : 'flagged a level one'
-    if (ending === 'resignation') {
-      return said === 'win' ? 'resigned a won game' : 'resigned a level one'
-    }
-    if (ending === 'abandoned') return 'walked away from it'
-    return 'lost it off the board'
-  }
-
-  return said === 'win' ? 'drew a won game' : 'escaped with a draw'
 }
 
 export interface GameTelling {

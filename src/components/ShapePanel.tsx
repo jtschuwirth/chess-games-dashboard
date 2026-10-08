@@ -31,7 +31,16 @@ interface Cell {
  * the page is; what it cannot speak about is a game the engine has not seen, which is why
  * the heading counts the ones it is built from.
  */
-export default function ShapePanel({ games }: { games: GameRecord[] }) {
+export default function ShapePanel({
+  games,
+  active,
+  onPick,
+}: {
+  games: GameRecord[]
+  /** The shape filter in force, as the dashboard stores it. */
+  active: string | null
+  onPick: (shape: string | null) => void
+}) {
   const read = useMemo(() => {
     const analysed = games.filter(game => game.analysis && isComparable(game))
     const grid = new Map<string, Cell>()
@@ -112,11 +121,18 @@ export default function ShapePanel({ games }: { games: GameRecord[] }) {
 
           {rows.map(arc => (
             <div key={arc} className={GRID}>
-              <span
-                className={`justify-self-start text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${ARC_BADGE[arc]}`}
+              {/* the same habit as a variation row and a phase count: the figure you are
+                  reading is the filter you want next */}
+              <button
+                type="button"
+                onClick={() => onPick(active === `arc:${arc}` ? null : `arc:${arc}`)}
+                title={`Show only the games that went this way`}
+                className={`justify-self-start text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border transition-opacity hover:opacity-100 ${
+                  ARC_BADGE[arc]
+                } ${active && active !== `arc:${arc}` ? 'opacity-50' : ''}`}
               >
                 {ARC_LABEL[arc]}
-              </span>
+              </button>
               {TEXTURES.map(texture => {
                 const cell = read.grid.get(`${arc}|${texture}`)
                 return (
@@ -165,10 +181,14 @@ export default function ShapePanel({ games }: { games: GameRecord[] }) {
             {[...read.names]
               .sort((a, b) => b[1].games - a[1].games)
               .map(([name, cell]) => (
-                  <div
+                  <button
                     key={name}
-                    title={`${cell.won} won, ${cell.drawn} drawn, ${cell.games - cell.won - cell.drawn} lost`}
-                    className="break-inside-avoid pb-2.5 cursor-help"
+                    type="button"
+                    onClick={() => onPick(active === `name:${name}` ? null : `name:${name}`)}
+                    title={`${cell.won} won, ${cell.drawn} drawn, ${cell.games - cell.won - cell.drawn} lost — press to show only these`}
+                    className={`block w-full text-left break-inside-avoid pb-2.5 transition-opacity ${
+                      active === `name:${name}` ? '' : active ? 'opacity-50' : ''
+                    }`}
                   >
                     <div className="flex items-baseline gap-2">
                       <span className="flex-1 min-w-0 truncate text-xs text-zinc-300">
@@ -195,7 +215,7 @@ export default function ShapePanel({ games }: { games: GameRecord[] }) {
                         }}
                       />
                     </span>
-                  </div>
+                  </button>
               ))}
           </div>
         </div>

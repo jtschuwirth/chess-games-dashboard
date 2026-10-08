@@ -1,4 +1,5 @@
 import { isStale } from '@/lib/analysis'
+import { tellingOf } from '@/lib/shape'
 import { endingPhaseOf, timeControlKey } from '@/lib/clocks'
 import { hasReview, tagsOf } from '@/lib/review'
 import type { Color, GameRecord, Source } from '@/types/chess'
@@ -57,6 +58,16 @@ export interface GameCriteria {
    */
   mistakes: 'blunder' | 'mistake' | 'clean' | 'analysed' | 'unanalysed' | 'stale' | null
   /**
+   * What kind of game it was, as `arc:held` or `name:a clean win`.
+   *
+   * Two scopes in one field because they answer the same question at two widths — every
+   * game you threw, or the particular way you threw it — and a second dropdown for the
+   * second width would be a row of the filter panel for something nobody asks twice.
+   * Null leaves the set alone; an unanalysed game never matches either, since there is
+   * no graph to read.
+   */
+  shape: string | null
+  /**
    * Your own review: 'yes' for games you have taken apart, 'no' for the ones still
    * waiting. Null leaves the set alone.
    */
@@ -79,6 +90,7 @@ export const ALL_GAMES: GameCriteria = {
   source: 'both',
   endedIn: null,
   mistakes: null,
+  shape: null,
   reviewed: null,
   tag: null,
   color: 'both',
@@ -126,6 +138,17 @@ export function matchesCriteria(
       if (criteria.mistakes === 'mistake' && analysis.mistakes === 0) return false
       if (criteria.mistakes === 'clean' && analysis.blunders + analysis.mistakes > 0) return false
       if (criteria.mistakes === 'stale' && !isStale(game)) return false
+    }
+  }
+
+  if (criteria.shape !== null) {
+    const telling = tellingOf(game)
+    if (!telling) return false
+
+    if (criteria.shape.startsWith('arc:')) {
+      if (telling.arc !== criteria.shape.slice(4)) return false
+    } else if (criteria.shape.startsWith('name:')) {
+      if (telling.name !== criteria.shape.slice(5)) return false
     }
   }
 

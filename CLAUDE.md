@@ -8,15 +8,18 @@ win/draw/loss splits for all games or for the games that followed one of those l
 ## Core User Flow
 1. Sign in with Google (`/`)
 2. `/profile` — save chess.com / lichess usernames, and paste in a PGN to study. Syncing
-   itself lives on the dashboard.
+   itself lives on the dashboard. The two screens that explain the analysis live here as
+   well: the thresholds the move marks are a judgement about, and what a whole game's
+   descriptor is read from.
 3. `/openings` — paste an opening line, name it, optionally tie it to a colour; a line that
    continues an existing one nests under it as a sub-variation. Saved lines can be edited.
 4. `/dashboard` — Sync games sits at the top, folded, so bringing in new games does not
    mean leaving the page. The Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
    own rating band — the Control chips list the clocks you have actually played. Read overall / as White / as Black stats, the clock KPI, and the game phase
-   analysis, a table of what kind of games these were, plus a table breaking the slice
-   down by sub-variation. The "Ended in" dropdown scopes
+   analysis, a table of what kind of games these were — which doubles as a filter, since
+   clicking a row narrows the slice to it — plus a table breaking the slice down by
+   sub-variation. The "Ended in" dropdown scopes
    to games that finished in one phase (`?phase=11-15`); clicking a phase's *ended* count sets the
    same filter, the way clicking a variation row sets the opening. A game the engine has
    never seen carries a control to analyse it right there in the list; press it on several
@@ -84,6 +87,7 @@ src/
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
+│                               # GameShapePanel,
 │                               # HomeNav, RatingPanel
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
@@ -725,6 +729,19 @@ src/
   The table carves the real data: 13 of 15 cells populated over 270 games, the two empty
   ones exactly the impossible pair, and the arcs almost pure against the result — `held it`
   won 99%, `threw it` won 0%, `recovered` 95%.
+- **The screens that explain a rule render the rule.** `AnalysisSettingsPanel` draws
+  `TRANSITIONS` and `GameShapePanel` draws `GAME_NAMES` and `OFF_BOARD`, rather than
+  describing them in prose beside the code. An explanation written separately explains what
+  the rule used to be — which is why `offBoardOf` stopped being a cascade of `if`s and
+  became a table the moment it had a screen: the cascade worked and could not be rendered.
+- **The shape filter carries two widths in one field.** `shape` holds `arc:held` or
+  `name:a clean win`, because "every game I threw" and "the particular way I threw that one"
+  are the same question at two zoom levels, and a second dropdown for the second would be a
+  row of the filter panel for something nobody asks twice. An unknown value is dropped on
+  read rather than passed through, so a hand-typed URL cannot invent a category; an
+  unanalysed game matches neither, since there is no graph to read. The panel's own rows are
+  the other way in, the same habit as a variation row and a phase count: the figure you are
+  reading is the filter you want next.
 - **The graph is drawn from White's side, and the figures beside it have no side at all.**
   The player's frame was tried first, because "how did this go for me" wants up to mean
   good. It put two frames in one panel: a line rising to the right beside a figure reading

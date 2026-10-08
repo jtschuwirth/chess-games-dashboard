@@ -19,6 +19,7 @@ import VerdictPanel from '@/components/VerdictPanel'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
 import { onAnalysed, stopAll } from '@/lib/analysis-queue'
+import { ARC_LABEL, gameNames } from '@/lib/shape'
 import { getGames, getOpenings, getPatterns, getProfile, getRatingHistory } from '@/lib/firestore'
 import { patternTags } from '@/lib/pattern'
 import { sinceTimestamp } from '@/lib/game-filters'
@@ -53,6 +54,9 @@ import type {
   Source,
   UserProfile,
 } from '@/types/chess'
+
+/** Built once: the names are a table, not a reading of the games. */
+const SHAPE_OPTIONS = gameNames()
 
 const PAGE_SIZE = 50
 
@@ -120,6 +124,7 @@ function DashboardBody({ userId }: { userId: string }) {
     source,
     endedIn,
     mistakes,
+    shape,
     reviewed,
     tag,
   } = filters
@@ -496,6 +501,39 @@ function DashboardBody({ userId }: { userId: string }) {
             <option value="clean">No blunder or mistake</option>
           </select>
 
+          <FilterLabel>Shape</FilterLabel>
+          <select
+            value={shape ?? ''}
+            onChange={event => patch({ shape: event.target.value || null })}
+            title="Only analysed games have a shape, so this hides the ones the engine has not seen"
+            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600 sm:max-w-xs"
+          >
+            <option value="">Any shape</option>
+            <optgroup label="What became of the lead">
+              {SHAPE_OPTIONS.grouped.map(group => (
+                <option key={group.arc} value={`arc:${group.arc}`}>
+                  {ARC_LABEL[group.arc]}
+                </option>
+              ))}
+            </optgroup>
+            {SHAPE_OPTIONS.grouped.map(group => (
+              <optgroup key={group.arc} label={ARC_LABEL[group.arc]}>
+                {group.names.map(name => (
+                  <option key={name} value={`name:${name}`}>
+                    {name}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+            <optgroup label="Decided off the board">
+              {SHAPE_OPTIONS.offBoard.map(name => (
+                <option key={name} value={`name:${name}`}>
+                  {name}
+                </option>
+              ))}
+            </optgroup>
+          </select>
+
           <FilterLabel>Review</FilterLabel>
           <div className="flex gap-1.5 flex-wrap items-center">
             {REVIEW_OPTIONS.map(option => (
@@ -599,7 +637,11 @@ function DashboardBody({ userId }: { userId: string }) {
 
       <AccuracyPanel games={scoped} />
 
-      <ShapePanel games={scoped} />
+      <ShapePanel
+        games={scoped}
+        active={shape}
+        onPick={value => patch({ shape: value })}
+      />
 
       <VerdictPanel
         userId={userId}

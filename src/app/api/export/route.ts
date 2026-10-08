@@ -41,6 +41,8 @@ export async function GET(request: Request) {
   const criteria: GameCriteria = {
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
     endedIn: params.get('phase') || null,
+    // `arc:held` or `name:a clean win`; an unknown value is simply no filter
+    shape: params.get('shape') || null,
     mistakes: (['blunder', 'mistake', 'clean', 'analysed', 'unanalysed'] as const).includes(
       params.get('mistakes') as 'blunder',
     )

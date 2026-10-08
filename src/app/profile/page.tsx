@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import AnalysisSettingsPanel from '@/components/AnalysisSettingsPanel'
+import GameShapePanel from '@/components/GameShapePanel'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import UploadPanel from '@/components/UploadPanel'
 import { getProfile, getSettings, saveProfile } from '@/lib/firestore'
@@ -134,6 +135,9 @@ function ProfileBody({ userId }: { userId: string }) {
       </section>
 
       <AnalysisSettingsPanel userId={userId} settings={analysis} onSaved={setAnalysis} />
+
+      {/* the move descriptors are explained above; this is the same for a whole game */}
+      <GameShapePanel />
 
       <UploadPanel userId={userId} profile={profile} onUploaded={() => {}} />
     </>

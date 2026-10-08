@@ -1,4 +1,5 @@
 import { isSinceKey, type GameCriteria, type SinceKey } from '@/lib/game-filters'
+import { ARCS, GAME_NAMES, OFF_BOARD, TEXTURES, type Arc } from '@/lib/shape'
 
 /** Dropdown value meaning "every game", not a saved opening id. */
 export const ALL_OPENINGS = 'all'
@@ -20,6 +21,7 @@ export const DEFAULT_FILTERS: Filters = {
   source: 'both',
   endedIn: null,
   mistakes: null,
+  shape: null,
   reviewed: null,
   tag: null,
 }
@@ -43,6 +45,19 @@ function readReviewed(raw: string | null): GameCriteria['reviewed'] {
 }
 
 /** Anything unrecognised in the query string falls back to the default. */
+/** `arc:<id>` or `name:<name>`, and nothing else — a hand-typed URL cannot invent one. */
+function readShape(raw: string | null): string | null {
+  if (!raw) return null
+  if (raw.startsWith('arc:')) return ARCS.includes(raw.slice(4) as Arc) ? raw : null
+  if (!raw.startsWith('name:')) return null
+
+  const name = raw.slice(5)
+  const known =
+    ARCS.some(arc => TEXTURES.some(texture => GAME_NAMES[arc][texture] === name)) ||
+    OFF_BOARD.some(row => row.name === name)
+  return known ? raw : null
+}
+
 export function readFilters(params: { get: (key: string) => string | null }): Filters {
   const color = params.get('color')
   const source = params.get('source')
@@ -63,6 +78,7 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
     source: source === 'chesscom' || source === 'lichess' ? source : 'both',
     endedIn: params.get('phase') || null,
     mistakes: readMistakes(params.get('mistakes')),
+    shape: readShape(params.get('shape')),
     reviewed: readReviewed(params.get('review')),
     tag: params.get('tag') || null,
   }
@@ -80,6 +96,7 @@ export function writeFilters(filters: Filters): string {
   if (filters.source !== 'both') params.set('source', filters.source)
   if (filters.endedIn) params.set('phase', filters.endedIn)
   if (filters.mistakes) params.set('mistakes', filters.mistakes)
+  if (filters.shape) params.set('shape', filters.shape)
   if (filters.reviewed) params.set('review', filters.reviewed)
   if (filters.tag) params.set('tag', filters.tag)
 
