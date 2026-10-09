@@ -120,21 +120,37 @@ export interface Fall {
  * top and you are still on top. `losing -> mated` is the mirror — a position already lost
  * has no better move to point at, and marking the move that ends it would be blaming you
  * for that one rather than for the twenty before it. Everywhere else a band is a band.
+ *
+ * Every landing has its own row. `winning` and `better` used to merge `worse` with
+ * `losing`, on the stated grounds that falling from winning to worse and to losing is the
+ * same mistake twice over — which `level` never believed, since it has always had a row
+ * for each. It is not true. A move taking you from better to worse costs a median of
+ * 342cp in this data and one taking you from better to *losing* costs 650cp, and both
+ * were called `missed the follow-up`, as was the one-band fall to level at 161cp. One
+ * name covered a slip worth a pawn and a half and a collapse worth ten.
+ *
+ * That was the `sharp` column's doing more than the merge's: it named the failure ("there
+ * was a line and I missed it") and said nothing about where the miss left you, so it read
+ * the same from `winning -> level` as from `winning -> losing`. The landings that end the
+ * game now say so — `lost it in one` where a playable game became a lost one in a single
+ * move, and `lost a won game` where what was lost was already won.
  */
 export const TRANSITIONS: Fall[] = [
   { from: 'winning', to: ['winning', 'better'], severity: 'inaccuracy', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
   { from: 'winning', to: ['level'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'let-it-slip', stable: 'threw-it' },
-  { from: 'winning', to: ['worse', 'losing'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'turned-it-around', stable: 'threw-it-away' },
+  { from: 'winning', to: ['worse'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'turned-it-around', stable: 'threw-it-away' },
+  { from: 'winning', to: ['losing'], severity: 'blunder', sharp: 'lost-a-won-game', tight: 'lost-a-won-game', stable: 'handed-over-a-won-game' },
   { from: 'winning', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
   { from: 'better', to: ['winning', 'better'], severity: 'inaccuracy', sharp: 'missed-the-sharpest', tight: 'took-the-slow-road', stable: 'eased-off' },
   { from: 'better', to: ['level'], severity: 'mistake', sharp: 'missed-the-follow-up', tight: 'mishandled-the-edge', stable: 'let-the-edge-go' },
-  { from: 'better', to: ['worse', 'losing'], severity: 'blunder', sharp: 'missed-the-follow-up', tight: 'lost-the-plot', stable: 'gave-it-away' },
+  { from: 'better', to: ['worse'], severity: 'blunder', sharp: 'missed-the-follow-up', tight: 'lost-the-plot', stable: 'gave-it-away' },
+  { from: 'better', to: ['losing'], severity: 'blunder', sharp: 'lost-it-in-one', tight: 'lost-it-in-one', stable: 'gave-the-game-away' },
   { from: 'better', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
   { from: 'level', to: ['winning', 'better', 'level'], severity: 'inaccuracy', sharp: 'missed-a-chance', tight: 'drifted', stable: 'a-loose-move' },
   { from: 'level', to: ['worse'], severity: 'mistake', sharp: 'missed-the-line', tight: 'went-the-wrong-way', stable: 'careless' },
-  { from: 'level', to: ['losing'], severity: 'blunder', sharp: 'missed-the-line', tight: 'came-apart', stable: 'gave-it-away' },
+  { from: 'level', to: ['losing'], severity: 'blunder', sharp: 'lost-it-in-one', tight: 'came-apart', stable: 'gave-the-game-away' },
   { from: 'level', to: ['mate'], severity: 'blunder', sharp: 'walked-into-mate', tight: 'walked-into-mate', stable: 'walked-into-mate' },
 
   { from: 'worse', to: ['winning', 'better', 'level', 'worse'], severity: 'inaccuracy', sharp: 'missed-the-defence', tight: 'defended-badly', stable: 'made-it-worse' },

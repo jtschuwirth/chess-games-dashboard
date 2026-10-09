@@ -357,6 +357,10 @@ export function readVerdict(
 
 export const VERDICT_LABEL: Record<VerdictKind, string> = {
   'walked-into-mate': 'walked into mate',
+  'lost-a-won-game': 'lost a won game',
+  'handed-over-a-won-game': 'handed over a won game',
+  'lost-it-in-one': 'lost it in one',
+  'gave-the-game-away': 'gave the game away',
   'missed-the-kill': 'missed the kill',
   'let-the-win-go': 'let the win go',
   'lost-the-thread': 'lost the thread',

@@ -212,6 +212,10 @@ export type NewOpeningLine = Omit<OpeningLine, 'id'>
  */
 export type VerdictKind =
   | 'walked-into-mate'
+  | 'lost-a-won-game'
+  | 'handed-over-a-won-game'
+  | 'lost-it-in-one'
+  | 'gave-the-game-away'
   | 'missed-the-kill'
   | 'let-the-win-go'
   | 'lost-the-thread'

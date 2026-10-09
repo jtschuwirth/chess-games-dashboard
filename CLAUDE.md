@@ -492,13 +492,15 @@ src/
   |---|---|---|---|
   | winning → better | missed the kill | slowed it down | let the win go |
   | winning → level | lost the thread | let it slip | threw it |
-  | winning → worse or losing | lost the thread | turned it around | threw it away |
+  | winning → worse | lost the thread | turned it around | threw it away |
+  | winning → losing | lost a won game | lost a won game | handed over a won game |
   | better → better | missed the sharpest | took the slow road | eased off |
   | better → level | missed the follow-up | mishandled the edge | let the edge go |
-  | better → worse or losing | missed the follow-up | lost the plot | gave it away |
+  | better → worse | missed the follow-up | lost the plot | gave it away |
+  | better → losing | lost it in one | lost it in one | gave the game away |
   | level → level | missed a chance | drifted | a loose move |
   | level → worse | missed the line | went the wrong way | a careless move |
-  | level → losing | missed the line | came apart | gave it away |
+  | level → losing | lost it in one | came apart | gave the game away |
   | worse → worse | missed the defence | defended badly | made it worse |
   | worse → losing | missed the defence | cracked | let it go |
   | losing → losing | missed the save | hung on badly | already lost |
@@ -506,9 +508,24 @@ src/
 
   The columns are three different failures, and the names say which: a `sharp` position
   had a line in it, so its names begin `missed`; a `tight` one had a few playable moves;
-  a `stable` one forgave anything, so its names say what you did with all that room. Cells share a name where the
-  distinction stops carrying anything — falling from winning to worse and to losing is the
-  same mistake twice over. The badge is coloured by where you fell *from*, which is the
+  a `stable` one forgave anything, so its names say what you did with all that room. Cells
+  still share a name where the distinction stops carrying anything, but *where you landed*
+  is no longer one of those places. `winning` and `better` used to merge `worse` with
+  `losing` on the grounds that falling to either is the same mistake twice over — which
+  `level` never believed, since it has always had a row for each, and which the data says
+  is wrong: from better, a move landing in `worse` costs a median 342cp and one landing in
+  `losing` costs 650cp, and both were called `missed the follow-up`, as was the one-band
+  fall to level at 161cp. One name over a slip worth a pawn and a half and a collapse worth
+  ten.
+
+  That was the `sharp` column's doing more than the merge's. It named the *failure* —
+  there was a line and I missed it — and said nothing about where the miss left you, so it
+  read identically from `winning → level` and `winning → losing`: 105 moves under
+  `lost the thread`, 154 under `missed the follow-up`, 181 under `missed the line`. The
+  landings that end the game now say so, because a name that sounds like a missed
+  opportunity is the wrong thing to read on a game that is already over: `lost it in one`
+  where a playable game became a lost one in a single move, and `lost a won game` where
+  what was lost was already won. The badge is coloured by where you fell *from*, which is the
   axis that says how much was at stake; the landing and the breadth are words beside it,
   because three hues is three things to decode on a row you scan.
 - **The table is total, and most of it is unreachable.** A fault never leaves you winning
