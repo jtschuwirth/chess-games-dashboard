@@ -47,6 +47,7 @@ export const TAG_GROUPS: TagGroup[] = [
     name: 'Tactics missed',
     tags: [
       'hanging piece',
+      'hanging pawn',
       'fork',
       'pin',
       'skewer',
