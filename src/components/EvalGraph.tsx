@@ -6,7 +6,14 @@ import { ACCURACY_CAP } from '@/lib/accuracy'
 import { STANDING_LABEL, standingOf } from '@/lib/bands'
 import { gamePhases } from '@/lib/clocks'
 import { formatEval, isFault } from '@/lib/review'
-import { ARC_BADGE, ARC_LABEL, TEXTURE_LABEL, tellingHint, tellingOf } from '@/lib/shape'
+import {
+  ARC_BADGE,
+  ARC_LABEL,
+  TEXTURE_LABEL,
+  decidedPhrase,
+  tellingHint,
+  tellingOf,
+} from '@/lib/shape'
 import type { GameRecord } from '@/types/chess'
 
 /**
@@ -31,6 +38,7 @@ export default function EvalGraph({
   onPickPly: (ply: number) => void
 }) {
   const telling = useMemo(() => tellingOf(game), [game])
+  const decided = useMemo(() => (telling ? decidedPhrase(telling) : null), [telling])
   /** Gradient and clip ids are document-wide; two graphs on a page must not share them. */
   const id = useId().replace(/:/g, '')
 
@@ -228,8 +236,19 @@ export default function EvalGraph({
         best you stood <Fact>{STANDING_LABEL[standingOf(telling.shape.peak)]}</Fact>, worst{' '}
         <Fact>{STANDING_LABEL[standingOf(telling.shape.trough)]}</Fact>
         <Dot />
-        settled with{' '}
-        <Fact>{Math.round((1 - (telling.shape.settledAt ?? 1)) * 100)}% left</Fact>
+        {/*
+          Where it turned, rather than how far through it turned. The percentage was
+          the same measurement in the form you have to convert before it means
+          anything — "settled with 23% left" is "threw it in the pre-endgame" read off
+          a ruler. The share is still in the tooltip for anyone who wants it.
+        */}
+        {decided ? (
+          <Fact>{decided}</Fact>
+        ) : (
+          <>
+            settled with <Fact>{Math.round((1 - (telling.shape.settledAt ?? 1)) * 100)}% left</Fact>
+          </>
+        )}
         {telling.offBoard && (
           <>
             <Dot />

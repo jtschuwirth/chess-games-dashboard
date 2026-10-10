@@ -14,6 +14,7 @@
  */
 import { ACCURACY_CAP } from './accuracy'
 import { standingOf, type Standing } from './bands'
+import { gamePhases, type GamePhase } from './clocks'
 import { settings } from './settings'
 import { endingOf, type Ending } from './termination'
 import type { GameRecord, GameResult } from '@/types/chess'
@@ -74,6 +75,14 @@ export interface GameShape {
    * Null when the game never settles, which only happens when it ends on its first point.
    */
   settledAt: number | null
+  /**
+   * The same moment as an index into `points`, kept beside the share of it.
+   *
+   * The share is for drawing; this is for saying which of your moves it was, and a
+   * move number recovered by multiplying a rounded fraction back out is a move number
+   * that is sometimes off by one.
+   */
+  settledIndex: number | null
 }
 
 export function shapeOf(game: GameRecord, config = settings()): GameShape | null {
@@ -134,7 +143,55 @@ export function shapeOf(game: GameRecord, config = settings()): GameShape | null
     swings,
     levelShare: inLevel / points.length,
     settledAt: points.length < 2 ? null : settled / (points.length - 1),
+    settledIndex: points.length < 2 ? null : settled,
   }
+}
+
+/**
+ * Which phase of the game decided it.
+ *
+ * `settledIndex` is the last moment the game was in a different band from the one it
+ * finished in — which is the moment every arc is named after, whichever arc it is. A
+ * game you recovered settled when you stopped losing; one you threw settled when you
+ * stopped winning; one you never had settled when it went. So the phase holding that
+ * point is the phase the game turned in, and no separate rule per arc is needed.
+ *
+ * `evalSeries` puts two points on each of your moves — before it and after it — so a
+ * point index halves into a move number, which is what the phases count in.
+ */
+export function decidedIn(shape: GameShape, config = settings()): GamePhase | null {
+  if (shape.settledIndex === null) return null
+
+  const move = Math.floor(shape.settledIndex / 2) + 1
+  return gamePhases(config).find(phase => move >= phase.from && move <= phase.to) ?? null
+}
+
+/**
+ * How each arc reads with a phase after it.
+ *
+ * `ARC_LABEL` cannot simply take "in the …" — "never had it in the opening" says the
+ * wrong thing, and "shared in the endgame" says nothing. These are the same five
+ * arcs told as what happened rather than as what became of the lead.
+ */
+export const DECIDED_IN: Record<Arc, string> = {
+  held: 'took it in',
+  recovered: 'recovered in',
+  threw: 'threw it in',
+  'never-had-it': 'lost it in',
+  shared: 'levelled out in',
+}
+
+/**
+ * "recovered in the tactical / strategic duel" — the arc and where it happened.
+ *
+ * It reads as well as you have named your phases, which is the point of their being
+ * yours: call that stretch the middlegame and this says "recovered in the
+ * middlegame". Null on a game with no turning point to name.
+ */
+export function decidedPhrase(telling: GameTelling, config = settings()): string | null {
+  const phase = decidedIn(telling.shape, config)
+  if (!phase) return null
+  return `${DECIDED_IN[telling.arc]} the ${phase.name.toLowerCase()}`
 }
 
 /** The three standings a shape is read through, for anything that wants to name it. */
@@ -391,8 +448,11 @@ export function tellingHint(telling: GameTelling, config = settings()): string {
     ? ` The board was not sending the point this way — ${GAME_NAMES[telling.arc][telling.texture]} on the evaluations alone.`
     : ''
 
+  const decided = decidedPhrase(telling, config)
+  const where = decided ? ` You ${decided}, ` : ' Settled '
+
   return (
-    `Best you stood: ${peak}. Worst: ${trough}. ${lead} ` +
-    `Settled with ${Math.round((1 - (telling.shape.settledAt ?? 1)) * 100)}% of the game left.${board}`
+    `Best you stood: ${peak}. Worst: ${trough}. ${lead}` +
+    `${where}with ${Math.round((1 - (telling.shape.settledAt ?? 1)) * 100)}% of the game left.${board}`
   )
 }

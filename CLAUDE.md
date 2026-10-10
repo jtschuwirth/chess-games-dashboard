@@ -761,6 +761,19 @@ src/
   The table carves the real data: 13 of 15 cells populated over 270 games, the two empty
   ones exactly the impossible pair, and the arcs almost pure against the result — `held it`
   won 99%, `threw it` won 0%, `recovered` 95%.
+- **Where a game turned is a number it already had.** `settledAt` walks back from the
+  end to the last point in a different band from the one the game finished in — which
+  is the moment *every* arc is named after, whichever arc it is: a game you recovered
+  settled when you stopped losing, one you threw settled when you stopped winning, one
+  you never had settled when it went. So the phase holding that point is the phase the
+  game turned in, and `decidedIn` needs no rule per arc. The graph says "lost it in the
+  tactical / strategic duel" where it used to say "settled with 23% left" — the same
+  measurement, one of them in a form you have to convert before it means anything.
+  `DECIDED_IN` is a second set of arc labels rather than `ARC_LABEL` with "in the" after
+  it, because "never had it in the opening" says the wrong thing and "shared in the
+  endgame" says nothing. It reads as well as you have named your phases, which is the
+  point of their being yours.
+
 - **The screens that explain a rule render the rule.** `AnalysisSettingsPanel` draws
   `TRANSITIONS` and `GameShapePanel` draws `GAME_NAMES` and `OFF_BOARD`, rather than
   describing them in prose beside the code. An explanation written separately explains what
