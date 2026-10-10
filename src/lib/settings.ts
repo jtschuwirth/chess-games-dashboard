@@ -39,7 +39,39 @@ export interface AnalysisSettings {
   mistake: number
   /** Which marks to count as faults. The rest are recorded and left off the screen. */
   marks: Severity[]
+  /** The stretches a game is read in, in your own move numbers. */
+  phases: PhaseSetting[]
 }
+
+/**
+ * One stretch of a game.
+ *
+ * Only where it *starts* is stored. A phase runs until the next one begins and the
+ * last runs to the end, so the thing the old hardcoded table had to be careful about
+ * — contiguous, no overlap, no gap; the original sketch had 16-30 and 30+ both
+ * containing move 30 — is not something this shape can express wrongly. There is no
+ * `to` to disagree with the next `from`.
+ *
+ * The numbers are your own moves, not plies: move 16 is your sixteenth move whichever
+ * colour you had.
+ */
+export interface PhaseSetting {
+  name: string
+  /** Your first move of this phase. The first phase always starts at 1. */
+  from: number
+}
+
+export const DEFAULT_PHASES: PhaseSetting[] = [
+  { name: 'Opening setup', from: 1 },
+  { name: 'Variation development', from: 5 },
+  { name: 'Structure definition', from: 11 },
+  { name: 'Tactical / strategic duel', from: 16 },
+  { name: 'Pre-endgame', from: 31 },
+  { name: 'Endgame', from: 51 },
+]
+
+/** Past this a phase table is a wall of rows and the graph has no room to label them. */
+export const MAX_PHASES = 8
 
 export const DEFAULT_SETTINGS: AnalysisSettings = {
   level: 100,
@@ -49,6 +81,7 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   mistake: 100,
   // an inaccuracy is by definition a move the position excused; it is recorded, not shown
   marks: ['mistake', 'blunder'],
+  phases: DEFAULT_PHASES,
 }
 
 /** What each one may be set to. A number outside its range would read as a broken app. */
@@ -91,11 +124,49 @@ export function normalizeSettings(raw: Partial<AnalysisSettings> | undefined): A
       // nothing marked is a screen with nothing on it, which is never what was meant
       if (kept.length > 0) next.marks = kept
     }
+
+    if (Array.isArray(raw.phases)) {
+      const kept = normalizePhases(raw.phases)
+      // a game with no phases at all is a table with no rows; keep the defaults
+      if (kept.length > 0) next.phases = kept
+    }
   }
 
   // a level band wider than the winning one would leave `better` with nothing in it
   next.winning = Math.max(next.winning, next.level + 1)
   return next
+}
+
+/**
+ * Stored phases in the shape the rest of the code expects.
+ *
+ * Sorted, strictly increasing, and anchored at move one — two phases starting on the
+ * same move would make one of them empty, and a first phase starting at move three
+ * would leave your first two moves in no phase at all. Both are fixed here rather
+ * than refused, because the editor writes through this on every keystroke and a
+ * number you are half way through typing should not be an error.
+ */
+export function normalizePhases(raw: unknown[]): PhaseSetting[] {
+  const cleaned = raw
+    .filter((entry): entry is PhaseSetting => Boolean(entry) && typeof entry === 'object')
+    .map((entry, index) => ({
+      name: typeof entry.name === 'string' && entry.name.trim().length > 0
+        ? entry.name.trim()
+        : `Phase ${index + 1}`,
+      from: Math.max(1, Math.round(Number(entry.from)) || 1),
+    }))
+    .sort((a, b) => a.from - b.from)
+    .slice(0, MAX_PHASES)
+
+  // strictly increasing: a repeated start is a phase with no moves in it
+  const out: PhaseSetting[] = []
+  for (const phase of cleaned) {
+    const previous = out[out.length - 1]
+    out.push(previous && phase.from <= previous.from ? { ...phase, from: previous.from + 1 } : phase)
+  }
+
+  if (out.length > 0) out[0] = { ...out[0], from: 1 }
+  return out
 }
 
 /**

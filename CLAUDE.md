@@ -138,10 +138,25 @@ src/
 - **Phase entry clock is normalized to the control's base time**, not absolute seconds, so 3+2 and
   15+10 can be compared in one column. It can read above 100% when the increment has outpaced the
   time spent.
-- **Game phases are the user's own named segments**, in their own move numbers, set in `PHASES` in
-  `lib/clocks.ts`: opening setup (1-4), variation development (5-10), structure definition (11-15),
-  tactical / strategic duel (16-30), pre-endgame (31+). They are contiguous with no overlap — the
-  original sketch had 16-30 and 30+ both containing move 30.
+- **Game phases are the user's own named segments**, in their own move numbers, and they
+  are a setting rather than a constant. `phases` on the account holds only where each one
+  *begins*; `gamePhases` in `lib/clocks.ts` turns that into ranges, each ending where the
+  next starts and the last running to the end. Contiguity is therefore not something to be
+  careful about — the original sketch had 16-30 and 30+ both containing move 30, and that
+  is now unrepresentable, because there is no second number to disagree with the first.
+  The defaults are opening setup (1-4), variation development (5-10), structure definition
+  (11-15), tactical / strategic duel (16-30), pre-endgame (31-50), endgame (51+); the last
+  two were one bucket of 581 games until it was split.
+
+  The editor does *not* sort as you type. It did, and setting a phase to start at move 4
+  re-sorted its row to second place halfway through typing "45", so the "5" landed in
+  whichever field had taken its place — the same shape of bug as a tag picker that closes
+  itself when you pick the first tag. It tidies on blur instead, and a phase whose
+  successor starts before it does reads `empty` until then.
+
+  The label is also the stored filter value (`?phase=11-15`), so moving a boundary renames
+  a phase and a link to the old one stops matching. That is the honest outcome: the slice
+  it named no longer exists.
 - **A move is graded by the band it fell out of, not by what it cost.** Centipawn loss
   asks "how much did this cost"; the question is "what did it cost *you*", and from a won
   position those have different answers. Simplifying from +9.0 to +3.5 gives away five

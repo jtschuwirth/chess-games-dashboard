@@ -43,7 +43,7 @@ import {
   type Filters,
 } from '@/lib/dashboard-filters'
 import { SINCE_OPTIONS } from '@/lib/game-filters'
-import { GAME_PHASES, computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
+import { computeClockStats, computePhases, gamePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
 import { SOURCE_LABEL } from '@/types/chess'
 import type {
@@ -477,7 +477,7 @@ function DashboardBody({ userId }: { userId: string }) {
             className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600 sm:max-w-xs"
           >
             <option value="">Any phase</option>
-            {GAME_PHASES.map(phase => (
+            {gamePhases().map(phase => (
               <option key={phase.label} value={phase.label}>
                 {phase.name} (moves {phase.label})
               </option>

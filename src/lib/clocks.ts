@@ -1,3 +1,4 @@
+import { settings, type AnalysisSettings } from './settings'
 import { computeStats, type StatBlock } from './stats'
 import { isFlagged } from './termination'
 import type { GameRecord } from '@/types/chess'
@@ -187,14 +188,27 @@ export interface GamePhase {
   to: number
 }
 
-/** Phases of a game, in the user's own move numbers. */
-export const GAME_PHASES: GamePhase[] = [
-  { name: 'Opening setup', label: '1-4', from: 1, to: 4 },
-  { name: 'Variation development', label: '5-10', from: 5, to: 10 },
-  { name: 'Structure definition', label: '11-15', from: 11, to: 15 },
-  { name: 'Tactical / strategic duel', label: '16-30', from: 16, to: 30 },
-  { name: 'Pre-endgame', label: '31+', from: 31, to: Infinity },
-]
+/**
+ * Phases of a game, in your own move numbers, from the account's own settings.
+ *
+ * Each one ends where the next begins and the last runs to the end, so they are
+ * contiguous by construction rather than by care — the stored shape holds only where
+ * each starts. A function rather than a constant now that the boundaries are yours to
+ * move; every caller reads it at the moment it needs it, so changing a boundary
+ * re-reads your whole history with no engine and nothing stored.
+ */
+export function gamePhases(config: AnalysisSettings = settings()): GamePhase[] {
+  return config.phases.map((phase, index) => {
+    const next = config.phases[index + 1]
+    const to = next ? next.from - 1 : Infinity
+    return {
+      name: phase.name,
+      label: next ? (phase.from === to ? `${phase.from}` : `${phase.from}-${to}`) : `${phase.from}+`,
+      from: phase.from,
+      to,
+    }
+  })
+}
 
 /** How many moves the user themselves made, which is what the phase ranges count. */
 export function userMoveCount(game: GameRecord): number {
@@ -202,10 +216,16 @@ export function userMoveCount(game: GameRecord): number {
   return Math.max(0, Math.floor((game.moves.length - offset + 1) / 2))
 }
 
-/** The phase a game ended in, by the label used in the phase table. */
-export function endingPhaseOf(game: GameRecord): string | null {
+/**
+ * The phase a game ended in, by the label the phase table uses.
+ *
+ * The label is also the stored filter value (`?phase=11-15`). Moving a boundary
+ * therefore renames a phase, and a link to the old one stops matching — which is the
+ * honest outcome: the slice it named no longer exists.
+ */
+export function endingPhaseOf(game: GameRecord, config: AnalysisSettings = settings()): string | null {
   const moves = userMoveCount(game)
-  return GAME_PHASES.find(phase => moves >= phase.from && moves <= phase.to)?.label ?? null
+  return gamePhases(config).find(phase => moves >= phase.from && moves <= phase.to)?.label ?? null
 }
 
 export interface PhaseBucket {
@@ -250,7 +270,10 @@ export interface PhaseBucket {
  * of each game lands. Scoped by whatever filters are active, so picking an opening
  * answers "which middlegames cost me time".
  */
-export function computePhases(games: GameRecord[]): PhaseBucket[] {
+export function computePhases(
+  games: GameRecord[],
+  config: AnalysisSettings = settings(),
+): PhaseBucket[] {
   const usages = games
     .map(clockUsage)
     .filter((usage): usage is ClockUsage => usage !== null)
@@ -266,7 +289,7 @@ export function computePhases(games: GameRecord[]): PhaseBucket[] {
   const lengths = games.map(game => ({ game, moves: userMoveCount(game) }))
   const analysed = games.filter(game => game.analysis)
 
-  return GAME_PHASES.map(phase => {
+  return gamePhases(config).map(phase => {
     const seconds: number[] = []
     for (const usage of usages) {
       for (let move = phase.from; move <= Math.min(phase.to, usage.spent.length); move++) {

@@ -12,13 +12,17 @@ import {
 import { saveSettings } from '@/lib/firestore'
 import { BREADTHS, BREADTH_LABEL, SEVERITY_LABEL, SEVERITY_MARK } from '@/lib/bands'
 import {
+  MAX_PHASES,
   SETTING_RANGE,
   SEVERITIES,
+  normalizePhases,
   normalizeSettings,
   type AnalysisSettings,
   type NumberSetting,
+  type PhaseSetting,
   type Severity,
 } from '@/lib/settings'
+import { gamePhases } from '@/lib/clocks'
 
 /** In pawns on screen, in centipawns underneath. Nobody thinks in centipawns. */
 function pawns(cp: number): string {
@@ -131,6 +135,27 @@ export default function AnalysisSettingsPanel({
     setSaved(false)
   }
 
+  /**
+   * The phases exactly as typed, in the order the rows are in.
+   *
+   * Deliberately *not* normalised here. Sorting on every keystroke moves the row you
+   * are typing in: setting a phase to start at move 4 re-sorted it to second place
+   * halfway through typing "45", and the "5" went into whichever field had taken its
+   * place. The same shape of bug as a tag picker that closes itself when you pick the
+   * first tag — state derived on every change, reordering the thing under your hand.
+   *
+   * Tidying happens on blur instead, which is a moment you have finished.
+   */
+  function setPhases(next: PhaseSetting[]) {
+    setDraft(prev => ({ ...prev, phases: next }))
+    setSaved(false)
+  }
+
+  /** Sort, anchor and separate — once you have left the field. */
+  function tidyPhases() {
+    setDraft(prev => ({ ...prev, phases: normalizePhases(prev.phases) }))
+  }
+
   async function save() {
     setSaving(true)
     setError(null)
@@ -148,6 +173,13 @@ export default function AnalysisSettingsPanel({
 
   // what the numbers actually divide the board into, written out as you type
   const ready = normalizeSettings(draft)
+  /**
+   * The ranges the rows as typed would produce — in the order they are shown, not the
+   * sorted order, so a range always belongs to the row beside it. A phase whose next
+   * one starts earlier has no moves in it, and says so rather than printing a
+   * backwards range.
+   */
+  const ranges = gamePhases({ ...ready, phases: draft.phases })
 
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-5">
@@ -259,6 +291,106 @@ export default function AnalysisSettingsPanel({
           Everything is recorded either way; this is what reaches a screen, a count and a
           review.
         </span>
+      </div>
+
+      {/*
+        The stretches a game is read in. Only where each one begins is set: a phase
+        runs until the next starts, so there is no second number to disagree with the
+        first, and no way to leave a gap or an overlap between them.
+
+        The ranges shown beside the names are the ones the phase table and the eval
+        graph will use, worked out the same way they work them out — the screen that
+        sets the rule shows what the rule produces.
+      */}
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs uppercase tracking-wide text-zinc-500">Phases of a game</span>
+        <span className="text-xs text-zinc-600">
+          In your own moves, not plies. Each runs until the next begins; the last runs to
+          the end.
+        </span>
+
+        <div className="flex flex-col gap-1.5 mt-1">
+          {draft.phases.map((phase, index) => {
+            const range = ranges[index]
+            const first = index === 0
+
+            return (
+              <div key={index} className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={phase.from}
+                  min={1}
+                  disabled={first}
+                  onChange={event => {
+                    const typed = Math.round(Number(event.target.value))
+                    setPhases(
+                      draft.phases.map((entry, at) =>
+                        at === index
+                          ? { ...entry, from: Number.isFinite(typed) ? typed : entry.from }
+                          : entry,
+                      ),
+                    )
+                  }}
+                  onBlur={tidyPhases}
+                  title={first ? 'A game starts at move one' : 'The first of your moves in this phase'}
+                  className="w-16 bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-600 tabular-nums disabled:opacity-40"
+                />
+                <input
+                  value={phase.name}
+                  onChange={event =>
+                    setPhases(
+                      draft.phases.map((entry, at) =>
+                        at === index ? { ...entry, name: event.target.value } : entry,
+                      ),
+                    )
+                  }
+                  aria-label="Phase name"
+                  className="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded-md px-2 py-1 text-sm text-zinc-100 outline-none focus:border-zinc-600"
+                />
+                <span
+                  className={`w-16 text-xs font-mono tabular-nums text-right ${
+                    range && range.to < range.from ? 'text-amber-400' : 'text-zinc-500'
+                  }`}
+                  title={
+                    range && range.to < range.from
+                      ? 'Nothing falls in this phase — it is sorted when you leave the field'
+                      : undefined
+                  }
+                >
+                  {range && range.to < range.from ? 'empty' : range?.label}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setPhases(draft.phases.filter((entry, at) => at !== index))}
+                  disabled={draft.phases.length < 2}
+                  title={draft.phases.length < 2 ? 'A game needs at least one phase' : 'Remove this phase'}
+                  aria-label="Remove this phase"
+                  className="w-5 text-sm text-zinc-700 hover:text-red-400 transition-colors disabled:opacity-30 disabled:hover:text-zinc-700"
+                >
+                  ×
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        {draft.phases.length < MAX_PHASES && (
+          <button
+            type="button"
+            onClick={() =>
+              setPhases([
+                ...draft.phases,
+                {
+                  name: `Phase ${draft.phases.length + 1}`,
+                  from: (draft.phases[draft.phases.length - 1]?.from ?? 0) + 10,
+                },
+              ])
+            }
+            className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+          >
+            + Add a phase
+          </button>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

@@ -4,7 +4,7 @@ import { useId, useMemo } from 'react'
 import Panel from '@/components/Section'
 import { ACCURACY_CAP } from '@/lib/accuracy'
 import { STANDING_LABEL, standingOf } from '@/lib/bands'
-import { GAME_PHASES } from '@/lib/clocks'
+import { gamePhases } from '@/lib/clocks'
 import { formatEval, isFault } from '@/lib/review'
 import { ARC_BADGE, ARC_LABEL, TEXTURE_LABEL, tellingHint, tellingOf } from '@/lib/shape'
 import type { GameRecord } from '@/types/chess'
@@ -79,7 +79,7 @@ export default function EvalGraph({
    * than "this went wrong four fifths of the way along".
    */
   const lastMove = moves.length === 0 ? 0 : moves[moves.length - 1].moveNumber
-  const phases = GAME_PHASES.filter(phase => phase.from <= lastMove).map(phase => {
+  const phases = gamePhases().filter(phase => phase.from <= lastMove).map(phase => {
     const from = x((phase.from - 1) * 2)
     const to = phase.to >= lastMove ? 100 : x(phase.to * 2)
     return { ...phase, from, to, middle: (from + to) / 2 }
@@ -214,7 +214,7 @@ export default function EvalGraph({
             >
               {/* five words do not fit across a phone; the move numbers always do */}
               <span className="sm:hidden">{phase.label}</span>
-              <span className="hidden sm:inline">{SHORT[phase.name] ?? phase.label}</span>
+              <span className="hidden sm:inline">{shortName(phase.name)}</span>
             </span>
           ))}
         </div>
@@ -242,13 +242,20 @@ export default function EvalGraph({
 }
 
 /** The app's own phase names, short enough to sit under a fifth of a chart. */
-const SHORT: Record<string, string> = {
-  'Opening setup': 'opening',
-  'Variation development': 'development',
-  'Structure definition': 'structure',
-  'Tactical / strategic duel': 'the duel',
-  'Pre-endgame': 'endgame',
+/**
+ * A phase name short enough to sit under a sixth of a chart.
+ *
+ * The first word of whatever you called it. Derived rather than looked up, now that
+ * the names are yours to write — and the first word rather than the longest because
+ * it is a rule you can predict: "Structure definition" shortens to `structure`, not
+ * to `definition`. If the short form reads badly, the fix is to rename the phase,
+ * which is now a thing you can do.
+ */
+function shortName(name: string): string {
+  const first = name.split(/[\s/]+/).find(word => word.length > 0)
+  return (first ?? name).toLowerCase()
 }
+
 
 /** Which way the evaluations were pointing, for a game the ending decided instead. */
 function boardWord(end: number): string {

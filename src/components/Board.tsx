@@ -177,7 +177,28 @@ export default function Board({
               {piece && (
                 <span
                   draggable={canLift}
-                  onDragStart={() => pickUp(square.name, piece)}
+                  onDragStart={event => {
+                    if (!pickUp(square.name, piece)) {
+                      event.preventDefault()
+                      return
+                    }
+
+                    /*
+                      The browser's own drag image is a snapshot of the region the
+                      dragged element occupies, and this one is a transparent span
+                      lying over a coloured square — so the square came with it, and a
+                      cream block floated around the board under the piece.
+
+                      The `<svg>` inside has a transparent background of its own, so
+                      handing that over as the drag image gives the piece alone.
+                      Grabbed at its centre, which is where you picked it up.
+                    */
+                    const art = event.currentTarget.querySelector('svg')
+                    if (art) {
+                      const box = art.getBoundingClientRect()
+                      event.dataTransfer.setDragImage(art, box.width / 2, box.height / 2)
+                    }
+                  }}
                   onDragEnd={() => setSelected(null)}
                   className={`absolute inset-0 ${canLift ? 'cursor-grab active:cursor-grabbing' : ''}`}
                 >
