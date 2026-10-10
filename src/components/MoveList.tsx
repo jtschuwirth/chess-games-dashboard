@@ -1,40 +1,42 @@
 'use client'
 
 import { useEffect, useRef } from 'react'
-import { lineTokens, type Ply } from '@/lib/board'
+import { MoveRun, type BranchStyle } from '@/components/MoveTreeBoard'
+import { type Ply } from '@/lib/board'
+import { mainPath, nodeAt, type MoveNode, type MoveTree, type Path } from '@/lib/movetree'
 import { markColor } from '@/lib/review'
-import type { Color, ProposedMove } from '@/types/chess'
-
-/** Which move of which line is on the board, when one is being played out. */
-export interface ActiveLine {
-  ply: number
-  lineIndex: number
-  moveIndex: number
-}
+import type { Color } from '@/types/chess'
 
 /**
- * The game's moves, two per row, with the lines you proposed in review nested under the
- * move they replace — where a board's analysis panel puts a variation, rather than off
- * under the board where you have to be standing on the right move to see it.
+ * The game's moves, two per row, with every variation nested under the move it
+ * replaces — where a board's analysis panel puts one, rather than off under the board
+ * where you have to be standing on the right move to see it.
  *
- * Every move of a line is clickable, so a line can be joined part way rather than only
- * played from its start.
+ * It used to nest only the lines a review proposed, replayed through a bespoke
+ * `Variation` object with its own cursor and its own stepping rules. Now there is one
+ * tree holding the game, the lines you have played out and the ones your review
+ * proposes, and this renders whatever is in it. Every move of every branch is
+ * clickable, so a line can be joined part way rather than only played from its start.
  */
 export default function MoveList({
   plies,
   current,
+  onBranch,
   onPick,
   tags,
   reviewed,
   secondsByPly,
   yourColor,
-  linesByPly,
-  onPlayLine,
-  active,
+  tree,
+  path,
+  onPath,
+  styleOf,
 }: {
   plies: Ply[]
   /** Ply index on the board, or -1 for the starting position. */
   current: number
+  /** True when the board has left the game, so no played move is the one on screen. */
+  onBranch: boolean
   onPick: (index: number) => void
   /** Engine mark per ply, for your moves only. */
   tags: Map<number, string>
@@ -44,11 +46,11 @@ export default function MoveList({
   secondsByPly: Map<number, number>
   /** The side you played, so a hover can say whose think a number is. */
   yourColor: Color
-  /** The lines you would have played instead, keyed by the ply they branch at. */
-  linesByPly: Map<number, ProposedMove[]>
-  onPlayLine: (ply: number, lineIndex: number, moveIndex: number) => void
-  /** Null while the board is following the game. */
-  active: ActiveLine | null
+  /** The game and everything branching off it. */
+  tree: MoveTree
+  path: Path
+  onPath: (path: Path) => void
+  styleOf?: (node: MoveNode, path: Path) => BranchStyle | null
 }) {
   const listRef = useRef<HTMLDivElement | null>(null)
   const activeRef = useRef<HTMLButtonElement | null>(null)
@@ -81,16 +83,23 @@ export default function MoveList({
 
     if (above < 0) list.scrollTop += above
     else if (below > 0) list.scrollTop += below
-  }, [current, active])
+  }, [current, onBranch])
 
   const rows = Math.ceil(plies.length / 2)
 
-  /** The lines branching at a ply, rendered under the row that holds it. */
-  function linesFor(ply: Ply | undefined) {
+  /**
+   * What branches off a ply: every move at that point except the one that was played.
+   *
+   * A variation replaces a move, so it is a sibling of it — the children of the
+   * position *before* the ply, minus the first, which is the game. Read off the tree
+   * rather than from a second list, so a line you played out on the board and a line
+   * your review proposes arrive here the same way.
+   */
+  function branchesAt(ply: Ply | undefined) {
     if (!ply) return []
-    return (linesByPly.get(ply.index) ?? [])
-      .map((move, lineIndex) => ({ ply: ply.index, lineIndex, move }))
-      .filter(entry => entry.move.line.length > 0)
+    const prefix = mainPath(tree, ply.index)
+    const siblings = prefix.length === 0 ? tree.children : (nodeAt(tree, prefix)?.children ?? [])
+    return siblings.slice(1).map(node => ({ node, prefix, ply: ply.index }))
   }
 
   return (
@@ -98,7 +107,7 @@ export default function MoveList({
       {Array.from({ length: rows }, (_, row) => {
         const white = plies[row * 2]
         const black = plies[row * 2 + 1]
-        const branches = [...linesFor(white), ...linesFor(black)]
+        const branches = [...branchesAt(white), ...branchesAt(black)]
 
         return (
           <div key={row}>
@@ -108,7 +117,7 @@ export default function MoveList({
                 ply ? (
                   <button
                     key={column}
-                    ref={ply.index === current && !active ? activeRef : undefined}
+                    ref={ply.index === current && !onBranch ? activeRef : undefined}
                     onClick={() => onPick(ply.index)}
                     title={
                       secondsByPly.has(ply.index)
@@ -118,7 +127,7 @@ export default function MoveList({
                         : undefined
                     }
                     className={`px-2 py-1 text-left transition-colors ${
-                      ply.index === current && !active
+                      ply.index === current && !onBranch
                         ? 'bg-zinc-700 text-zinc-50'
                         : 'text-zinc-300 hover:bg-zinc-800'
                     }`}
@@ -143,43 +152,24 @@ export default function MoveList({
 
             {branches.map(branch => (
               <div
-                key={`${branch.ply}-${branch.lineIndex}`}
+                key={branch.node.id}
                 className="border-b border-zinc-800/60 bg-sky-500/5 px-2 py-1.5"
               >
-                <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5 text-xs">
-                  <span className="text-sky-700" aria-hidden="true">
+                <div className="flex flex-wrap items-baseline gap-x-1 gap-y-0.5 text-xs">
+                  <span className="text-sky-700 shrink-0" aria-hidden="true">
                     ↳
                   </span>
-                  {lineTokens(branch.ply, branch.move.line).map((token, moveIndex) => {
-                    const isActive =
-                      active?.ply === branch.ply &&
-                      active.lineIndex === branch.lineIndex &&
-                      active.moveIndex === moveIndex
-
-                    return (
-                      <button
-                        key={moveIndex}
-                        ref={isActive ? activeRef : undefined}
-                        onClick={() => onPlayLine(branch.ply, branch.lineIndex, moveIndex)}
-                        title="Play your line out on the board"
-                        className={`rounded px-1 transition-colors ${
-                          isActive
-                            ? 'bg-sky-500/30 text-sky-100'
-                            : 'text-sky-400 hover:bg-sky-500/15 hover:text-sky-200'
-                        }`}
-                      >
-                        {token.prefix && <span className="text-zinc-600">{token.prefix} </span>}
-                        {token.san}
-                      </button>
-                    )
-                  })}
+                  <MoveRun
+                    tree={tree}
+                    nodes={[branch.node]}
+                    prefix={branch.prefix}
+                    ply={branch.ply}
+                    numberNext
+                    path={path}
+                    onPath={onPath}
+                    styleOf={styleOf}
+                  />
                 </div>
-
-                {branch.move.why && (
-                  <p className="font-sans text-[11px] leading-snug text-zinc-500 mt-1">
-                    {branch.move.why}
-                  </p>
-                )}
               </div>
             ))}
           </div>

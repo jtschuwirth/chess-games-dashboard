@@ -306,6 +306,69 @@ export function treeFromMoves(sans: string[], startFen: string = START_FEN): Mov
 }
 
 /**
+ * Every root-to-leaf line in the tree, as SAN sequences, main line first.
+ *
+ * What a tree looks like to anything that only speaks in lines — a review
+ * alternative, a merge, an export.
+ */
+export function lines(tree: MoveTree): string[][] {
+  const out: string[][] = []
+
+  const visit = (children: MoveNode[], prefix: string[]) => {
+    for (const child of children) {
+      const line = [...prefix, child.san]
+      if (child.children.length === 0) out.push(line)
+      else visit(child.children, line)
+    }
+  }
+
+  visit(tree.children, [])
+  return out
+}
+
+/**
+ * Grafts everything in one tree onto another.
+ *
+ * Used to put several sources on one board: the game as played, the variations you
+ * saved on it, and the lines your review proposes. `addLine` follows a move already
+ * there rather than adding a second copy, so a line two sources agree on stays one
+ * branch — which is what makes merging safe to do on every read.
+ *
+ * The first tree's ordering wins, so whatever it calls the main line stays the main
+ * line. Both must start from the same position; a mismatch returns the first
+ * unchanged, because grafting moves onto a position they were not played in builds a
+ * tree that is wrong rather than empty.
+ */
+export function mergeTrees(into: MoveTree, from: MoveTree): MoveTree {
+  if (into.startFen !== from.startFen) return into
+
+  let merged = into
+  for (const line of lines(from)) merged = addLine(merged, [], line).tree
+  return merged
+}
+
+/**
+ * The path to a point on the main line, by how many plies have been played.
+ *
+ * The position *before* ply `n` is `mainPath(tree, n)`, which is what you want when
+ * grafting an alternative to a move: an alternative is played from where that move
+ * was played.
+ */
+export function mainPath(tree: MoveTree, plies: number): Path {
+  const path: Path = []
+  let children = tree.children
+
+  for (let at = 0; at < plies; at++) {
+    const next = children[0]
+    if (!next) break
+    path.push(next.id)
+    children = next.children
+  }
+
+  return path
+}
+
+/**
  * The path of a SAN sequence from the start, or null if the tree does not hold it.
  * How a stored line — a review alternative, a game's own moves — is located in a tree.
  */

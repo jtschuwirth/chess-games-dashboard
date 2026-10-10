@@ -277,6 +277,27 @@ export async function saveReview(
   return review
 }
 
+/**
+ * The variations you have played out on a game, as PGN.
+ *
+ * Its own write rather than part of the review: you can analyse a game without
+ * writing a post-mortem, and the two should not be able to clear each other. A tree
+ * holding nothing but the game itself is deleted rather than stored, so a game
+ * nobody has branched reads as exactly that.
+ */
+export async function saveVariations(
+  userId: string,
+  gameId: string,
+  pgn: string,
+  hasBranches = true,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, 'games', gameId),
+    { variationsPgn: hasBranches ? pgn : deleteField() },
+    { merge: true },
+  )
+}
+
 export async function deleteReview(userId: string, gameId: string): Promise<void> {
   await updateDoc(doc(db, 'users', userId, 'games', gameId), { review: deleteField() })
 }

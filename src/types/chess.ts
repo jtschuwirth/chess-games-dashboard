@@ -55,6 +55,18 @@ export interface GameRecord extends SyncedGame {
   analysis?: StoredAnalysis
   /** The game with the analysis written onto it, ready to paste into a board. */
   annotatedPgn?: string
+  /**
+   * The game with the variations you have played out on it, as PGN.
+   *
+   * Written by hand with `toPgn`, because chess.js parses `( )` and then drops it.
+   * The whole game is in here beside the branches rather than only the branches: it
+   * costs a few hundred bytes, it pastes straight into any board, and a branch with
+   * nothing to hang off is not a thing anyone can read.
+   *
+   * It is never the authority on what was played — `gameTree` merges it into a tree
+   * built from `moves`, so a stored branch can never rewrite the game.
+   */
+  variationsPgn?: string
   /** Your own root-cause analysis of the moves that went wrong. */
   review?: GameReview
   /**
