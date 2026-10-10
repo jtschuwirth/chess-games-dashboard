@@ -5,6 +5,7 @@ import type {
   GameRecord,
   GameReview,
   MistakeRepeat,
+  MoveNote,
   ProposedMove,
   ReviewedMistake,
   StoredAnalysis,
@@ -177,7 +178,68 @@ export function firstMoveOf(move: ProposedMove): string | null {
 export function hasReview(game: GameRecord): boolean {
   const review = game.review
   if (!review) return false
-  return review.mistakes.length > 0 || review.notes.trim().length > 0
+  return (
+    review.mistakes.length > 0 ||
+    review.notes.trim().length > 0 ||
+    moveNotesOf(review).length > 0
+  )
+}
+
+/**
+ * An engine reading turned into your frame.
+ *
+ * `analyzePosition` scores for the side to move, so a reading taken at the position
+ * before a move comes back in the frame of whoever plays that move — yours on your
+ * move, your opponent's on theirs. Everything stored here and every rule that reads it
+ * is in your frame, so theirs is flipped.
+ *
+ * It is a named function with two callers rather than a minus sign written out twice.
+ * Sign conventions are what this codebase has got wrong before — the lichess rating
+ * diff, the clock alignment — and both times it was the same shape of mistake: one
+ * reader assuming a frame the writer did not mean.
+ */
+export function fromMover(cp: number, yours: boolean): number {
+  return yours ? cp : -cp
+}
+
+/**
+ * The notes written on individual moves, normalised on read.
+ *
+ * Same habit as `betterMovesOf` and `repeatsOf`: reviews written before move notes
+ * existed have no field, and nothing downstream should have to know that.
+ */
+export function moveNotesOf(review: GameReview | undefined): MoveNote[] {
+  return review?.moveNotes ?? []
+}
+
+/**
+ * Whether a note says anything. An entry with no text, no tag and no line is one you
+ * started and left — dropped on save rather than refused in the form, the same way a
+ * pattern drops an example you never filled in.
+ */
+export function noteHasContent(note: MoveNote): boolean {
+  return (
+    note.note.trim().length > 0 ||
+    note.tags.length > 0 ||
+    note.alternatives.some(move => move.line.length > 0)
+  )
+}
+
+/**
+ * The tags your notes carry, de-duplicated within the game.
+ *
+ * Deliberately separate from `tagsOf`, which feeds the Mistake database and the tag
+ * filter. The same word means two opposite things in the two places — `hanging piece`
+ * on a mistake is one you missed, on a note it is one you spotted — and folding them
+ * into one count would make every figure in that table mean "times this came up",
+ * which is not what anyone reads it as.
+ */
+export function noteTagsOf(game: GameRecord): string[] {
+  const tags = new Set<string>()
+  for (const note of moveNotesOf(game.review)) {
+    for (const tag of note.tags) tags.add(tag)
+  }
+  return [...tags]
 }
 
 /**
@@ -199,13 +261,18 @@ export function repeatsOf(mistake: ReviewedMistake): MistakeRepeat[] {
   return mistake.repeats ?? []
 }
 
-/** Every ply a review speaks about: the entries, and everything they cover. */
+/**
+ * Every ply a review speaks about: the entries, everything they cover, and the moves
+ * you noted. The move list marks these, and a move you wrote a note on is one the
+ * review speaks about as much as one you took apart.
+ */
 export function reviewedPlies(review: GameReview | undefined): Set<number> {
   const plies = new Set<number>()
   for (const mistake of review?.mistakes ?? []) {
     plies.add(mistake.ply)
     for (const repeat of repeatsOf(mistake)) plies.add(repeat.ply)
   }
+  for (const note of moveNotesOf(review)) plies.add(note.ply)
   return plies
 }
 
@@ -227,12 +294,14 @@ export function tagsOf(game: GameRecord): string[] {
 /** Every tag ever written, for suggesting your own additions back to you. */
 export function knownTags(games: GameRecord[]): string[] {
   const tags = new Set<string>()
+  const add = (written: string[]) => {
+    for (const tag of written) if (!GROUP_BY_TAG.has(tag)) tags.add(tag)
+  }
+
   for (const game of games) {
-    for (const mistake of game.review?.mistakes ?? []) {
-      for (const tag of mistake.tags) {
-        if (!GROUP_BY_TAG.has(tag)) tags.add(tag)
-      }
-    }
+    for (const mistake of game.review?.mistakes ?? []) add(mistake.tags)
+    // a tag you invented on a note is one you will want offered back on the next one
+    for (const note of moveNotesOf(game.review)) add(note.tags)
   }
   return [...tags].sort()
 }

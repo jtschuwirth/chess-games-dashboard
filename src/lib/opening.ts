@@ -1,4 +1,5 @@
 import { Chess } from 'chess.js'
+import { normalizeStudy } from './study'
 import type { GameRecord, OpeningColor, OpeningLine } from '@/types/chess'
 
 /**
@@ -207,4 +208,17 @@ export function findPath(nodes: OpeningNode[], id: string): OpeningNode[] {
     if (below.length > 0) return [node, ...below]
   }
   return []
+}
+
+/**
+ * A stored line in the shape the code expects, whatever shape it was written in.
+ *
+ * Openings were the one collection without a normaliser — the read was a bare cast,
+ * which was fine while the type was six required fields and stopped being fine when a
+ * study was written on them. Same habit as `normalizePattern` and `normalizePlan`:
+ * converted on read rather than migrated, so the 65 lines saved before any of this
+ * existed need nothing done to them.
+ */
+export function normalizeOpening(raw: OpeningLine): OpeningLine {
+  return { ...raw, study: normalizeStudy(raw.study) }
 }

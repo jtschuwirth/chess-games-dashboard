@@ -87,6 +87,54 @@ export function squaresFrom(fen: string, orientation: 'white' | 'black'): BoardS
   return rows.map(row => [...row].reverse()).reverse()
 }
 
+/** Where a piece on one square may go, and what it would do there. */
+export interface Destination {
+  to: string
+  /** There is something of theirs on it — drawn as a ring rather than a dot. */
+  capture: boolean
+  /** Landing here means choosing a piece. */
+  promotion: boolean
+}
+
+/**
+ * Every legal move for the piece on a square. What a board needs to show where a
+ * selected piece can go, and to refuse a drop that is not a move.
+ *
+ * chess.js is the only authority on legality here as everywhere else; this just asks
+ * it the question in the shape a board wants the answer in. An unreadable FEN gives
+ * no moves rather than throwing, since a board is often mid-edit.
+ */
+export function legalMovesFrom(fen: string, square: string): Destination[] {
+  try {
+    const moves = new Chess(fen).moves({ square: square as never, verbose: true })
+    const byTarget = new Map<string, Destination>()
+
+    for (const move of moves) {
+      // the four promotion choices are four moves to one square; the board asks once
+      const existing = byTarget.get(move.to)
+      if (existing) {
+        existing.promotion = existing.promotion || Boolean(move.promotion)
+        continue
+      }
+
+      byTarget.set(move.to, {
+        to: move.to,
+        capture: move.captured !== undefined,
+        promotion: Boolean(move.promotion),
+      })
+    }
+
+    return [...byTarget.values()]
+  } catch {
+    return []
+  }
+}
+
+/** Whose turn it is. A board only lets you pick up a piece of the side to move. */
+export function sideToMove(fen: string): 'white' | 'black' {
+  return fen.split(' ')[1] === 'b' ? 'black' : 'white'
+}
+
 export interface PlayedMove {
   san: string
   /** The position the move leads to — what an engine needs to judge it. */

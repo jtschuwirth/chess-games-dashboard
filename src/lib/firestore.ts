@@ -17,7 +17,9 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 import { normalizeAnalysis } from './analysis'
+import { normalizeOpening } from './opening'
 import { normalizePattern } from './pattern'
+import { studyBody, studyHasContent } from './study'
 import {
   normalizeSettings,
   applySettings,
@@ -42,6 +44,7 @@ import type {
   NewPattern,
   NewStudyPlan,
   OpeningLine,
+  OpeningStudy,
   PatternRecord,
   StudyPlan,
   Source,
@@ -344,7 +347,8 @@ export async function dismissVerdict(
 export async function getOpenings(userId: string, options?: ReadOptions): Promise<OpeningLine[]> {
   const ref = collection(db, 'users', userId, 'patterns')
   const snapshot = await readDocs(query(ref, orderBy('name')), options)
-  return snapshot.docs.map(d => ({ ...d.data(), id: d.id }) as OpeningLine)
+  // the one place a stored line becomes the shape the rest of the code expects
+  return snapshot.docs.map(d => normalizeOpening({ ...d.data(), id: d.id } as OpeningLine))
 }
 
 export async function saveOpening(userId: string, opening: NewOpeningLine): Promise<string> {
@@ -358,7 +362,42 @@ export async function updateOpening(
   openingId: string,
   opening: NewOpeningLine,
 ): Promise<void> {
-  await updateDoc(doc(db, 'users', userId, 'patterns', openingId), { ...opening })
+  /*
+    An update merges, and the form sends only the line itself — name, PGN, moves, colour.
+    So editing a line leaves whatever study is written on it exactly where it was, which
+    is the behaviour we want and the one worth saying out loud, because the alternative
+    is a page that silently eats everything you wrote the first time you fix a typo.
+  */
+  await updateDoc(doc(db, 'users', userId, 'patterns', openingId), {
+    ...opening,
+    updatedAt: Date.now(),
+  })
+}
+
+/**
+ * The study alone, without the line it sits on.
+ *
+ * Narrower than `updateOpening` on purpose: writing what you know about an opening must
+ * not be able to touch its `moves` or its `positionKey`, because those are what every
+ * game is matched against and they were computed once, at save time, in the browser.
+ *
+ * A study with nothing in it is deleted rather than stored as an empty map, so a line
+ * nobody has written up reads as exactly that.
+ */
+export async function saveStudy(
+  userId: string,
+  openingId: string,
+  study: OpeningStudy,
+): Promise<number> {
+  const body = studyBody(study)
+  const updatedAt = Date.now()
+
+  await updateDoc(doc(db, 'users', userId, 'patterns', openingId), {
+    study: studyHasContent(body) ? body : deleteField(),
+    updatedAt,
+  })
+
+  return updatedAt
 }
 
 export async function deleteOpening(userId: string, openingId: string): Promise<void> {

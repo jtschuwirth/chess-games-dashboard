@@ -1,11 +1,20 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import OpeningForm from '@/components/OpeningForm'
-import { deleteOpening, getOpenings, saveOpening, updateOpening } from '@/lib/firestore'
-import { buildOpeningTree, flattenTree, formatMoves } from '@/lib/opening'
-import type { NewOpeningLine, OpeningColor, OpeningLine } from '@/types/chess'
+import { deleteOpening, getGames, getOpenings, saveOpening, updateOpening } from '@/lib/firestore'
+import {
+  buildOpeningTree,
+  flattenTree,
+  formatMoves,
+  gameMatchesNode,
+  type OpeningNode,
+} from '@/lib/opening'
+import { positionKeyMap } from '@/lib/scope'
+import { ideaCount } from '@/lib/study'
+import type { GameRecord, NewOpeningLine, OpeningColor, OpeningLine } from '@/types/chess'
 
 const COLOR_BADGE: Record<OpeningColor, string> = {
   any: 'Either colour',
@@ -15,25 +24,70 @@ const COLOR_BADGE: Record<OpeningColor, string> = {
 
 function OpeningsBody({ userId }: { userId: string }) {
   const [openings, setOpenings] = useState<OpeningLine[] | null>(null)
+  const [games, setGames] = useState<GameRecord[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const load = useCallback(
-    () =>
-      getOpenings(userId)
-        .then(loaded => {
-          setOpenings(loaded)
-          setError(null)
-        })
-        .catch(caught => setError(errorText(caught, 'Could not load your saved openings.'))),
-    [userId],
-  )
+  /**
+   * The lines first, the games after.
+   *
+   * They used to arrive together in one `Promise.all`, which meant the list waited on
+   * a thousand game documents to show sixty-five saved lines — and then blocked paint
+   * again replaying every one of them. The counts are a figure you glance at; the
+   * tree is the page. So the tree renders as soon as it can and the counts appear
+   * when they are ready.
+   */
+  const load = useCallback(() => {
+    const lines = getOpenings(userId).then(loaded => {
+      setOpenings(loaded)
+      setError(null)
+    })
+
+    getGames(userId)
+      .then(setGames)
+      // a failed game read costs the counts, not the page
+      .catch(() => setGames([]))
+
+    return lines.catch(caught =>
+      setError(errorText(caught, 'Could not load your saved openings.')),
+    )
+  }, [userId])
 
   useEffect(() => {
     load()
   }, [load])
 
-  const rows = useMemo(() => flattenTree(buildOpeningTree(openings ?? [])), [openings])
+  const tree = useMemo(() => buildOpeningTree(openings ?? []), [openings])
+  const rows = useMemo(() => flattenTree(tree), [tree])
+
+  /**
+   * How many games each line covers, so the list answers "where are my games" without
+   * opening every study. The dashboard's own rule, so the two can never disagree.
+   *
+   * The cost here is the replay inside `positionKeyMap`, not the matching: a thousand
+   * games through chess.js, a FEN per ply. Rewriting the matching to walk each game
+   * once instead of asking each node about each game was measured against this on the
+   * real data — identical counts on all 65 lines, and 20% *slower*. So the simple
+   * version stays, and what makes the page usable is that the lines no longer wait
+   * for the games at all.
+   */
+  const counts = useMemo(() => {
+    const keys = positionKeyMap(games)
+    const map = new Map<string, number>()
+
+    const walk = (nodes: OpeningNode[]) => {
+      for (const node of nodes) {
+        map.set(
+          node.opening.id,
+          games.filter(game => gameMatchesNode(game, keys.get(game.id) ?? new Set(), node)).length,
+        )
+        walk(node.children)
+      }
+    }
+
+    walk(tree)
+    return map
+  }, [games, tree])
   const editing = openings?.find(opening => opening.id === editingId) ?? null
 
   async function handleSubmit(opening: NewOpeningLine) {
@@ -92,7 +146,13 @@ function OpeningsBody({ userId }: { userId: string }) {
                 opening.id === editingId ? 'bg-zinc-800' : 'bg-zinc-900 hover:bg-zinc-800'
               }`}
             >
-              <div className="flex-1 min-w-0" style={{ paddingLeft: depth * 20 }}>
+              {/* the row is the way in to the study; Edit and delete stay outside the
+                  link, because a button inside an anchor is both invalid and unusable */}
+              <Link
+                href={`/openings/${opening.id}`}
+                className="flex-1 min-w-0"
+                style={{ paddingLeft: depth * 20 }}
+              >
                 <div className="flex items-baseline gap-2 flex-wrap">
                   {depth > 0 && <span className="text-zinc-600 text-xs">↳</span>}
                   <span className="font-medium text-sm">{opening.name}</span>
@@ -104,11 +164,24 @@ function OpeningsBody({ userId }: { userId: string }) {
                     {children.length > 0 &&
                       ` · ${children.length} sub-variation${children.length === 1 ? '' : 's'}`}
                   </span>
+                  {ideaCount(opening.study) > 0 && (
+                    <span
+                      title="Written up"
+                      className="text-xs px-1.5 py-0.5 rounded border border-sky-500/30 bg-sky-500/15 text-sky-300"
+                    >
+                      ✎ {ideaCount(opening.study)}
+                    </span>
+                  )}
+                  {(counts.get(opening.id) ?? 0) > 0 && (
+                    <span className="text-xs text-zinc-600">
+                      {counts.get(opening.id)} game{counts.get(opening.id) === 1 ? '' : 's'}
+                    </span>
+                  )}
                 </div>
                 <div className="text-xs text-zinc-500 font-mono mt-1 break-words">
                   {formatMoves(opening.moves)}
                 </div>
-              </div>
+              </Link>
 
               <div className="flex items-center gap-3 shrink-0">
                 <button

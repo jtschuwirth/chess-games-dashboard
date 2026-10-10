@@ -1,21 +1,18 @@
 /**
  * A plan you have edited but not saved, kept on the device.
  *
- * The plan page used to write the whole document to Firestore on every tick, stepper
- * press and note. That is what lost data, in two ways at once. Each write *replaces* the
- * document, and several in flight at once are not guaranteed to land in the order they
- * were sent — so an earlier snapshot could arrive last and quietly undo the three edits
- * after it. And on a phone, switching app suspends the tab: whatever had not yet reached
- * the server existed only in React state, so coming back showed whatever did.
- *
- * Saving is a button now, and between presses the work lives here. localStorage is
- * synchronous and survives the tab being suspended, killed or reloaded, which is exactly
- * the gap that was losing the edits — and it is per device, which is the honest scope for
- * "what I was in the middle of".
- *
- * Every read and write is wrapped: a private window, blocked storage or a full quota must
- * cost you the draft, not the page.
+ * The mechanism and the reasoning both live in `lib/draft.ts` now, because opening
+ * studies need the same thing for the same reasons. This is the plan-shaped door onto
+ * it: the key is unchanged (`plan-draft:{uid}:{planId}`) and a draft written before the
+ * generalisation is still read, through `legacyKey`, since a draft someone is in the
+ * middle of is exactly what must not be lost to a refactor.
  */
+import {
+  bodyChanged,
+  clearDraft as clearAnyDraft,
+  readDraft as readAnyDraft,
+  writeDraft as writeAnyDraft,
+} from '@/lib/draft'
 import type { NewStudyPlan } from '@/types/chess'
 
 export interface PlanDraft {
@@ -24,53 +21,24 @@ export interface PlanDraft {
   editedAt: number
 }
 
-/** Keyed by account as well as plan: two sign-ins on one browser must not collide. */
-function keyFor(userId: string, planId: string): string {
-  return `plan-draft:${userId}:${planId}`
+/** A shape that is not a plan is not worth restoring, and must not throw later. */
+function isPlan(body: unknown): boolean {
+  return Boolean(body) && Array.isArray((body as NewStudyPlan)?.weeks)
 }
 
 export function readDraft(userId: string, planId: string): PlanDraft | null {
-  try {
-    const stored = window.localStorage.getItem(keyFor(userId, planId))
-    if (!stored) return null
-
-    const parsed: unknown = JSON.parse(stored)
-    if (!parsed || typeof parsed !== 'object') return null
-
-    const draft = parsed as PlanDraft
-    // a shape that is not a plan is not worth restoring, and must not throw later
-    if (!draft.plan || !Array.isArray(draft.plan.weeks)) return null
-
-    return draft
-  } catch {
-    return null
-  }
+  const draft = readAnyDraft<NewStudyPlan>('plan', userId, planId, isPlan, 'plan')
+  return draft ? { plan: draft.body, editedAt: draft.editedAt } : null
 }
 
 export function writeDraft(userId: string, planId: string, plan: NewStudyPlan): void {
-  try {
-    const draft: PlanDraft = { plan, editedAt: Date.now() }
-    window.localStorage.setItem(keyFor(userId, planId), JSON.stringify(draft))
-  } catch {
-    // the edit still stands on screen; it just will not outlive the tab
-  }
+  writeAnyDraft('plan', userId, planId, plan)
 }
 
 export function clearDraft(userId: string, planId: string): void {
-  try {
-    window.localStorage.removeItem(keyFor(userId, planId))
-  } catch {
-    // nothing to do: the next save overwrites it anyway
-  }
+  clearAnyDraft('plan', userId, planId)
 }
 
-/**
- * Whether two plans differ, which is what "unsaved" means.
- *
- * Compared as JSON rather than field by field. Both sides are built by `planBody` from
- * the same shapes, so the key order is the same on each — and a deep comparison written
- * by hand is a second definition of what a plan is, which would rot against the first.
- */
 export function planChanged(a: NewStudyPlan, b: NewStudyPlan): boolean {
-  return JSON.stringify(a) !== JSON.stringify(b)
+  return bodyChanged(a, b)
 }

@@ -156,12 +156,50 @@ export interface ProposedMove {
   why: string
 }
 
+/**
+ * Something worth saying about a move that was not a mistake.
+ *
+ * The root-cause form asks four questions — what you were doing, what failed, what
+ * would have caught it, what to play instead — and every one of them presumes the move
+ * went wrong. Most of what is worth writing down about a game does not: the idea you
+ * found, the move you were choosing between, the moment it was decided. Answering "why
+ * is this a mistake" about those is answering the wrong question, and leaving them
+ * unwritten because the only form on offer is the wrong one is how they get lost.
+ *
+ * So a note is the loose version: what you want to say, what to file it under, and the
+ * moves you were weighing. No cause, no signal, no cap — the three-entry limit on
+ * mistakes exists because a post-mortem that blames every move explains nothing, and
+ * nothing about a note gets worse by there being four of them.
+ */
+export interface MoveNote {
+  ply: number
+  san: string
+  moveNumber: number
+  /** What is worth saying about it. */
+  note: string
+  /** The same vocabulary the mistakes use — see the note on `tags` there. */
+  tags: string[]
+  /**
+   * The other moves you were choosing between, each with your reasoning. Not
+   * `betterMoves`: on a move that was not a mistake there is nothing to be better than.
+   */
+  alternatives: ProposedMove[]
+  /** The engine's numbers when you wrote it, so the entry survives a re-analysis. */
+  cpBefore: number | null
+  cpAfter: number | null
+}
+
 export interface GameReview {
   reviewedAt: number
   /** One to three moves — a review that blames everything explains nothing. */
   mistakes: ReviewedMistake[]
   /** Anything about the game as a whole. */
   notes: string
+  /**
+   * Moves worth remembering that were not mistakes. Read through `moveNotesOf`:
+   * absent on every review written before this existed, and they are not wrong for it.
+   */
+  moveNotes?: MoveNote[]
 }
 
 /** What `analyzeGame` produced, flattened for Firestore. */
@@ -198,9 +236,97 @@ export interface OpeningLine {
   positionKey: string
   ply: number
   color: OpeningColor
+  /**
+   * What you know about this opening. Absent on a line nobody has written up, which is
+   * why `normalizeOpening` fills it in on read rather than every caller testing for it.
+   */
+  study?: OpeningStudy
+  /**
+   * When any device last saved it. Stamped by `updateOpening`, not carried in the form,
+   * so a save can neither forget it nor round-trip a stale one — the plan page's rule,
+   * and what lets an unsaved draft be told from one another device has moved past.
+   */
+  updatedAt?: number
 }
 
 export type NewOpeningLine = Omit<OpeningLine, 'id'>
+
+/* ------------------------------------------------------------ opening studies */
+
+/**
+ * Which part of a study a written idea belongs to. The sections that hold prose are the
+ * only ones here: Variants, Your games and the patterns are read off what is already
+ * stored elsewhere, so there is nothing for an idea to sit in.
+ */
+export type StudySectionId = 'overview' | 'plans'
+
+/** A main plan or a sideline. The split the Notion pages this replaces already used. */
+export type IdeaRank = 'main' | 'alternative'
+
+/** Whether a cited game shows the idea working, or shows it going wrong. */
+export type CitationKind = 'well' | 'badly'
+
+/**
+ * One of your own games under an idea, opened on the move where the idea appears.
+ *
+ * A game id rather than a pasted PGN, which is the difference between this and a
+ * pattern's examples: these are games you played, already analysed and reviewed, and
+ * the study is pointing back at them rather than keeping a second copy.
+ */
+export interface StudyCitation {
+  /** A `GameRecord` id. */
+  gameId: string
+  /**
+   * How many half-moves the board opens on. Omitted leaves the game view to open where
+   * it normally would — the first reviewed move, else the engine's worst find.
+   */
+  ply?: number
+  shows: CitationKind
+  note?: string
+}
+
+/**
+ * One bullet of a study: a plan, an idea, something worth knowing.
+ *
+ * What makes it more than a line of prose is what it can point at — the pattern it is an
+ * instance of, and the games of yours that show it. Both are ids into collections that
+ * already exist, so nothing here is a second copy of anything.
+ */
+export interface StudyIdea {
+  /**
+   * Minted when the idea is created, in a handler and never in a render. Citations and
+   * ordering hang off it, so it has to outlive an edit.
+   */
+  id: string
+  section: StudySectionId
+  /** Whose idea it is. Only the plans section asks. */
+  side?: Color
+  /** Only the plans section asks. */
+  rank?: IdeaRank
+  text: string
+  /** Thematic patterns this idea is an instance of, by `PatternRecord` id. */
+  patternIds?: string[]
+  games?: StudyCitation[]
+}
+
+/** Somewhere else this is written up — a video, a lichess study, an article. */
+export interface StudyLink {
+  url: string
+  title: string
+}
+
+export interface OpeningStudy {
+  ideas: StudyIdea[]
+  links: StudyLink[]
+  /**
+   * Other saved lines this one also reaches, by `OpeningLine` id.
+   *
+   * A reading aid and nothing more. Games are matched by position and already transpose
+   * on their own; making a cross-link count would put the same game in two sibling rows
+   * of the dashboard's breakdown and inflate every total above it.
+   */
+  alsoReaches: string[]
+}
 
 /**
  * What kind of idea a pattern is. Deliberately short: a pattern you cannot file

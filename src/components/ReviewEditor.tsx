@@ -1,43 +1,58 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Chip from '@/components/Chip'
-import { MAX_LINE_PLIES, formatLine, parseLine, plyLabel, sanFromUci, type Ply } from '@/lib/board'
-import { ENGINE_DEPTH, classifyMove, type MoveTag } from '@/lib/analysis'
+import MoveNoteCard, { type NoteDraft } from '@/components/MoveNoteCard'
+import ProposedMoves, {
+  EMPTY_ROW,
+  verdictKey,
+  type ProposedRow,
+  type Verdict,
+} from '@/components/ProposedMoves'
+import TagPicker from '@/components/TagPicker'
+import { parseLine, plyLabel, sanFromUci, type Ply } from '@/lib/board'
+import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
   MAX_REVIEW_MISTAKES,
   repeatsOf,
-  TAG_GROUPS,
   betterMovesOf,
   candidateMoves,
   formatEval,
-  isFault,
+  fromMover,
   markColor,
   missingFrom,
+  moveNotesOf,
+  noteHasContent,
 } from '@/lib/review'
 import type {
   GameRecord,
   GameReview,
   MistakeRepeat,
+  MoveNote,
   ProposedMove,
   ReviewedMistake,
 } from '@/types/chess'
 
-/** How a proposed move turned out when the engine looked at it. */
-type Verdict = { cpBefore: number; cpAfter: number; tag: MoveTag } | 'failed'
-
 /** How long to sit still before spending engine time on what you are still typing. */
 const CHECK_DELAY = 700
 
-/** A line being proposed. `input` is what you typed; it is parsed as you type. */
-interface ProposedRow {
-  input: string
-  why: string
+/** A note loaded from a saved review, in the shape the form edits. */
+function noteDraftFrom(note: MoveNote): NoteDraft {
+  return {
+    ply: note.ply,
+    san: note.san,
+    moveNumber: note.moveNumber,
+    note: note.note,
+    tags: note.tags,
+    lines: (note.alternatives ?? []).map(move => ({
+      input: move.line.join(' '),
+      why: move.why,
+    })),
+    cpBefore: note.cpBefore,
+    cpAfter: note.cpAfter,
+  }
 }
-
-const EMPTY_ROW: ProposedRow = { input: '', why: '' }
 
 interface Draft {
   ply: number
@@ -115,6 +130,9 @@ export default function ReviewEditor({
   const [drafts, setDrafts] = useState<Draft[]>(() =>
     (game.review?.mistakes ?? []).map(draftFrom),
   )
+  const [noteDrafts, setNoteDrafts] = useState<NoteDraft[]>(() =>
+    moveNotesOf(game.review).map(noteDraftFrom),
+  )
   const [notes, setNotes] = useState(game.review?.notes ?? '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState<number | null>(game.review?.reviewedAt ?? null)
@@ -131,7 +149,12 @@ export default function ReviewEditor({
    * you, and tagging a move usually takes more than one.
    */
   const [tagsOpen, setTagsOpen] = useState<Record<number, boolean>>(() =>
-    Object.fromEntries((game.review?.mistakes ?? []).map(entry => [entry.ply, entry.tags.length === 0])),
+    Object.fromEntries(
+      [...(game.review?.mistakes ?? []), ...moveNotesOf(game.review)].map(entry => [
+        entry.ply,
+        entry.tags.length === 0,
+      ]),
+    ),
   )
 
   /**
@@ -141,7 +164,12 @@ export default function ReviewEditor({
    * written — a new one never does.
    */
   const [folded, setFolded] = useState<Record<number, boolean>>(() =>
-    Object.fromEntries((game.review?.mistakes ?? []).map(entry => [entry.ply, true])),
+    Object.fromEntries(
+      [...(game.review?.mistakes ?? []), ...moveNotesOf(game.review)].map(entry => [
+        entry.ply,
+        true,
+      ]),
+    ),
   )
 
   /** The worker holds a few megabytes of wasm; nothing needs it once you leave. */
@@ -159,34 +187,52 @@ export default function ReviewEditor({
    * comes from the same depth as everything beside it: the stored one was written by
    * whatever depth the batch run used, and two depths in one card cannot be compared.
    */
-  const alternatives = useMemo(
-    () =>
-      drafts.flatMap(draft => {
-        const move = plyByIndex.get(draft.ply)
-        if (!move) return []
+  const alternatives = useMemo(() => {
+    /*
+      One entry's worth: the move played, plus every legal line proposed under it. The
+      two kinds of entry go through the same function because they are the same
+      question — a note's lines are judged exactly as a mistake's are, and the verdict
+      cache is keyed by `ply:san`, which cannot tell them apart and should not.
+    */
+    const forEntry = (ply: number, rows: ProposedRow[]) => {
+      const move = plyByIndex.get(ply)
+      if (!move) return []
 
-        // only the first move of a line is a decision you get to make, so that is what
-        // gets judged; the rest depends on the opponent playing along
-        const rows = draft.better.flatMap(row => {
-          const parsed = parseLine(move.fenBefore, row.input)
-          if (parsed.line.length === 0) return []
-          return [
-            {
-              key: `${draft.ply}:${parsed.line[0]}`,
-              fenBefore: move.fenBefore,
-              fenAfter: parsed.fens[0],
-            },
-          ]
-        })
+      // whose move it is decides both the sign and whether there is a judgement to make
+      const yours = move.color === game.color
 
-        // the before position is shared with every alternative, so this costs one lookup
+      // only the first move of a line is a decision you get to make, so that is what
+      // gets judged; the rest depends on the opponent playing along
+      const lines = rows.flatMap(row => {
+        const parsed = parseLine(move.fenBefore, row.input)
+        if (parsed.line.length === 0) return []
         return [
-          { key: `${draft.ply}:${move.san}`, fenBefore: move.fenBefore, fenAfter: move.fenAfter },
-          ...rows,
+          {
+            key: verdictKey(ply, parsed.line[0]),
+            fenBefore: move.fenBefore,
+            fenAfter: parsed.fens[0],
+            yours,
+          },
         ]
-      }),
-    [drafts, plyByIndex],
-  )
+      })
+
+      // the before position is shared with every alternative, so this costs one lookup
+      return [
+        {
+          key: verdictKey(ply, move.san),
+          fenBefore: move.fenBefore,
+          fenAfter: move.fenAfter,
+          yours,
+        },
+        ...lines,
+      ]
+    }
+
+    return [
+      ...drafts.flatMap(draft => forEntry(draft.ply, draft.better)),
+      ...noteDrafts.flatMap(draft => forEntry(draft.ply, draft.lines)),
+    ]
+  }, [drafts, noteDrafts, plyByIndex, game.color])
 
   /**
    * Judges each alternative by the same rule as the move you played: evaluate the
@@ -217,12 +263,20 @@ export default function ReviewEditor({
             return
           }
 
-          const cpBefore = before.cp
-          // scored for your opponent, who is to move after your alternative
-          const cpAfter = -after.cp
+          // both readings come back in the frame of whoever plays the ply; everything
+          // downstream wants yours, so a move of theirs is flipped once, here
+          const cpBefore = fromMover(before.cp, entry.yours)
+          // scored for whoever is to move after the line, which is the other player
+          const cpAfter = fromMover(-after.cp, entry.yours)
+
           setVerdicts(prev => ({
             ...prev,
-            [entry.key]: { cpBefore, cpAfter, tag: classifyMove(cpBefore, cpAfter, false) },
+            [entry.key]: {
+              cpBefore,
+              cpAfter,
+              // a fault is a judgement about the player who made the move
+              tag: entry.yours ? classifyMove(cpBefore, cpAfter, false) : null,
+            },
           }))
         } catch {
           if (cancelled) {
@@ -241,10 +295,15 @@ export default function ReviewEditor({
     }
   }, [alternatives])
 
-  /** Every ply already spoken for, as an entry of its own or as somebody's repeat. */
-  const taken = new Set(
-    drafts.flatMap(draft => [draft.ply, ...draft.repeats.map(repeat => repeat.ply)]),
-  )
+  /**
+   * Every ply already spoken for: an entry of its own, somebody's repeat, or a note.
+   * One move gets one entry, whichever kind — otherwise the same move could be both
+   * taken apart and noted, and the two would disagree on the page.
+   */
+  const taken = new Set([
+    ...drafts.flatMap(draft => [draft.ply, ...draft.repeats.map(repeat => repeat.ply)]),
+    ...noteDrafts.map(draft => draft.ply),
+  ])
   /** Marked moves nobody has claimed: what you can take apart, and what a repeat can be. */
   const candidates = candidateMoves(game.analysis).filter(move => !taken.has(move.ply))
   const full = drafts.length >= MAX_REVIEW_MISTAKES
@@ -279,15 +338,45 @@ export default function ReviewEditor({
     onShowPly(ply)
   }
 
+  /**
+   * A move worth noting. No cap and no candidate list: the engine has no opinion about
+   * which moves are worth remembering, which is rather the point of the other list.
+   */
+  function addNote(ply: number, cpBefore: number | null = null, cpAfter: number | null = null) {
+    const move = plyByIndex.get(ply)
+    if (!move || taken.has(ply)) return
+
+    setSaved(null)
+    setNoteDrafts(prev =>
+      [
+        ...prev,
+        {
+          ply,
+          san: move.san,
+          moveNumber: move.moveNumber,
+          note: '',
+          tags: [],
+          lines: [EMPTY_ROW],
+          cpBefore,
+          cpAfter,
+        },
+      ].sort((a, b) => a.ply - b.ply),
+    )
+    setTagsOpen(prev => ({ ...prev, [ply]: false }))
+    setFolded(prev => ({ ...prev, [ply]: false }))
+    onShowPly(ply)
+  }
+
+  function patchNote(ply: number, changes: Partial<NoteDraft>) {
+    setSaved(null)
+    setNoteDrafts(prev =>
+      prev.map(draft => (draft.ply === ply ? { ...draft, ...changes } : draft)),
+    )
+  }
+
   function patch(ply: number, changes: Partial<Draft>) {
     setSaved(null)
     setDrafts(prev => prev.map(draft => (draft.ply === ply ? { ...draft, ...changes } : draft)))
-  }
-
-  function setRow(draft: Draft, index: number, changes: Partial<ProposedRow>) {
-    patch(draft.ply, {
-      better: draft.better.map((row, at) => (at === index ? { ...row, ...changes } : row)),
-    })
   }
 
   /** The engine's own answer, on demand — after you have committed to yours. */
@@ -300,10 +389,12 @@ export default function ReviewEditor({
     try {
       const evaluation = await analyzePosition(move.fenBefore, ENGINE_DEPTH)
       const san = sanFromUci(move.fenBefore, evaluation.bestMoveUci)
+      // scored for the side to move, which is you on your move and them on theirs
+      const cp = fromMover(evaluation.cp, move.color === game.color)
+
       setEngine(prev => ({
         ...prev,
-        // scored for the side to move, which at a position before your move is you
-        [ply]: `${san ?? evaluation.bestMoveUci} (${formatEval(evaluation.cp, game.color)})`,
+        [ply]: `${san ?? evaluation.bestMoveUci} (${formatEval(cp, game.color)})`,
       }))
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'The engine did not answer.')
@@ -350,8 +441,40 @@ export default function ReviewEditor({
     }
   }
 
-  /** Entries, or a note on a game that did not need any. Never an empty document. */
-  const saveable = drafts.length > 0 || notes.trim().length > 0
+  function toMoveNote(draft: NoteDraft): MoveNote {
+    const move = plyByIndex.get(draft.ply)
+
+    // only the legal prefix is stored; whatever stopped the parse is flagged in the form
+    const alternatives: ProposedMove[] = []
+    for (const row of draft.lines) {
+      const parsed = move ? parseLine(move.fenBefore, row.input) : null
+      if (parsed && parsed.line.length > 0) {
+        alternatives.push({ line: parsed.line, why: row.why.trim() })
+      }
+    }
+
+    return {
+      ply: draft.ply,
+      san: draft.san,
+      moveNumber: draft.moveNumber,
+      note: draft.note.trim(),
+      tags: draft.tags,
+      alternatives,
+      cpBefore: draft.cpBefore,
+      cpAfter: draft.cpAfter,
+    }
+  }
+
+  /**
+   * A note you opened and left blank is dropped rather than refused. The mistake
+   * entries block the save because a half-written post-mortem is wrong; a note with
+   * nothing in it is just a note you decided against, and stopping the save over it
+   * would be the form arguing with you.
+   */
+  const writtenNotes = noteDrafts.map(toMoveNote).filter(noteHasContent)
+
+  /** Entries, notes, or a line about the game. Never an empty document. */
+  const saveable = drafts.length > 0 || writtenNotes.length > 0 || notes.trim().length > 0
 
   async function save() {
     if (problems.length > 0 || !saveable) return
@@ -362,6 +485,14 @@ export default function ReviewEditor({
       const review = await saveReview(userId, game.id, {
         mistakes: drafts.map(toMistake),
         notes: notes.trim(),
+        /*
+          Always written, even empty — the one place this codebase's habit of omitting
+          empties would be a bug. `saveReview` merges, and a merge deep-merges nested
+          maps, so a `moveNotes` left out would leave the previous save's notes in the
+          document and they would come back on the next read. Same trap as the pattern
+          `main` field, reached from the other direction.
+        */
+        moveNotes: writtenNotes,
       })
       setSaved(review.reviewedAt)
       onSaved(review)
@@ -378,6 +509,7 @@ export default function ReviewEditor({
     try {
       await deleteReview(userId, game.id)
       setDrafts([])
+      setNoteDrafts([])
       setNotes('')
       setSaved(null)
       onSaved(null)
@@ -446,6 +578,81 @@ export default function ReviewEditor({
           )}
         </div>
       </div>
+
+      {/*
+        The other way to write about a move. Its own picker rather than a second button
+        on each candidate chip: those are the engine's objections, and most moves worth
+        a note are ones it had nothing to say about. Any move of either side — what your
+        opponent did is half the game, and the reason you played what you played.
+      */}
+      <div className="flex flex-col gap-2">
+        <Label hint="Anything worth remembering — yours or theirs. No cap, no questions to answer.">
+          Moves worth noting
+        </Label>
+
+        <div className="flex gap-1.5 flex-wrap items-center">
+          <select
+            value=""
+            onChange={event => {
+              if (event.target.value) addNote(Number(event.target.value))
+            }}
+            className="bg-zinc-950 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600"
+          >
+            <option value="">+ a move to note…</option>
+            {plies
+              .filter(ply => !taken.has(ply.index))
+              .map(ply => (
+                <option key={ply.index} value={ply.index}>
+                  {plyLabel(ply.index, ply.san)}
+                  {ply.color === game.color ? '' : ' — them'}
+                </option>
+              ))}
+          </select>
+
+          {noteDrafts.length === 0 && (
+            <span className="text-xs text-zinc-600">
+              Nothing noted yet.
+            </span>
+          )}
+        </div>
+      </div>
+
+      {noteDrafts.map(draft => {
+        const move = plyByIndex.get(draft.ply)
+        const judged = verdicts[verdictKey(draft.ply, draft.san)]
+        const live = judged && judged !== 'failed' ? judged : null
+
+        return (
+          <MoveNoteCard
+            key={draft.ply}
+            draft={draft}
+            yours={move ? move.color === game.color : true}
+            color={game.color}
+            fenBefore={move?.fenBefore ?? null}
+            folded={folded[draft.ply] ?? false}
+            onToggleFold={() =>
+              setFolded(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? false) }))
+            }
+            tagsOpen={tagsOpen[draft.ply] ?? false}
+            onToggleTags={() =>
+              setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? false) }))
+            }
+            onChange={changes => patchNote(draft.ply, changes)}
+            onRemove={() => {
+              setSaved(null)
+              setNoteDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))
+            }}
+            onShowPly={() => onShowPly(draft.ply)}
+            verdicts={verdicts}
+            patternTags={patternTags}
+            suggestedTags={suggestedTags}
+            asking={asking === draft.ply}
+            onAsk={() => ask(draft.ply)}
+            engineAnswer={engine[draft.ply]}
+            live={live}
+          />
+        )
+      })}
 
       {drafts.map(draft => {
         const move = plyByIndex.get(draft.ply)
@@ -556,246 +763,34 @@ export default function ReviewEditor({
               </>
             )}
 
-            <div className="flex flex-col gap-2">
-              <Label
-              >
-                What would I play instead?
-              </Label>
-
-              {draft.better.map((row, index) => {
-                const parsed = move ? parseLine(move.fenBefore, row.input) : null
-                const played = parsed && parsed.line.length > 0 ? parsed : null
-                const verdict = played ? verdicts[`${draft.ply}:${played.line[0]}`] : undefined
-
-                return (
-                  <div
-                    key={index}
-                    className="border border-zinc-800 rounded-lg p-3 flex flex-col gap-2 bg-zinc-950/30"
-                  >
-                    <div className="flex gap-2 items-start">
-                      <input
-                        value={row.input}
-                        onChange={event => setRow(draft, index, { input: event.target.value })}
-                        placeholder="Nd5 Bxe7 Qxe7"
-                        aria-label="Line"
-                        className={`${FIELD} font-mono flex-1 min-w-0 ${
-                          parsed?.invalid ? 'border-red-500/60' : ''
-                        }`}
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          patch(draft.ply, {
-                            better: draft.better.filter((entry, at) => at !== index),
-                          })
-                        }
-                        title="Remove this line"
-                        aria-label="Remove this line"
-                        className="text-xs text-zinc-600 hover:text-red-400 transition-colors px-1 py-2 shrink-0"
-                      >
-                        ✕
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-3 flex-wrap text-xs">
-                      {played && (
-                        <span className="text-zinc-400 font-mono">
-                          {formatLine(draft.ply, played.line)}
-                        </span>
-                      )}
-
-                      {played &&
-                        (verdict === undefined ? (
-                          <span className="text-zinc-600">checking…</span>
-                        ) : verdict === 'failed' ? (
-                          <span className="text-zinc-600">not checked</span>
-                        ) : (
-                          <span
-                            className={`font-mono ${
-                              isFault(verdict.tag) ? markColor(verdict.tag) : 'text-emerald-400'
-                            }`}
-                            title={
-                              isFault(verdict.tag)
-                                ? `${played.line[0]} gives something away too`
-                                : `${played.line[0]} holds the position`
-                            }
-                          >
-                            {formatEval(verdict.cpBefore, game.color)} →{' '}
-                            {formatEval(verdict.cpAfter, game.color)}
-                            {isFault(verdict.tag) && ` ${verdict.tag}`}
-                          </span>
-                        ))}
-
-                      {parsed?.invalid && (
-                        <span className="text-red-400">
-                          {played ? 'the line stops at' : 'not legal here:'} {parsed.invalid}
-                        </span>
-                      )}
-                      {parsed?.tooLong && (
-                        <span className="text-amber-400">
-                          lines stop at {MAX_LINE_PLIES / 2} moves each
-                        </span>
-                      )}
-                    </div>
-
-                    <textarea
-                      value={row.why}
-                      onChange={event => setRow(draft, index, { why: event.target.value })}
-                      rows={2}
-                      aria-label="Why this line"
-                      placeholder="Holds f6 and keeps the h-file shut, so the queen has nothing to come to."
-                      className={`${FIELD} w-full resize-y`}
-                    />
-                  </div>
-                )
-              })}
-
-              <div className="flex items-center gap-3 flex-wrap text-xs">
-                <button
-                  type="button"
-                  onClick={() => patch(draft.ply, { better: [...draft.better, EMPTY_ROW] })}
-                  className="text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  + another move
-                </button>
-                <button
-                  type="button"
-                  onClick={() => ask(draft.ply)}
-                  disabled={asking !== null}
-                  className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-40"
-                >
-                  {asking === draft.ply ? 'asking the engine…' : "engine's choice"}
-                </button>
-                {engine[draft.ply] && (
-                  <span className="text-sky-300 font-mono">{engine[draft.ply]}</span>
-                )}
-              </div>
-            </div>
+            <ProposedMoves
+              label="What would I play instead?"
+              ply={draft.ply}
+              rows={draft.better}
+              fenBefore={move?.fenBefore ?? null}
+              color={game.color}
+              verdicts={verdicts}
+              onChange={better => patch(draft.ply, { better })}
+              linePlaceholder="Nd5 Bxe7 Qxe7"
+              whyPlaceholder="Holds f6 and keeps the h-file shut, so the queen has nothing to come to."
+              addLabel="+ another move"
+              asking={asking === draft.ply}
+              onAsk={() => ask(draft.ply)}
+              engineAnswer={engine[draft.ply]}
+            />
 
             <div className="flex flex-col gap-2">
               <Label>Tags</Label>
-
-              <div className="flex gap-1.5 flex-wrap">
-                {draft.tags.length === 0 && (
-                  <span className="text-xs text-zinc-600">Nothing tagged yet.</span>
-                )}
-                {draft.tags.map(tag => (
-                  <button
-                    key={tag}
-                    type="button"
-                    onClick={() =>
-                      patch(draft.ply, { tags: draft.tags.filter(entry => entry !== tag) })
-                    }
-                    className="px-2.5 py-1 text-xs rounded-full bg-zinc-200 text-zinc-900 hover:bg-white transition-colors"
-                    title="Remove this tag"
-                  >
-                    {tag} ✕
-                  </button>
-                ))}
-              </div>
-
-              {/*
-                A plain button rather than <details>: React nulls `currentTarget` on a
-                toggle event, and reading it there crashed the page.
-              */}
-              <button
-                type="button"
-                onClick={() =>
+              <TagPicker
+                tags={draft.tags}
+                open={tagsOpen[draft.ply] ?? true}
+                onToggleOpen={() =>
                   setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? true) }))
                 }
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors self-start"
-              >
-                {(tagsOpen[draft.ply] ?? true) ? '▾ Hide tags' : '▸ Pick tags'}
-              </button>
-
-              {(tagsOpen[draft.ply] ?? true) && (
-                <div className="grid sm:grid-cols-2 gap-3">
-                  {patternTags.length > 0 && (
-                    <div className="flex flex-col gap-1.5 sm:col-span-2">
-                      <span className="text-xs uppercase tracking-wide text-zinc-500">
-                        Patterns
-                      </span>
-                      <div className="flex gap-1 flex-wrap">
-                        {patternTags.map(tag => (
-                          <Chip
-                            key={tag}
-                            active={draft.tags.includes(tag)}
-                            onClick={() =>
-                              patch(draft.ply, {
-                                tags: draft.tags.includes(tag)
-                                  ? draft.tags.filter(entry => entry !== tag)
-                                  : [...draft.tags, tag],
-                              })
-                            }
-                          >
-                            {tag}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {TAG_GROUPS.map(group => (
-                    <div key={group.name} className="flex flex-col gap-1.5">
-                      <span className="text-xs uppercase tracking-wide text-zinc-500">
-                        {group.name}
-                      </span>
-                      <div className="flex gap-1 flex-wrap">
-                        {group.tags.map(tag => (
-                          <Chip
-                            key={tag}
-                            active={draft.tags.includes(tag)}
-                            onClick={() =>
-                              patch(draft.ply, {
-                                tags: draft.tags.includes(tag)
-                                  ? draft.tags.filter(entry => entry !== tag)
-                                  : [...draft.tags, tag],
-                              })
-                            }
-                          >
-                            {tag}
-                          </Chip>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-xs uppercase tracking-wide text-zinc-500">Your own</span>
-                    <div className="flex gap-1 flex-wrap">
-                      {suggestedTags.map(tag => (
-                        <Chip
-                          key={tag}
-                          active={draft.tags.includes(tag)}
-                          onClick={() =>
-                            patch(draft.ply, {
-                              tags: draft.tags.includes(tag)
-                                ? draft.tags.filter(entry => entry !== tag)
-                                : [...draft.tags, tag],
-                            })
-                          }
-                        >
-                          {tag}
-                        </Chip>
-                      ))}
-                    </div>
-                    <input
-                      placeholder="add a tag and press Enter"
-                      onKeyDown={event => {
-                        if (event.key !== 'Enter') return
-                        event.preventDefault()
-
-                        const value = event.currentTarget.value.trim().toLowerCase()
-                        if (value.length === 0 || draft.tags.includes(value)) return
-
-                        patch(draft.ply, { tags: [...draft.tags, value] })
-                        event.currentTarget.value = ''
-                      }}
-                      className={`${FIELD} text-xs`}
-                    />
-                  </div>
-                </div>
-              )}
+                onChange={newTags => patch(draft.ply, { tags: newTags })}
+                patternTags={patternTags}
+                suggestedTags={suggestedTags}
+              />
             </div>
 
             {/*
@@ -878,11 +873,11 @@ export default function ReviewEditor({
         )
       })}
 
-      {drafts.length === 0 && (
+      {drafts.length === 0 && noteDrafts.length === 0 && (
         <p className="text-sm text-zinc-500">
           Pick a move above to start — the engine&apos;s own objections are offered first, worst
-          loss leading. Nothing to pick apart? Leave a note below and save; the game counts as
-          reviewed either way.
+          loss leading. Nothing to pick apart? Note a move you want to remember, or leave a
+          line below and save; the game counts as reviewed either way.
         </p>
       )}
 
