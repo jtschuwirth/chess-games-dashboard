@@ -62,6 +62,7 @@ export default function ProposedMoves({
   asking,
   onAsk,
   engineAnswer,
+  boardLine,
 }: {
   label: string
   hint?: string
@@ -80,6 +81,11 @@ export default function ProposedMoves({
   onAsk: () => void
   /** The engine's own move, once asked for. */
   engineAnswer?: string
+  /**
+   * The line currently played out on the game's board, starting from this entry's
+   * move. Empty when the board is somewhere else.
+   */
+  boardLine?: string[]
 }) {
   const setRow = (index: number, changes: Partial<ProposedRow>) =>
     onChange(rows.map((row, at) => (at === index ? { ...row, ...changes } : row)))
@@ -186,6 +192,27 @@ export default function ProposedMoves({
         >
           {addLabel}
         </button>
+        {/*
+          The other direction. Playing a line out on the board already makes it a
+          branch of the game's tree, so the line you have been looking at is a line
+          this form can simply take — rather than asking you to read it off the board
+          and type it back in. It lands in the first empty row, or a new one.
+        */}
+        {boardLine && boardLine.length > 0 && (
+          <button
+            type="button"
+            onClick={() => {
+              const line = boardLine.join(' ')
+              const empty = rows.findIndex(row => row.input.trim().length === 0)
+              if (empty === -1) onChange([...rows, { input: line, why: '' }])
+              else onChange(rows.map((row, at) => (at === empty ? { ...row, input: line } : row)))
+            }}
+            title={`Take ${boardLine.join(' ')} from the board`}
+            className="text-violet-300 hover:text-violet-100 transition-colors"
+          >
+            ← take the line from the board
+          </button>
+        )}
         <button
           type="button"
           onClick={onAsk}

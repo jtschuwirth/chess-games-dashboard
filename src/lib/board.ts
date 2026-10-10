@@ -139,6 +139,9 @@ export interface PlayedMove {
   san: string
   /** The position the move leads to — what an engine needs to judge it. */
   fen: string
+  /** The squares it went between, for a board to wash. */
+  from: string
+  to: string
 }
 
 /**
@@ -154,7 +157,7 @@ export function playMove(fen: string, input: string): PlayedMove | null {
     try {
       const chess = new Chess(fen)
       const move = chess.move(candidate)
-      return { san: move.san, fen: chess.fen() }
+      return { san: move.san, fen: chess.fen(), from: move.from, to: move.to }
     } catch {
       // try the next spelling
     }

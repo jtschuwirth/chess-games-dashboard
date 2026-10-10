@@ -111,6 +111,7 @@ export default function ReviewEditor({
   suggestedTags,
   patternTags,
   onShowPly,
+  lineOnBoard,
   onSaved,
 }: {
   userId: string
@@ -125,6 +126,12 @@ export default function ReviewEditor({
   patternTags: string[]
   /** Puts the board on a move, so an entry and the position stay together. */
   onShowPly: (ply: number) => void
+  /**
+   * The line the board is standing on, counted from a given move — empty unless it is
+   * out on a branch from exactly there. What lets an entry take a line you have
+   * played out rather than asking you to read it off and type it back.
+   */
+  lineOnBoard?: (ply: number) => string[]
   onSaved: (review: GameReview | null) => void
 }) {
   const [drafts, setDrafts] = useState<Draft[]>(() =>
@@ -649,6 +656,7 @@ export default function ReviewEditor({
             asking={asking === draft.ply}
             onAsk={() => ask(draft.ply)}
             engineAnswer={engine[draft.ply]}
+            boardLine={lineOnBoard?.(draft.ply)}
             live={live}
           />
         )
@@ -777,6 +785,7 @@ export default function ReviewEditor({
               asking={asking === draft.ply}
               onAsk={() => ask(draft.ply)}
               engineAnswer={engine[draft.ply]}
+              boardLine={lineOnBoard?.(draft.ply)}
             />
 
             <div className="flex flex-col gap-2">

@@ -334,6 +334,26 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     [game],
   )
 
+  /**
+   * The line the board is standing on, counted from a move of the game.
+   *
+   * Empty unless the board is out on a branch from exactly that move — so an entry
+   * only offers to take a line that is actually an alternative to its own move. The
+   * branch is already in the tree, because playing it there is what put it there;
+   * this just reads the SANs back out of the path.
+   */
+  const lineOnBoard = useCallback(
+    (ply: number): string[] => {
+      const at = mainPath(moveTree, ply)
+      if (path.length <= at.length) return []
+      if (!at.every((id, index) => path[index] === id)) return []
+      return nodesAlong(moveTree, path)
+        .slice(at.length)
+        .map(node => node.san)
+    },
+    [moveTree, path],
+  )
+
   /** The next move along the line you are standing on, which is what `›` follows. */
   const forward = useMemo(() => {
     const children =
@@ -804,6 +824,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
         suggestedTags={suggestedTags}
         patternTags={patternTagList}
         onShowPly={ply => setMoved(mainPath(moveTree, ply + 1))}
+        lineOnBoard={lineOnBoard}
         onSaved={applyReview}
       />
     </>

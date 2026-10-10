@@ -87,6 +87,8 @@ export default function DrillCardView({
 
   const played = playMove(card.fen, input)
   const illegal = input.trim().length > 0 && played === null
+  /** The move on the board while you are still deciding whether to commit to it. */
+  const proposed = answer ? null : played
 
   async function submit() {
     if (!played || !best || answer || checking) return
@@ -144,9 +146,49 @@ export default function DrillCardView({
 
       <div className="grid md:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] gap-5 items-start justify-center">
         <div className="flex flex-col gap-2 w-full max-w-[22rem] mx-auto">
-          <Board fen={card.fen} orientation={card.color} />
+          {/*
+            Play it on the board, which is where you are looking anyway — the drill is
+            the one screen whose whole point is reading a position, and asking for the
+            answer in a text field asks you to look away from it to give it.
+
+            It fills the move rather than committing it. An attempt is recorded either
+            way it goes, so a slipped piece must not be able to count as a miss; the
+            board shows the move it would make and you still press Answer.
+          */}
+          <Board
+            fen={proposed ? proposed.fen : card.fen}
+            orientation={card.color}
+            highlight={proposed ? [proposed.from, proposed.to] : []}
+            onPlay={
+              answer || proposed
+                ? undefined
+                : move => {
+                    const san = sanFromUci(
+                      card.fen,
+                      `${move.from}${move.to}${move.promotion ?? ''}`,
+                    )
+                    if (san) setInput(san)
+                  }
+            }
+          />
           <p className="text-xs text-zinc-500 text-center">
-            You are {card.color === 'white' ? 'White' : 'Black'}, to play move {card.moveNumber}.
+            {proposed && !answer ? (
+              <>
+                <span className="font-mono text-zinc-300">{proposed.san}</span> — press Answer, or{' '}
+                <button
+                  type="button"
+                  onClick={() => setInput('')}
+                  className="underline decoration-zinc-700 hover:text-zinc-200 transition-colors"
+                >
+                  take it back
+                </button>
+              </>
+            ) : (
+              <>
+                You are {card.color === 'white' ? 'White' : 'Black'}, to play move{' '}
+                {card.moveNumber}.
+              </>
+            )}
           </p>
         </div>
 
@@ -156,7 +198,8 @@ export default function DrillCardView({
               <div>
                 <h3 className="font-semibold text-sm">Propose a continuation</h3>
                 <p className="text-xs text-zinc-500 mt-0.5">
-                  It does not have to be the engine&apos;s best.
+                  Play it on the board or type it. It does not have to be the
+                  engine&apos;s best.
                 </p>
               </div>
 

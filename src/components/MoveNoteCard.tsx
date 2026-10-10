@@ -49,6 +49,7 @@ export default function MoveNoteCard({
   asking,
   onAsk,
   engineAnswer,
+  boardLine,
   live,
 }: {
   draft: NoteDraft
@@ -69,6 +70,8 @@ export default function MoveNoteCard({
   asking: boolean
   onAsk: () => void
   engineAnswer?: string
+  /** The line played out on the game's board from this move, if it is on one. */
+  boardLine?: string[]
   /** The engine's reading of the move you played, once it has one. */
   live: { cpBefore: number; cpAfter: number } | null
 }) {
@@ -173,6 +176,7 @@ export default function MoveNoteCard({
             asking={asking}
             onAsk={onAsk}
             engineAnswer={engineAnswer}
+            boardLine={boardLine}
           />
 
           <div className="flex flex-col gap-2">
