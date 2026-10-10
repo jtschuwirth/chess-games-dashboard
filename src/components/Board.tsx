@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import PieceSprites, { spriteId } from '@/components/PieceSprites'
 import { legalMovesFrom, sideToMove, squaresFrom } from '@/lib/board'
 import type { Color } from '@/types/chess'
@@ -17,6 +17,17 @@ const DARK_TEXT = 'text-[#ebecd0]'
 
 /** The pieces a pawn may become, in the order anyone actually wants them. */
 const PROMOTIONS = ['q', 'r', 'b', 'n'] as const
+
+/** A piece in flight, drawn over the page rather than inside the board. */
+interface Carrying {
+  from: string
+  piece: { type: string; color: 'white' | 'black' }
+  /** Page coordinates of the pointer, which the piece is centred on. */
+  x: number
+  y: number
+  /** One square, so the carried piece is the size of the one it came from. */
+  size: number
+}
 
 export interface BoardMove {
   from: string
@@ -40,6 +51,14 @@ export interface BoardMove {
  * the board offers only squares a piece can actually reach, so an illegal move is not
  * refused so much as unreachable.
  *
+ * Dragging is pointer events and a piece we draw ourselves, not HTML5 drag-and-drop.
+ * Two reasons, and the first is the one that forced it: the browser's drag image is a
+ * snapshot of the *region* the dragged element occupies, and a chess piece is a
+ * transparent element lying on a coloured square — so the square came with it and a
+ * cream block floated around the board. Handing the `<svg>` to `setDragImage` does not
+ * help; it is composited the same way. The second reason is that HTML5 dragging does
+ * not happen at all on a touch screen, and half of this app is used on a phone.
+ *
  * The board does not know what a line or a game is. It reports a move from one square
  * to another; whoever owns the position decides what that means.
  */
@@ -59,14 +78,56 @@ export default function Board({
   const [selected, setSelected] = useState<string | null>(null)
   /** A pawn waiting to be told what to become. */
   const [promoting, setPromoting] = useState<{ from: string; to: string } | null>(null)
+  /** The piece under the cursor, drawn over the page while it is being carried. */
+  const [carrying, setCarrying] = useState<Carrying | null>(null)
 
-  const rows = squaresFrom(fen, orientation)
-  const marked = new Set(highlight)
+  const boardRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * Whether the pointer travelled far enough to count as a drag.
+   *
+   * A click is a press and a release on one square, and the two gestures share their
+   * first half — so the press cannot decide. Past this it is a drag and the click
+   * that follows is swallowed; under it nothing happened and the click stands.
+   */
+  const dragged = useRef(false)
+  /**
+   * Where the piece was picked up, in a ref rather than measured against the carried
+   * state. Several pointer events can land in one React batch, and every handler in a
+   * batch reads the same rendered snapshot — so comparing against the state would be
+   * comparing against where the pointer was a frame ago, or against nothing at all on
+   * the first move after the press. The same trap the plan page's steppers hit.
+   */
+  const grabbedAt = useRef({ x: 0, y: 0 })
+
+  /*
+    Both of these parse the FEN through chess.js, and carrying a piece re-renders this
+    component on every pointer move — which would be a board rebuilt from its text
+    sixty times a second for a piece that has not changed anything yet.
+  */
+  const rows = useMemo(() => squaresFrom(fen, orientation), [fen, orientation])
+  const marked = useMemo(() => new Set(highlight), [highlight])
   const interactive = onPlay !== undefined
   const turn = sideToMove(fen)
 
-  const destinations = selected && interactive ? legalMovesFrom(fen, selected) : []
-  const byTarget = new Map(destinations.map(move => [move.to, move]))
+  const byTarget = useMemo(() => {
+    const moves = selected && interactive ? legalMovesFrom(fen, selected) : []
+    return new Map(moves.map(move => [move.to, move]))
+  }, [fen, selected, interactive])
+
+  /** Which square a point on the page is over, or null when it is off the board. */
+  function squareAt(x: number, y: number): string | null {
+    const box = boardRef.current?.getBoundingClientRect()
+    if (!box) return null
+
+    const column = Math.floor(((x - box.left) / box.width) * 8)
+    const row = Math.floor(((y - box.top) / box.height) * 8)
+    if (column < 0 || column > 7 || row < 0 || row > 7) return null
+
+    // the grid is drawn from the watching side, so black's view is both axes reversed
+    const file = 'abcdefgh'[orientation === 'white' ? column : 7 - column]
+    const rank = orientation === 'white' ? 8 - row : row + 1
+    return `${file}${rank}`
+  }
 
   function pickUp(square: string, piece: { color: 'white' | 'black' } | null) {
     // only the side to move: picking up a piece that cannot move is a dead end you
@@ -92,7 +153,64 @@ export default function Board({
     return true
   }
 
+  function startCarry(
+    event: React.PointerEvent<HTMLDivElement>,
+    square: string,
+    piece: { type: string; color: 'white' | 'black' } | null,
+  ) {
+    // the left button only: a right-click is a context menu, not a move
+    if (!interactive || promoting || event.button !== 0) return
+    if (!piece || piece.color !== turn) return
+
+    const box = boardRef.current?.getBoundingClientRect()
+    if (!box) return
+
+    dragged.current = false
+    grabbedAt.current = { x: event.clientX, y: event.clientY }
+    setSelected(square)
+    setCarrying({ from: square, piece, x: event.clientX, y: event.clientY, size: box.width / 8 })
+    // so the move and the release keep coming here even once the pointer leaves the
+    // square; it throws on a pointer the browser no longer knows about, and losing
+    // capture is worth less than losing the drag
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId)
+    } catch {
+      // carry on without it: the board still gets the move while the pointer is over it
+    }
+  }
+
+  function moveCarry(event: React.PointerEvent<HTMLDivElement>) {
+    const { x, y } = { x: event.clientX, y: event.clientY }
+    if (Math.abs(x - grabbedAt.current.x) + Math.abs(y - grabbedAt.current.y) > 3) {
+      dragged.current = true
+    }
+    // the updater form, so two moves in one batch do not both read the same snapshot
+    // and leave the piece wherever the first of them put it
+    setCarrying(current => (current ? { ...current, x, y } : null))
+  }
+
+  function endCarry(event: React.PointerEvent<HTMLDivElement>) {
+    // `selected` is the square it was lifted from, and unlike the carried state it is
+    // not something a batched move could have left behind
+    const from = selected
+    setCarrying(null)
+    if (!from) return
+
+    // a press and release on one square is a click, and the click handler has it
+    if (!dragged.current) return
+
+    const landed = squareAt(event.clientX, event.clientY)
+    if (landed && landed !== from) drop(from, landed)
+    // dropped on itself or off the board: the piece goes back and stays picked up
+  }
+
   function clickSquare(square: string, piece: { color: 'white' | 'black' } | null) {
+    // the tail of a drag, not a click of its own
+    if (dragged.current) {
+      dragged.current = false
+      return
+    }
+
     if (!interactive || promoting) return
 
     if (selected) {
@@ -108,7 +226,8 @@ export default function Board({
   }
 
   return (
-    <div className="relative w-full aspect-square rounded-md overflow-hidden select-none ring-1 ring-black/50 shadow-lg shadow-black/30">
+    <>
+      <div className="relative w-full aspect-square rounded-md overflow-hidden select-none ring-1 ring-black/50 shadow-lg shadow-black/30">
       <PieceSprites />
 
       {/*
@@ -116,7 +235,10 @@ export default function Board({
         themselves, a row with a tall piece in it grew while an empty row collapsed,
         so the squares changed size as the pieces moved.
       */}
-      <div className="grid grid-cols-[repeat(8,minmax(0,1fr))] grid-rows-[repeat(8,minmax(0,1fr))] w-full h-full">
+      <div
+        ref={boardRef}
+        className="grid grid-cols-[repeat(8,minmax(0,1fr))] grid-rows-[repeat(8,minmax(0,1fr))] w-full h-full"
+      >
         {rows.flat().map(square => {
           const file = square.name[0]
           const rank = square.name[1]
@@ -133,16 +255,20 @@ export default function Board({
             <div
               key={square.name}
               onClick={() => clickSquare(square.name, piece)}
-              onDragOver={event => {
-                if (interactive && selected && byTarget.has(square.name)) event.preventDefault()
-              }}
-              onDrop={event => {
-                if (!interactive || !selected) return
-                event.preventDefault()
-                drop(selected, square.name)
-              }}
+              onPointerDown={event => startCarry(event, square.name, piece)}
+              onPointerMove={moveCarry}
+              onPointerUp={endCarry}
+              onPointerCancel={() => setCarrying(null)}
+              /*
+                Only a square you can lift from takes the touch away from the page.
+                `touch-action: none` is what stops a drag turning into a scroll, and
+                putting it on the whole board would mean you could not scroll past the
+                board at all on a phone — so it goes on your own pieces and nowhere
+                else, and a swipe over anything else still scrolls.
+              */
+              style={canLift ? { touchAction: 'none' } : undefined}
               className={`relative ${square.light ? LIGHT : DARK} ${
-                canLift || target ? 'cursor-pointer' : ''
+                canLift ? 'cursor-grab active:cursor-grabbing' : target ? 'cursor-pointer' : ''
               }`}
             >
               {marked.has(square.name) && (
@@ -169,48 +295,21 @@ export default function Board({
 
               {/*
                 Absolutely placed, so nothing a square contains can change its size.
-                The draggable wrapper is a span rather than the svg — SVG elements
-                take no `draggable` in React's typings — and rather than the square
-                itself, so the thing dragging under the cursor is the piece and not a
-                cream rectangle with a piece on it.
+                It never catches the pointer: the square underneath handles the whole
+                gesture, so picking a piece up and dropping one on it are the same
+                element's business.
               */}
               {piece && (
-                <span
-                  draggable={canLift}
-                  onDragStart={event => {
-                    if (!pickUp(square.name, piece)) {
-                      event.preventDefault()
-                      return
-                    }
-
-                    /*
-                      The browser's own drag image is a snapshot of the region the
-                      dragged element occupies, and this one is a transparent span
-                      lying over a coloured square — so the square came with it, and a
-                      cream block floated around the board under the piece.
-
-                      The `<svg>` inside has a transparent background of its own, so
-                      handing that over as the drag image gives the piece alone.
-                      Grabbed at its centre, which is where you picked it up.
-                    */
-                    const art = event.currentTarget.querySelector('svg')
-                    if (art) {
-                      const box = art.getBoundingClientRect()
-                      event.dataTransfer.setDragImage(art, box.width / 2, box.height / 2)
-                    }
-                  }}
-                  onDragEnd={() => setSelected(null)}
-                  className={`absolute inset-0 ${canLift ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                <svg
+                  viewBox="0 0 45 45"
+                  className={`absolute inset-0 w-full h-full pointer-events-none ${
+                    carrying?.from === square.name ? 'opacity-25' : ''
+                  }`}
+                  role="img"
+                  aria-label={`${piece.color} piece on ${square.name}`}
                 >
-                  <svg
-                    viewBox="0 0 45 45"
-                    className="w-full h-full"
-                    role="img"
-                    aria-label={`${piece.color} piece on ${square.name}`}
-                  >
-                    <use href={`#${spriteId(piece.type, piece.color)}`} />
-                  </svg>
-                </span>
+                  <use href={`#${spriteId(piece.type, piece.color)}`} />
+                </svg>
               )}
 
               {/*
@@ -277,7 +376,36 @@ export default function Board({
           </div>
         </div>
       )}
-    </div>
+      </div>
+
+      {/*
+        The piece you are carrying, drawn over the page at the pointer.
+
+        `fixed` rather than absolute, so it is positioned in the same coordinates the
+        pointer events report and needs no arithmetic against the board's offset; and
+        `pointer-events-none`, or it would be the thing under the cursor and every
+        square would stop receiving the move.
+      */}
+      {carrying && (
+        <svg
+          viewBox="0 0 45 45"
+          aria-hidden="true"
+          style={{
+            position: 'fixed',
+            left: carrying.x,
+            top: carrying.y,
+            width: carrying.size,
+            height: carrying.size,
+            transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none',
+            zIndex: 50,
+          }}
+        >
+          <use href={`#${spriteId(carrying.piece.type, carrying.piece.color)}`} />
+        </svg>
+      )}
+
+    </>
   )
 }
 

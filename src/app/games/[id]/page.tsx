@@ -31,6 +31,7 @@ import {
   parseTimeControl,
   timeSpentPerPly,
 } from '@/lib/clocks'
+import { opponentMoves } from '@/lib/analysis'
 import { onAnalysed } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getOpenings, getPatterns, saveVariations } from '@/lib/firestore'
@@ -316,6 +317,23 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     return map
   }, [game])
 
+  /**
+   * What their replies were worth, by ply.
+   *
+   * The first pass only evaluates your own moves, so a move of theirs had no numbers
+   * under the board and the readout went blank on every other move. It does have
+   * numbers: their reply sits bracketed between your `cpAfter` and your next
+   * `cpBefore`, both already in your frame, which is exactly what `opponentMoves`
+   * reads out. Nothing extra is evaluated and nothing extra is stored.
+   *
+   * Their last reply has no move of yours after it to be bracketed by, so it has no
+   * reading — the one move of the game that still shows nothing.
+   */
+  const theirs = useMemo(
+    () => new Map(game ? opponentMoves(game).map(move => [move.ply, move]) : []),
+    [game],
+  )
+
   /** The next move along the line you are standing on, which is what `›` follows. */
   const forward = useMemo(() => {
     const children =
@@ -484,6 +502,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const fen = fenAt(moveTree, path)
   const analysed = game.analysis
   const shownMove = analysed?.moves.find(move => move.ply === cursor)
+  const theirMove = theirs.get(cursor)
 
   return (
     <>
@@ -689,6 +708,20 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
                 {isFault(shownMove.tag) && (
                   <span className={markColor(shownMove.tag)}> {shownMove.tag}</span>
                 )}
+              </span>
+            )}
+            {/*
+              Their move, read out of the same stored analysis. No mark beside it:
+              whether a move gave something away is a judgement about whoever played
+              it, and on their turn that is a statement about them.
+            */}
+            {onLine && !shownMove && theirMove && (
+              <span
+                className="font-mono text-zinc-400"
+                title="What their move did, from White's side — read off the evaluations either side of it"
+              >
+                {formatEval(theirMove.cpBefore, game.color)} →{' '}
+                {formatEval(theirMove.cpAfter, game.color)}
               </span>
             )}
             {/*
