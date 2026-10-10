@@ -2,18 +2,27 @@
 
 import { useMemo, useState } from 'react'
 import Chip from '@/components/Chip'
-import LineBoard, { plyName, useLineCursor } from '@/components/LineBoard'
+import MoveTreeBoard from '@/components/MoveTreeBoard'
 import { buildOpeningTree, openingLabel, type OpeningNode } from '@/lib/opening'
+import {
+  commentAt as setComment,
+  mainLine,
+  mainPath,
+  moveLabel,
+  nodeAt,
+  type MoveTree,
+  type Path,
+} from '@/lib/movetree'
 import {
   KIND_LABEL,
   PATTERN_KINDS,
   clampStartPly,
-  commentAt,
-  commentedPlies,
   emptyLine,
+  lineFromTree,
   lineHasContent,
+  lineHome,
+  lineTree,
   parsePatternPgn,
-  withComment,
 } from '@/lib/pattern'
 import type { NewPattern, OpeningLine, PatternKind, PatternLine } from '@/types/chess'
 
@@ -49,14 +58,26 @@ function LineFields({
   onRemove?: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
-  const nav = useLineCursor(line.moves, line.startPly)
-  const commented = useMemo(() => commentedPlies(line), [line])
+  const [moved, setMoved] = useState<Path | null>(null)
+
+  const tree = useMemo(() => lineTree(line), [line])
+  const home = useMemo(() => lineHome(tree, line.startPly), [tree, line.startPly])
+  const path = moved ?? home
+  const standing = nodeAt(tree, path)
+
+  /** An edit on the board becomes the stored line: PGN, main line and where it opens. */
+  function setTree(next: MoveTree, at: Path) {
+    setMoved(at)
+    setError(null)
+    onChange(lineFromTree(line, next, line.startPly))
+  }
 
   function setPgn(pgn: string) {
     // The PGN is kept whatever happens, so a typo does not throw away what you pasted.
     try {
       const moves = parsePatternPgn(pgn)
       setError(null)
+      setMoved(null)
       onChange({ ...line, pgn, moves, startPly: clampStartPly(line.startPly, moves) })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not read that PGN.')
@@ -86,7 +107,9 @@ function LineFields({
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label>PGN</Label>
+          <Label hint="brackets are variations, braces are comments — both survive a round trip">
+            PGN
+          </Label>
           <textarea
             value={line.pgn}
             onChange={event => setPgn(event.target.value)}
@@ -116,38 +139,72 @@ function LineFields({
       </div>
 
       <div className="w-full max-w-[26rem] mx-auto lg:mx-0 flex flex-col gap-3">
-        <LineBoard
-          nav={nav}
+        {/*
+          The same board the game view uses. Playing a move here extends the line, or
+          branches it where it differs — a pattern usually has an "if they play this
+          instead" in it, and before the tree there was nowhere to put one.
+        */}
+        <MoveTreeBoard
+          tree={tree}
+          path={path}
+          onPath={setMoved}
+          onTree={setTree}
           orientation={line.orientation ?? 'white'}
-          commented={commented}
           onFlip={() =>
             onChange({
               ...line,
               orientation: (line.orientation ?? 'white') === 'white' ? 'black' : 'white',
             })
           }
-          onSetStart={ply => onChange({ ...line, startPly: ply })}
+          home={home}
         />
+
+        <div className="flex items-center gap-3 text-xs">
+          <button
+            type="button"
+            onClick={() => onChange({ ...line, startPly: path.length })}
+            disabled={path.length === home.length || !onMainLine(tree, path)}
+            title={
+              onMainLine(tree, path)
+                ? 'Open the line on this move'
+                : 'A line opens on its own moves, not inside a variation'
+            }
+            className="text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-30 disabled:hover:text-zinc-500"
+          >
+            open here
+          </button>
+          <span className="text-zinc-600">
+            {line.startPly === 0
+              ? 'opens before the first move'
+              : `opens on ${moveLabel(tree.startFen, line.startPly - 1, mainLine(tree)[line.startPly - 1] ?? '', true)}`}
+          </span>
+        </div>
 
         <div className="flex flex-col gap-1.5">
           {/* the move is mono and in its own case — "QC2" is not a move */}
           <span className="text-xs uppercase tracking-wide text-zinc-500">
             Comment on{' '}
             <span className="normal-case tracking-normal font-mono text-zinc-400">
-              {plyName(nav.replay, nav.cursor)}
+              {standing ? moveLabel(tree.startFen, path.length - 1, standing.san, true) : 'start'}
             </span>
           </span>
           <textarea
-            value={commentAt(line, nav.cursor)}
-            onChange={event => onChange(withComment(line, nav.cursor, event.target.value))}
+            value={standing?.comment ?? ''}
+            onChange={event => setTree(setComment(tree, path, event.target.value), path)}
+            disabled={!standing}
             rows={3}
-            placeholder="what this move is for"
-            className={`${INPUT} resize-y`}
+            placeholder={standing ? 'what this move is for' : 'step to a move to write on it'}
+            className={`${INPUT} resize-y disabled:opacity-40`}
           />
         </div>
       </div>
     </div>
   )
+}
+
+/** Whether a path follows the main line all the way, which is where a line may open. */
+function onMainLine(tree: MoveTree, path: Path): boolean {
+  return mainPath(tree, path.length).join('/') === path.join('/')
 }
 
 /**

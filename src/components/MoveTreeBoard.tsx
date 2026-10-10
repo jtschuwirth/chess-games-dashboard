@@ -30,10 +30,13 @@ const NAV = 'px-2 py-1 rounded border border-zinc-700 text-zinc-300 hover:border
  * A board you can play on, with the whole tree of moves beside it.
  *
  * The one board component for anything that is a line rather than a position: the
- * game and its variations, a pattern's example, an opening's moves. It owns no state
- * — the cursor and the tree both live with whoever can save them, which is the same
- * reason `useLineCursor` lives outside `LineBoard`: whatever shows or edits what is
- * written on a move has to know which move is on the board.
+ * game and its variations, a pattern's example, an opening's moves. It replaced
+ * `LineBoard`, which could hold a single line with no branches and had its own idea
+ * of a cursor.
+ *
+ * It owns no state. The cursor and the tree both live with whoever can save them,
+ * which is the rule `LineBoard` already followed and for the same reason: whatever
+ * shows or edits what is written on a move has to know which move is on the board.
  *
  * Editing is `onTree`. Without it the board is a reader, the move text is navigation
  * and nothing can be changed — which is most of the places it is used.

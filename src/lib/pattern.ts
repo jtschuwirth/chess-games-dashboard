@@ -1,4 +1,14 @@
 import { Chess } from 'chess.js'
+import {
+  commentAt as setComment,
+  fromPgn,
+  mainLine,
+  mainPath,
+  toPgn,
+  walk,
+  type MoveTree,
+  type Path,
+} from './movetree'
 import type { GameRecord, PatternKind, PatternLine, PatternRecord } from '@/types/chess'
 import { trainableMistakes } from './review'
 
@@ -169,4 +179,73 @@ export function timesTagged(games: GameRecord[], pattern: PatternRecord): number
 /** Patterns keyed by their tag, for turning a tag back into the thing it points at. */
 export function patternsByTag(patterns: PatternRecord[]): Map<string, PatternRecord> {
   return new Map(patterns.map(pattern => [patternTag(pattern), pattern]))
+}
+
+/* ----------------------------------------------------------------- the tree */
+
+/**
+ * A stored line as a move tree.
+ *
+ * The PGN is the authority, because it is the only field that can hold a branch —
+ * `moves` is a flat list and always was. Everything written before this has a PGN with
+ * no brackets in it, so it reads back as the same single line it always was.
+ *
+ * Comments used to live in their own map, keyed by how many half-moves had been played.
+ * They live on the moves now, which is where PGN has always put them and the only place
+ * that still means something once a line can branch — ply 7 names one move on a line
+ * and several on a tree. Old ones are grafted onto the main line on read rather than
+ * migrated, the same habit as `main` folding into `examples`.
+ */
+export function lineTree(line: PatternLine): MoveTree {
+  let tree = fromPgn(line.pgn ?? '')
+
+  // a line stored before the PGN was kept, or one whose PGN failed to parse, still has
+  // its parsed moves — rebuild from those rather than showing an empty board
+  if (tree.children.length === 0 && line.moves.length > 0) {
+    tree = fromPgn(line.moves.join(' '))
+  }
+
+  for (const [key, text] of Object.entries(line.comments ?? {})) {
+    const ply = Number(key)
+    if (!Number.isInteger(ply) || ply < 1 || !text.trim()) continue
+    const path = mainPath(tree, ply)
+    if (path.length === ply) tree = setComment(tree, path, text)
+  }
+
+  return tree
+}
+
+/** Where a line's board opens, as a path. `startPly` counts along the main line. */
+export function lineHome(tree: MoveTree, startPly: number): Path {
+  return mainPath(tree, clampStartPly(startPly, mainLine(tree)))
+}
+
+/**
+ * The line as it should be stored, after the tree has been edited.
+ *
+ * `pgn` carries everything — the branches and what is written on each move — and
+ * `moves` keeps the main line for the readers that only ever wanted one. `comments` is
+ * dropped: it is in the PGN now, and leaving it would have `lineTree` graft a stale
+ * copy back on over the top on the next read.
+ */
+export function lineFromTree(
+  line: PatternLine,
+  tree: MoveTree,
+  startPly: number,
+): PatternLine {
+  const next: PatternLine = {
+    ...line,
+    pgn: toPgn(tree),
+    moves: mainLine(tree),
+    startPly: clampStartPly(startPly, mainLine(tree)),
+  }
+  delete next.comments
+  return next
+}
+
+/** Every move of a tree that carries a comment, in reading order. */
+export function commentedNodes(tree: MoveTree): { path: Path; san: string; text: string }[] {
+  return walk(tree)
+    .filter(entry => (entry.node.comment ?? '').trim().length > 0)
+    .map(entry => ({ path: entry.path, san: entry.node.san, text: entry.node.comment as string }))
 }

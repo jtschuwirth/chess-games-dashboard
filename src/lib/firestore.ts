@@ -434,12 +434,23 @@ export async function deleteOpening(userId: string, openingId: string): Promise<
  */
 const PATTERNS = 'thematicPatterns'
 
+/**
+ * The written-up patterns, from the server by default — the plans argument, and for
+ * the same two reasons. There are a handful of them, not a thousand, so a fresh read
+ * costs almost nothing; and they are written on one device and read on another, which
+ * is exactly where a cache-first read shows you what *this* device last saw.
+ *
+ * It bit in practice: a browser whose cache held one of four patterns showed one
+ * pattern, and the one it showed was a version from before its comments were written.
+ * `readDocs` trusts any cache that is not empty, so a partial one is indistinguishable
+ * from a complete one.
+ */
 export async function getPatterns(
   userId: string,
   options?: ReadOptions,
 ): Promise<PatternRecord[]> {
   const ref = collection(db, 'users', userId, PATTERNS)
-  const snapshot = await readDocs(query(ref, orderBy('name')), options)
+  const snapshot = await readDocs(query(ref, orderBy('name')), { fresh: true, ...options })
   // the one place a stored pattern becomes the shape the rest of the code expects
   return snapshot.docs.map(d => normalizePattern({ ...d.data(), id: d.id } as PatternRecord))
 }

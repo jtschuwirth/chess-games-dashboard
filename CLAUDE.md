@@ -389,6 +389,21 @@ src/
   a line's annotations are what you came to read, and finding them by stepping through
   eighteen moves is not reading. Clicking one puts its move on the board, and the move
   strip under the board marks the same moves with a dot, so the two directions meet.
+- **A pattern's line is a tree, like everything else that is a line.** It was
+  `moves: string[]` with comments in a map keyed by half-move, read by `LineBoard` —
+  which could hold one line, no branches, and had its own cursor. The PGN is the
+  authority now, because it is the only field that could ever hold a branch, and
+  `lineTree` reads it; `MoveTreeBoard` draws it, so a pattern board gained move input
+  and variations at the same time as the game's did, and `LineBoard` is gone. A
+  pattern usually has an "if they play this instead" in it and there was nowhere to
+  put one.
+
+  Comments moved onto the moves, which is where PGN has always put them and the only
+  place that still means something once a line can branch — ply 7 names one move on a
+  line and several on a tree. Old ones are grafted onto the main line on read and
+  dropped on write, the same habit as `main` folding into `examples`; leaving them
+  would have the next read graft a stale copy back over the top.
+
 - **The board's cursor lives outside the board.** `useLineCursor` is a hook rather than
   state inside `LineBoard`, because whoever shows or edits a move's comment has to know
   which move is on the board. That is what lets the commentary sit beside the board in the
@@ -414,6 +429,13 @@ src/
   means reading the game again, and a typo mid-edit must not throw away what you pasted —
   so a PGN that fails to parse keeps the text, shows the error, and leaves the board on the
   last moves that did parse.
+- **Patterns are read from the server, like plans.** Two reasons, both the plans
+  argument: there are a handful of them rather than a thousand, so a fresh read costs
+  almost nothing, and they are written on one device and read on another. It bit in
+  practice — a browser whose cache held one of four patterns showed one pattern, and
+  the copy it showed predated its own comments. `readDocs` trusts any cache that is
+  not empty, so a partial one is indistinguishable from a complete one.
+
 - **Thematic patterns live in `thematicPatterns`**, not `patterns`: the saved opening lines
   hold that collection id and are not moving for a cosmetic reason. See the note in
   `lib/firestore.ts`.

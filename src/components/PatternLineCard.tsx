@@ -1,8 +1,9 @@
 'use client'
 
-import { useMemo } from 'react'
-import LineBoard, { plyName, useLineCursor } from '@/components/LineBoard'
-import { commentedPlies } from '@/lib/pattern'
+import { useMemo, useState } from 'react'
+import MoveTreeBoard from '@/components/MoveTreeBoard'
+import { commentedNodes, lineHome, lineTree } from '@/lib/pattern'
+import { moveLabel, type Path } from '@/lib/movetree'
 import type { PatternLine } from '@/types/chess'
 
 /**
@@ -12,23 +13,25 @@ import type { PatternLine } from '@/types/chess'
  * The commentary is a list rather than only the note for wherever you happen to be
  * standing. A line's annotations are the thing you came to read, and hunting for them
  * one move at a time is not reading. Clicking one puts its move on the board, which is
- * the same jump the strip under the board makes from the other direction.
+ * the same jump the move text under the board makes from the other direction.
+ *
+ * The cursor lives here rather than in the board for the same reason it always did:
+ * whatever shows what is written on a move has to know which move is on the board.
  */
-export default function PatternLineCard({ line, fallbackTitle }: { line: PatternLine; fallbackTitle: string }) {
-  const nav = useLineCursor(line.moves, line.startPly)
-  const commented = useMemo(() => commentedPlies(line), [line])
+export default function PatternLineCard({
+  line,
+  fallbackTitle,
+}: {
+  line: PatternLine
+  fallbackTitle: string
+}) {
+  const tree = useMemo(() => lineTree(line), [line])
+  const home = useMemo(() => lineHome(tree, line.startPly), [tree, line.startPly])
+  const [moved, setMoved] = useState<Path | null>(null)
+  const path = moved ?? home
 
-  const notes = useMemo(
-    () =>
-      [...commented]
-        .sort((a, b) => a - b)
-        .map(ply => ({
-          ply,
-          label: plyName(nav.replay, ply),
-          text: (line.comments?.[String(ply)] ?? '').trim(),
-        })),
-    [commented, nav.replay, line.comments],
-  )
+  const notes = useMemo(() => commentedNodes(tree), [tree])
+  const standing = path.join('/')
 
   return (
     <div className="border border-zinc-800 rounded-xl p-4 bg-zinc-900 flex flex-col gap-3">
@@ -41,10 +44,12 @@ export default function PatternLineCard({ line, fallbackTitle }: { line: Pattern
       */}
       <div className="grid lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] gap-5 items-start">
         <div className="w-full max-w-[28rem] mx-auto lg:mx-0">
-          <LineBoard
-            nav={nav}
+          <MoveTreeBoard
+            tree={tree}
+            path={path}
+            onPath={setMoved}
             orientation={line.orientation ?? 'white'}
-            commented={commented}
+            home={home}
           />
         </div>
 
@@ -57,14 +62,16 @@ export default function PatternLineCard({ line, fallbackTitle }: { line: Pattern
             <div className="flex flex-col divide-y divide-zinc-800 border border-zinc-800 rounded-lg overflow-hidden">
               {notes.map(note => (
                 <button
-                  key={note.ply}
+                  key={note.path.join('/')}
                   type="button"
-                  onClick={() => nav.goTo(note.ply)}
+                  onClick={() => setMoved(note.path)}
                   className={`text-left px-3 py-2 flex flex-col gap-0.5 transition-colors ${
-                    nav.cursor === note.ply ? 'bg-zinc-800/70' : 'hover:bg-zinc-800/40'
+                    standing === note.path.join('/') ? 'bg-zinc-800/70' : 'hover:bg-zinc-800/40'
                   }`}
                 >
-                  <span className="text-[11px] font-mono text-zinc-500">{note.label}</span>
+                  <span className="text-[11px] font-mono text-zinc-500">
+                    {moveLabel(tree.startFen, note.path.length - 1, note.san, true)}
+                  </span>
                   <span className="text-sm text-zinc-200 whitespace-pre-wrap">{note.text}</span>
                 </button>
               ))}
