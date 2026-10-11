@@ -11,15 +11,12 @@ import {
   KIND_BADGE,
   KIND_LABEL,
   PATTERN_KINDS,
-  PATTERN_TYPES,
-  TYPE_BADGE,
-  TYPE_LABEL,
   essentialsCount,
+  hasMethod,
   motifOf,
   normalizePattern,
   patternBody,
   timesTagged,
-  typeOf,
 } from '@/lib/pattern'
 import type {
   GameRecord,
@@ -27,15 +24,15 @@ import type {
   OpeningLine,
   PatternKind,
   PatternRecord,
-  PatternType,
 } from '@/types/chess'
 
 /** One row of the list: the write-up and the figure read off the games. */
 interface Row {
   pattern: PatternRecord
   kind: PatternKind
-  type: PatternType
   motif: string | null
+  /** Whether the essentials have been answered — what the Method chips narrow by. */
+  method: boolean
   times: number
 }
 
@@ -49,21 +46,22 @@ interface Row {
 interface Find {
   text: string
   kind: PatternKind | null
-  type: PatternType | null
+  /** 'yes' for the ones taken apart, 'no' for the ones still to do. */
+  method: 'yes' | 'no' | null
   motif: string | null
 }
 
-const NOTHING: Find = { text: '', kind: null, type: null, motif: null }
+const NOTHING: Find = { text: '', kind: null, method: null, motif: null }
 
 function readFind(params: ReturnType<typeof useSearchParams>): Find {
   const kind = params.get('kind')
-  const type = params.get('type')
+  const method = params.get('method')
   return {
     text: params.get('q') ?? '',
     // an unknown value is dropped rather than passed through, so a hand-typed URL
     // cannot invent a category the list has no way to draw
     kind: PATTERN_KINDS.includes(kind as PatternKind) ? (kind as PatternKind) : null,
-    type: PATTERN_TYPES.includes(type as PatternType) ? (type as PatternType) : null,
+    method: method === 'yes' || method === 'no' ? method : null,
     motif: params.get('motif'),
   }
 }
@@ -72,7 +70,7 @@ function writeFind(find: Find): string {
   const query = new URLSearchParams()
   if (find.text.trim()) query.set('q', find.text.trim())
   if (find.kind) query.set('kind', find.kind)
-  if (find.type) query.set('type', find.type)
+  if (find.method) query.set('method', find.method)
   if (find.motif) query.set('motif', find.motif)
   const text = query.toString()
   return text ? `?${text}` : ''
@@ -95,7 +93,7 @@ function matches(row: Row, find: Find, ignore?: keyof Find): boolean {
     if (!haystack(row).includes(find.text.trim().toLowerCase())) return false
   }
   if (ignore !== 'kind' && find.kind && row.kind !== find.kind) return false
-  if (ignore !== 'type' && find.type && row.type !== find.type) return false
+  if (ignore !== 'method' && find.method && row.method !== (find.method === 'yes')) return false
   if (ignore !== 'motif' && find.motif && row.motif !== find.motif) return false
   return true
 }
@@ -116,8 +114,7 @@ function PatternsBody({ userId }: { userId: string }) {
   const [patterns, setPatterns] = useState<PatternRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [games, setGames] = useState<GameRecord[]>([])
-  /** Which document the open form is writing, or null when it is closed. */
-  const [adding, setAdding] = useState<PatternType | null>(null)
+  const [adding, setAdding] = useState(false)
   const [find, setFind] = useState<Find>(() => readFind(searchParams))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -161,7 +158,7 @@ function PatternsBody({ userId }: { userId: string }) {
         ...(prev ?? []),
         normalizePattern({ ...patternBody(pattern), id } as PatternRecord),
       ])
-      setAdding(null)
+      setAdding(false)
       setError(null)
     } catch (caught) {
       setError(errorText(caught, 'Could not save that pattern.'))
@@ -176,8 +173,8 @@ function PatternsBody({ userId }: { userId: string }) {
       .map(pattern => ({
         pattern,
         kind: pattern.kind,
-        type: typeOf(pattern),
         motif: motifOf(pattern),
+        method: hasMethod(pattern),
         times: timesTagged(games, pattern),
       }))
       .sort(
@@ -196,9 +193,10 @@ function PatternsBody({ userId }: { userId: string }) {
 
     return {
       kind: new Map(PATTERN_KINDS.map(k => [k, of('kind', row => row.kind === k)])),
-      type: new Map(PATTERN_TYPES.map(t => [t, of('type', row => row.type === t)])),
+      answered: of('method', row => row.method),
+      unanswered: of('method', row => !row.method),
       anyKind: rows.filter(row => matches(row, find, 'kind')).length,
-      anyType: rows.filter(row => matches(row, find, 'type')).length,
+      anyMethod: rows.filter(row => matches(row, find, 'method')).length,
       anyMotif: rows.filter(row => matches(row, find, 'motif')).length,
     }
   }, [rows, find])
@@ -225,38 +223,26 @@ function PatternsBody({ userId }: { userId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-zinc-500 max-w-xl">
-          Ideas you can carry between openings, and tactics worked out against the essentials
-          method. Either way the name becomes a tag in the review form, so a mistake can point at
-          the thing you should have played.
+          Ideas you can carry between openings. Each name becomes a tag in the review form, so a
+          mistake can point at the thing you should have played — and any of them can be taken
+          apart against the essentials method.
         </p>
-        {adding === null && (
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={() => setAdding('pattern')}
-              className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors"
-            >
-              New pattern
-            </button>
-            <button
-              onClick={() => setAdding('essentials')}
-              aria-label="New essentials"
-              title="Work a tactic out against the method's questions: what each piece is responsible for, what weakness lets it happen, what would break it and what it survives"
-              className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors"
-            >
-              New essentials
-            </button>
-          </div>
+        {!adding && (
+          <button
+            onClick={() => setAdding(true)}
+            className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors shrink-0"
+          >
+            New pattern
+          </button>
         )}
       </div>
 
-      {adding !== null && (
+      {adding && (
         <PatternForm
-          type={adding}
           openings={openings}
-          patterns={(patterns ?? []).filter(entry => typeOf(entry) === 'pattern')}
           busy={busy}
           onSubmit={handleCreate}
-          onCancel={() => setAdding(null)}
+          onCancel={() => setAdding(false)}
         />
       )}
 
@@ -268,8 +254,7 @@ function PatternsBody({ userId }: { userId: string }) {
         </div>
       ) : patterns.length === 0 ? (
         <p className="py-12 text-center text-sm text-zinc-500">
-          Nothing written up yet — start with the idea you keep missing, or take a tactic apart
-          with the essentials method.
+          Nothing written up yet — start with the idea you keep missing.
         </p>
       ) : (
         <>
@@ -327,19 +312,30 @@ function PatternsBody({ userId }: { userId: string }) {
               ))}
             </FilterRow>
 
-            <FilterRow label="Written up as">
-              <Chip active={find.type === null} onClick={() => setFind(c => ({ ...c, type: null }))}>
-                any {counts.anyType}
+            {/*
+              Which have been taken apart against the method, which is the question the
+              old document type was really being asked — and now answers it without a
+              second copy of the idea to keep in step.
+            */}
+            <FilterRow label="Essentials">
+              <Chip
+                active={find.method === null}
+                onClick={() => setFind(c => ({ ...c, method: null }))}
+              >
+                any {counts.anyMethod}
               </Chip>
-              {PATTERN_TYPES.map(type => (
-                <Chip
-                  key={type}
-                  active={find.type === type}
-                  onClick={() => setFind(c => ({ ...c, type: c.type === type ? null : type }))}
-                >
-                  {TYPE_LABEL[type]} {counts.type.get(type) ?? 0}
-                </Chip>
-              ))}
+              <Chip
+                active={find.method === 'yes'}
+                onClick={() => setFind(c => ({ ...c, method: c.method === 'yes' ? null : 'yes' }))}
+              >
+                answered {counts.answered}
+              </Chip>
+              <Chip
+                active={find.method === 'no'}
+                onClick={() => setFind(c => ({ ...c, method: c.method === 'no' ? null : 'no' }))}
+              >
+                still to do {counts.unanswered}
+              </Chip>
             </FilterRow>
 
             {motifs.length > 0 && (
@@ -381,7 +377,7 @@ function PatternsBody({ userId }: { userId: string }) {
               your eye down a column of names is what you came to do.
             */
             <div className="border border-zinc-800 rounded-xl overflow-hidden divide-y divide-zinc-800">
-              {shown.map(({ pattern, kind, type, motif, times }) => (
+              {shown.map(({ pattern, kind, motif, times }) => (
                 <Link
                   key={pattern.id}
                   href={`/patterns/${pattern.id}`}
@@ -395,11 +391,6 @@ function PatternsBody({ userId }: { userId: string }) {
                       >
                         {KIND_LABEL[kind]}
                       </span>
-                      <span
-                        className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${TYPE_BADGE[type]}`}
-                      >
-                        {TYPE_LABEL[type]}
-                      </span>
                       {motif && <span className="text-xs font-mono text-zinc-400">{motif}</span>}
                     </div>
                     {pattern.conditions.length > 0 && (
@@ -411,7 +402,7 @@ function PatternsBody({ userId }: { userId: string }) {
                     <span>
                       {pattern.examples.length} line{pattern.examples.length === 1 ? '' : 's'}
                     </span>
-                    {type === 'essentials' && (
+                    {hasMethod(pattern) && (
                       <span>{essentialsCount(pattern.essentials)} points</span>
                     )}
                     {times > 0 && <span className="text-amber-400/80">{times} flagged</span>}

@@ -10,17 +10,14 @@ import { deletePattern, getGames, getOpenings, getPatterns, updatePattern } from
 import { openingLabel } from '@/lib/opening'
 import {
   ESSENTIALS_SECTIONS,
-  emptyEssentials,
-  essentialsHaveContent,
   KIND_BADGE,
   KIND_LABEL,
-  TYPE_BADGE,
-  TYPE_LABEL,
   gamesTagged,
+  hasMethod,
+  pointText,
   lineHasContent,
   motifOf,
   normalizePattern,
-  typeOf,
 } from '@/lib/pattern'
 import { trainableMistakes } from '@/lib/review'
 import type { GameRecord, NewPattern, OpeningLine, PatternRecord } from '@/types/chess'
@@ -39,8 +36,6 @@ function roman(n: number): string {
 function PatternBody({ userId, patternId }: { userId: string; patternId: string }) {
   const router = useRouter()
   const [pattern, setPattern] = useState<PatternRecord | null>(null)
-  /** All of them: the links between two documents are read off this list. */
-  const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [games, setGames] = useState<GameRecord[]>([])
   const [missing, setMissing] = useState(false)
@@ -59,7 +54,6 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
         if (!live) return
         const found = loadedPatterns.find(entry => entry.id === patternId) ?? null
         setPattern(found)
-        setPatterns(loadedPatterns)
         setMissing(found === null)
         setOpenings(loadedOpenings)
         setGames(loadedGames)
@@ -128,27 +122,6 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
     [openings, pattern],
   )
 
-  /** The patterns an essentials document was written for. */
-  const linkedPatterns = useMemo(
-    () => patterns.filter(entry => (pattern?.patternIds ?? []).includes(entry.id)),
-    [patterns, pattern],
-  )
-
-  /**
-   * The essentials written for *this* pattern — derived by reading the forward links
-   * the other way, exactly as the openings above are. Nothing stores a back-reference,
-   * so the two directions cannot disagree.
-   */
-  const writtenFor = useMemo(
-    () =>
-      pattern
-        ? patterns.filter(
-            entry => typeOf(entry) === 'essentials' && (entry.patternIds ?? []).includes(pattern.id),
-          )
-        : [],
-    [patterns, pattern],
-  )
-
   if (error && pattern === null && !missing) {
     return <LoadError message={error} onRetry={() => setReload(n => n + 1)} />
   }
@@ -180,11 +153,7 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
         </Link>
         <PatternForm
           initial={pattern}
-          type={typeOf(pattern)}
           openings={openings}
-          patterns={patterns.filter(
-            entry => typeOf(entry) === 'pattern' && entry.id !== pattern.id,
-          )}
           busy={busy}
           onSubmit={handleSave}
           onCancel={() => setEditing(false)}
@@ -211,13 +180,6 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
             }`}
           >
             {KIND_LABEL[pattern.kind]}
-          </span>
-          <span
-            className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
-              TYPE_BADGE[typeOf(pattern)]
-            }`}
-          >
-            {TYPE_LABEL[typeOf(pattern)]}
           </span>
           {motifOf(pattern) && (
             <span className="text-xs font-mono text-zinc-400">{motifOf(pattern)}</span>
@@ -266,13 +228,13 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
         them answered would then render nothing at all between its name and its
         examples, which reads as a page that failed rather than one not written yet.
       */}
-      {typeOf(pattern) === 'essentials' && !essentialsHaveContent(pattern.essentials ?? emptyEssentials()) && (
+      {!hasMethod(pattern) && (
         <p className="text-sm text-zinc-600">
-          Nothing answered yet — Edit to take this apart against the four questions.
+          The essentials have not been answered for this one — Edit to take it apart.
         </p>
       )}
 
-      {typeOf(pattern) === 'essentials' && pattern.essentials && (
+      {hasMethod(pattern) && pattern.essentials && (
         <div className="grid lg:grid-cols-2 gap-3">
           {ESSENTIALS_SECTIONS.map(section => {
             const points = pattern.essentials![section.key].filter(
@@ -295,51 +257,13 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
                       <span className="text-zinc-600 font-mono shrink-0">
                         ({roman(index + 1)})
                       </span>
-                      <span className="min-w-0">{point}</span>
+                      <span className="min-w-0">{pointText(point)}</span>
                     </li>
                   ))}
                 </ol>
               </div>
             )
           })}
-        </div>
-      )}
-
-      {linkedPatterns.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
-          <h3 className="text-xs uppercase tracking-wide text-zinc-500">
-            The essentials for
-          </h3>
-          <div className="flex gap-1.5 flex-wrap">
-            {linkedPatterns.map(entry => (
-              <Link
-                key={entry.id}
-                href={`/patterns/${entry.id}`}
-                className="px-2 py-1 rounded-md border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
-              >
-                {entry.name}
-              </Link>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {writtenFor.length > 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
-          <h3 className="text-xs uppercase tracking-wide text-zinc-500">
-            Essentials written for this
-          </h3>
-          <div className="flex gap-1.5 flex-wrap">
-            {writtenFor.map(entry => (
-              <Link
-                key={entry.id}
-                href={`/patterns/${entry.id}`}
-                className="px-2 py-1 rounded-md border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
-              >
-                {entry.name}
-              </Link>
-            ))}
-          </div>
         </div>
       )}
 

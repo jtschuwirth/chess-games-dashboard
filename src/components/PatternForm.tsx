@@ -17,6 +17,7 @@ import {
 import {
   ESSENTIALS_SECTIONS,
   KIND_LABEL,
+  essentialsHaveContent,
   MOTIFS_BY_KIND,
   PATTERN_KINDS,
   clampStartPly,
@@ -38,8 +39,6 @@ import type {
   PatternEssentials,
   PatternKind,
   PatternLine,
-  PatternRecord,
-  PatternType,
 } from '@/types/chess'
 
 function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
@@ -380,19 +379,13 @@ function OpeningPicker({
  */
 export default function PatternForm({
   initial,
-  type = 'pattern',
   openings,
-  patterns = [],
   busy,
   onSubmit,
   onCancel,
 }: {
   initial?: NewPattern
-  /** Which document is being written. Fixed for the life of the form. */
-  type?: PatternType
   openings: OpeningLine[]
-  /** The patterns an essentials document may be written for. Ignored otherwise. */
-  patterns?: PatternRecord[]
   busy?: boolean
   onSubmit: (pattern: NewPattern) => Promise<void> | void
   onCancel?: () => void
@@ -403,7 +396,6 @@ export default function PatternForm({
   const [essentials, setEssentials] = useState<PatternEssentials>(
     initial?.essentials ?? emptyEssentials(),
   )
-  const [patternIds, setPatternIds] = useState<string[]>(initial?.patternIds ?? [])
   const [conditions, setConditions] = useState((initial?.conditions ?? []).join('\n'))
   // always one editor on screen: a pattern with nothing in it is still being written
   const [examples, setExamples] = useState<PatternLine[]>(
@@ -411,14 +403,20 @@ export default function PatternForm({
   )
   const [openingIds, setOpeningIds] = useState<string[]>(initial?.openingIds ?? [])
   const [error, setError] = useState<string | null>(null)
+  /*
+   * The method is four more boxes, and a form that opens with eight empty ones is eight
+   * boxes left empty — the reason the sections were kept short in the first place. So it
+   * is folded away until asked for, and open from the start on a write-up that already
+   * has answers, which is the same rule a finished plan week follows. Decided once, in a
+   * lazy initialiser: deriving it every render would fold the section away under your
+   * hands as you cleared the last point.
+   */
+  const [method, setMethod] = useState(() => essentialsHaveContent(initial?.essentials ?? emptyEssentials()))
 
   async function submit() {
     const trimmed = name.trim()
     if (trimmed.length === 0) {
-      // named for whichever document this is: the message is read while writing one
-      setError(
-        `${type === 'essentials' ? 'Essentials need' : 'A pattern needs'} a name — it is the tag you will reach for in a review.`,
-      )
+      setError('A write-up needs a name — it is the tag you will reach for in a review.')
       return
     }
 
@@ -426,7 +424,6 @@ export default function PatternForm({
     const next: NewPattern = {
       name: trimmed,
       kind,
-      type,
       conditions: conditions
         .split('\n')
         .map(line => line.trim())
@@ -438,12 +435,9 @@ export default function PatternForm({
     }
 
     // `patternBody` strips and checks all of this again on the way to Firestore; set
-    // here only what this document actually has, so nothing carries an undefined field
+    // here only what this write-up actually has, so nothing carries an undefined field
     if (motif) next.motif = motif
-    if (type === 'essentials') {
-      next.essentials = essentials
-      if (patternIds.length > 0) next.patternIds = patternIds
-    }
+    if (essentialsHaveContent(essentials)) next.essentials = essentials
 
     await onSubmit(next)
   }
@@ -545,46 +539,36 @@ export default function PatternForm({
       {/*
         The method's own questions, rendered from `ESSENTIALS_SECTIONS` rather than
         written out here, so a screen cannot describe a question that does not exist.
-        One point per line: the answers in the method are short lettered points, not
-        paragraphs, and a textarea per point would be four forms instead of four fields.
+        One point per line: the answers are short lettered points, not paragraphs, and a
+        textarea per point would be four forms instead of four fields.
       */}
-      {type === 'essentials' &&
-        ESSENTIALS_SECTIONS.map(section => (
-          <div key={section.key} className="flex flex-col gap-1.5">
-            <Label hint="one per line">
-              {section.number}. {section.title}
-            </Label>
-            <textarea
-              value={essentials[section.key].join('\n')}
-              onChange={event => setPoints(section.key, event.target.value)}
-              rows={3}
-              placeholder={section.hint}
-              className={`${INPUT} resize-y`}
-            />
-          </div>
-        ))}
-
-      {type === 'essentials' && patterns.length > 0 && (
-        <div className="flex flex-col gap-1.5">
-          <Label hint="what this is the essentials for">Patterns</Label>
-          <div className="flex gap-1.5 flex-wrap">
-            {patterns.map(option => (
-              <Chip
-                key={option.id}
-                active={patternIds.includes(option.id)}
-                onClick={() =>
-                  setPatternIds(prev =>
-                    prev.includes(option.id)
-                      ? prev.filter(entry => entry !== option.id)
-                      : [...prev, option.id],
-                  )
-                }
-              >
-                {option.name}
-              </Chip>
-            ))}
-          </div>
+      {method ? (
+        <div className="flex flex-col gap-3 border-l-2 border-zinc-800 pl-4">
+          <Label hint="why this works, and what would break it">The essentials</Label>
+          {ESSENTIALS_SECTIONS.map(section => (
+            <div key={section.key} className="flex flex-col gap-1.5">
+              <Label hint="one per line">
+                {section.number}. {section.title}
+              </Label>
+              <textarea
+                value={essentials[section.key].join('\n')}
+                onChange={event => setPoints(section.key, event.target.value)}
+                rows={3}
+                placeholder={section.hint}
+                className={`${INPUT} resize-y`}
+              />
+            </div>
+          ))}
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setMethod(true)}
+          title="Take it apart: what each piece is responsible for, what weakness lets it happen, what would break it and what it survives"
+          className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+        >
+          + Answer the essentials
+        </button>
       )}
 
       <div className="flex flex-col gap-1.5">

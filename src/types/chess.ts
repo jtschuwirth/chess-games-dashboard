@@ -460,20 +460,7 @@ export interface MoveVerdict {
   dismissed?: boolean
 }
 
-export type PatternKind = 'tactics' | 'strategy' | 'development' | 'endgame'
-
-/**
- * Which kind of write-up a document in `thematicPatterns` is.
- *
- * `pattern` is the original: an idea you can carry between openings. `essentials` is the
- * *Pattern Internalisation Essentials* method — not "what is this idea" but "why does
- * this tactic work, and what would break it", answered against a fixed set of questions.
- *
- * One collection rather than two, because a name is a review tag whichever kind wrote
- * it: everything counting, filtering and drilling tags works on strings and needs to
- * learn nothing about either. Absent on everything written before this: a pattern.
- */
-export type PatternType = 'pattern' | 'essentials'
+export type PatternKind = 'tactics' | 'mate' | 'strategy' | 'development' | 'endgame'
 
 /**
  * The questions the essentials method asks, each answered as a list of short points.
@@ -558,18 +545,16 @@ export interface PatternRecord {
    * you actually wanted to point at.
    */
   motif?: string
-  /** Which kind of write-up this is. Absent on everything written before: a pattern. */
-  type?: PatternType
-  /** The method's answers. Only on an essentials document; omitted, never undefined. */
-  essentials?: PatternEssentials
   /**
-   * Patterns this is the essentials for, by `PatternRecord` id.
+   * The method's answers, when it has been taken apart. Omitted, never undefined.
    *
-   * Only the forward link is stored. A pattern's page finds the essentials written for
-   * it by filtering on this, the same way it already finds its openings — a stored
-   * back-reference would be a second copy of one fact to keep in step.
+   * A section of the write-up rather than a document beside it. It was tried as its own
+   * type and the first real use split one idea in half — the method in one document and
+   * the position in the other, with the name, kind, motif and openings typed twice and
+   * nothing keeping them in step. The method internalises *a pattern*, which is what
+   * its own name says.
    */
-  patternIds?: string[]
+  essentials?: PatternEssentials
   /** When the pattern applies — one condition per entry. */
   conditions: string[]
   /**

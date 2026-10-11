@@ -19,18 +19,30 @@ import type {
   PatternKind,
   PatternLine,
   PatternRecord,
-  PatternType,
 } from '@/types/chess'
 import { trainableMistakes } from './review'
 
 /**
  * The kinds, in the order they are offered. Tactics first because that is what most
  * patterns turn out to be; endgame last because it is the one you reach for least.
+ *
+ * `mate` sits beside tactics rather than inside it. A mating pattern is not a tactic
+ * that happens to end the game — it is the thing you are hunting for, there are dozens
+ * of named ones, and filing them under Tactics buried them among the forks and pins. It
+ * is also the one kind a motif cannot help: the write-up's own *name* already says
+ * which mate it is, so a sub-tag could only repeat it.
  */
-export const PATTERN_KINDS: PatternKind[] = ['tactics', 'strategy', 'development', 'endgame']
+export const PATTERN_KINDS: PatternKind[] = [
+  'tactics',
+  'mate',
+  'strategy',
+  'development',
+  'endgame',
+]
 
 export const KIND_LABEL: Record<PatternKind, string> = {
   tactics: 'Tactics',
+  mate: 'Mate',
   strategy: 'Strategy',
   development: 'Development',
   endgame: 'Endgame',
@@ -43,38 +55,14 @@ export const KIND_LABEL: Record<PatternKind, string> = {
  */
 export const KIND_BADGE: Record<PatternKind, string> = {
   tactics: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
+  // fuchsia: clear of the rose beside it, and of the violet the engine owns elsewhere
+  mate: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
   strategy: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   development: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
   endgame: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
 }
 
-/* ------------------------------------------------------- the two document types */
-
-export const PATTERN_TYPES: PatternType[] = ['pattern', 'essentials']
-
-export const TYPE_LABEL: Record<PatternType, string> = {
-  pattern: 'Pattern',
-  essentials: 'Essentials',
-}
-
-/**
- * Zinc for both, deliberately, and told apart by brightness rather than by hue.
- *
- * The kind already owns the colour on these pages, and a second coloured pill beside it
- * would read as two categories of equal weight when one of them is only which form was
- * filled in. Every hue is also spoken for: rose, sky, emerald and amber are the kinds
- * themselves, violet is the engine, blue is a review. A fifth would have to mean
- * something, and this does not.
- */
-export const TYPE_BADGE: Record<PatternType, string> = {
-  pattern: 'bg-zinc-800/60 text-zinc-400 border-zinc-800',
-  essentials: 'bg-zinc-700/60 text-zinc-200 border-zinc-600',
-}
-
-/** Which type a stored document is. Absent means a pattern: everything predates this. */
-export function typeOf(pattern: PatternRecord): PatternType {
-  return pattern.type === 'essentials' ? 'essentials' : 'pattern'
-}
+/* ----------------------------------------------- the internalisation method */
 
 export interface EssentialsSection {
   /** The field it writes to. */
@@ -132,6 +120,27 @@ export function essentialsHaveContent(essentials: PatternEssentials): boolean {
   return ESSENTIALS_KEYS.some(key => essentials[key].some(point => point.trim().length > 0))
 }
 
+/**
+ * A point with any numbering you typed in front of it taken off.
+ *
+ * The list numbers itself, so a point written "(I) White Knight covers g6" would read
+ * "(i) (I) White Knight covers g6" — and the method's own write-ups come numbered,
+ * because that is how it is set out on the page you are copying from.
+ *
+ * Stripped at the point it is drawn rather than on the way in: what you typed is what
+ * is stored, so turning the numbering off later would give the text back whole. Only a
+ * numeral counts, never a bare letter, or a point beginning "A piece on c4" would lose
+ * its first word.
+ */
+export function pointText(point: string): string {
+  return point.replace(/^\s*\(?\s*(?:\d+|[ivxlcdm]+)\s*[).:]\s*/i, '').trim()
+}
+
+/** Whether this write-up has been taken apart against the method at all. */
+export function hasMethod(pattern: PatternRecord): boolean {
+  return Boolean(pattern.essentials && essentialsHaveContent(pattern.essentials))
+}
+
 /** How many points are written across all four, which is the figure a row shows. */
 export function essentialsCount(essentials: PatternEssentials | undefined): number {
   if (!essentials) return 0
@@ -168,8 +177,9 @@ export const MOTIFS_BY_KIND: Record<PatternKind, MotifGroup[]> = {
       name: 'Removing the defence',
       motifs: ['deflection', 'decoy', 'removing the defender', 'overloading', 'clearance'],
     },
-    { name: 'Mate', motifs: ['mating net', 'back rank mate', 'smothered mate'] },
   ],
+  // a named mate is named by the write-up itself, so a sub-tag could only repeat it
+  mate: [],
   strategy: [],
   development: [],
   endgame: [],
@@ -348,25 +358,28 @@ export function lineHasContent(line: PatternLine): boolean {
  */
 export function normalizePattern(raw: PatternRecord): PatternRecord {
   const stored = Array.isArray(raw.examples) ? raw.examples : []
-  const type = typeOf(raw)
 
   const normalized: PatternRecord = {
     ...raw,
-    type,
     examples: raw.main && lineHasContent(raw.main) ? [raw.main, ...stored] : stored,
-    patternIds: Array.isArray(raw.patternIds) ? raw.patternIds.filter(id => typeof id === 'string') : [],
   }
 
-  // every question answered by an array, whatever the document turned up holding, so no
-  // reader has to guard each one — and only on the type that has them
-  if (type === 'essentials') {
-    const held = (raw.essentials ?? {}) as Partial<PatternEssentials>
-    normalized.essentials = Object.fromEntries(
-      ESSENTIALS_KEYS.map(key => [
-        key,
-        (Array.isArray(held[key]) ? held[key] : []).filter(point => typeof point === 'string'),
-      ]),
-    ) as unknown as PatternEssentials
+  /*
+   * Every question answered by an array, whatever the document turned up holding, so
+   * nothing reading the method has to guard each one. A write-up nobody has taken apart
+   * keeps no `essentials` at all rather than an empty shell, which is what `hasMethod`
+   * reads and what stops a blank set counting as an answer.
+   */
+  const held = (raw.essentials ?? {}) as Partial<PatternEssentials>
+  const answered = Object.fromEntries(
+    ESSENTIALS_KEYS.map(key => [
+      key,
+      (Array.isArray(held[key]) ? held[key] : []).filter(point => typeof point === 'string'),
+    ]),
+  ) as unknown as PatternEssentials
+
+  if (essentialsHaveContent(answered)) {
+    normalized.essentials = answered
   } else {
     delete normalized.essentials
   }
@@ -389,7 +402,16 @@ export function normalizePattern(raw: PatternRecord): PatternRecord {
  * document, or a tactic re-filed as an endgame, would otherwise keep answers and a motif
  * that `normalizePattern` cannot drop hard enough to stop them coming back.
  */
-export const PATTERN_OPTIONAL_FIELDS = ['motif', 'essentials', 'patternIds'] as const
+export const PATTERN_OPTIONAL_FIELDS = ['motif', 'essentials'] as const
+
+/**
+ * Fields nothing writes any more, cleared on every update.
+ *
+ * `main` was the single line before examples became a list. `type` and `patternIds`
+ * are the essentials-as-its-own-document experiment: the method is a section of a
+ * write-up now, so a document that used to be one must stop saying so.
+ */
+export const PATTERN_RETIRED_FIELDS = ['main', 'type', 'patternIds'] as const
 
 /** An example in the shape Firestore will take: no key is ever present and undefined. */
 function exampleBody(line: PatternLine): PatternLine {
@@ -416,12 +438,9 @@ function exampleBody(line: PatternLine): PatternLine {
  * fields that type has and no others.
  */
 export function patternBody(pattern: NewPattern): NewPattern {
-  const type = typeOf(pattern as PatternRecord)
-
   const body: NewPattern = {
     name: pattern.name.trim(),
     kind: pattern.kind,
-    type,
     conditions: pattern.conditions.filter(condition => condition.trim().length > 0),
     examples: pattern.examples.filter(lineHasContent).map(exampleBody),
     openingIds: [...new Set(pattern.openingIds)],
@@ -431,15 +450,13 @@ export function patternBody(pattern: NewPattern): NewPattern {
   const motif = motifOf(pattern as PatternRecord)
   if (motif) body.motif = motif
 
-  if (type === 'essentials') {
-    const held = pattern.essentials ?? emptyEssentials()
-    body.essentials = Object.fromEntries(
-      ESSENTIALS_KEYS.map(key => [key, held[key].filter(point => point.trim().length > 0)]),
-    ) as unknown as PatternEssentials
-
-    const patternIds = [...new Set(pattern.patternIds ?? [])].filter(id => id.length > 0)
-    if (patternIds.length > 0) body.patternIds = patternIds
-  }
+  // written only once something has been answered, so a write-up nobody has taken
+  // apart carries no empty shell for `hasMethod` to trip over
+  const held = pattern.essentials ?? emptyEssentials()
+  const answered = Object.fromEntries(
+    ESSENTIALS_KEYS.map(key => [key, held[key].filter(point => point.trim().length > 0)]),
+  ) as unknown as PatternEssentials
+  if (essentialsHaveContent(answered)) body.essentials = answered
 
   return body
 }

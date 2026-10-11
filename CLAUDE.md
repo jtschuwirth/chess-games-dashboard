@@ -38,19 +38,19 @@ win/draw/loss splits for all games or for the games that followed one of those l
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
-6. `/patterns` — write up the ideas themselves, grouped by kind. Two kinds of write-up,
-   each with its own button: a **pattern** is a name, a kind, the conditions that bring
-   it about and the examples showing it; **essentials** answers the four questions of the
-   *Pattern Internalisation Essentials* method — what each piece is responsible for, what
-   weakness lets the tactic exist, what would break it and what it survives — and links
-   to the patterns it is written for, which list it back. A tactical write-up can say
-   which tactic it is, and those motifs narrow the section. An example is a game opened
-   on the move where the idea appears, *or* a position pasted as a FEN with the moves
-   played on top of it, for the tactic you have without the game it came from. Any move
-   of a line can carry its own comment, and they are listed beside the board to read or
-   to jump to. Either kind's name becomes a tag in the review form, so a mistake can
-   point at the idea you should have played, and its own page lists the games where you
-   wanted it.
+6. `/patterns` — write up the ideas themselves, found rather than scrolled: a search box
+   over names, motifs and conditions, and chips for the kind, whether the essentials are
+   answered, and the motif. One write-up is a name, a kind (tactics, mate, strategy,
+   development, endgame), the conditions that bring it about and the examples showing it
+   — and any of them can be taken apart against the *Pattern Internalisation Essentials*
+   method: what each piece is responsible for, what weakness lets the tactic exist, what
+   would break it and what it survives. A tactical one can also say which tactic it is.
+   An example is a game opened on the move where the idea appears, *or* a position pasted
+   as a FEN with the moves played on top of it, for the tactic you have without the game
+   it came from. Any move of a line can carry its own comment, and they are listed beside
+   the board to read or to jump to. The name becomes a tag in the review form, so a
+   mistake can point at the idea you should have played, and its own page lists the games
+   where you wanted it.
 7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
@@ -383,18 +383,23 @@ src/
   pattern leaves the old name behind on reviews already written, where it survives as an
   ordinary free tag; rewriting it everywhere would be a write per affected game, and the
   old name is still true about what you thought at the time.
-- **There are two kinds of write-up, in one collection.** A **pattern** is an idea you can
-  carry between openings. **Essentials** is the *Pattern Internalisation Essentials*
-  method — not "what is this idea" but "why does this tactic work, and what would break
-  it" — answered against four fixed questions. `type` on the document says which, and is
-  absent on everything written before: a pattern.
+- **The essentials method is a section of a write-up, not a document beside it.** It was
+  built as its own type, and the first real use broke it: one idea — Anastasia's Mate —
+  came out as two documents, the thirteen method points in one and the board position in
+  the other, with the name, kind, motif and openings typed twice and nothing keeping them
+  in step. Neither half was the thing.
 
-  One collection rather than two, and the reason is the tag plumbing. `patternTag`,
-  `patternTags`, `gamesTagged`, `timesTagged` and `patternsByTag` all work on the name
-  alone, and the review form, the Mistake database, the tag filter and the drill already
-  consume those. So an essentials document is taggable, countable, filterable and
-  drillable without one of them learning that it exists. Two collections would have been
-  two reads and five functions duplicated.
+  So there is one document again. `essentials` is an optional field on it, present only
+  once something has been answered, and `hasMethod` is what every screen asks instead of
+  a type. The form folds the four questions away behind **+ Answer the essentials** until
+  wanted, which is the original reason the sections were kept short — a form opening with
+  eight empty boxes is eight boxes left empty.
+
+  The question the old type was really being asked is "which have I taken apart", and the
+  finder answers it directly now: an **Essentials** filter of *answered* / *still to do*,
+  with no second copy of the idea to keep in step. `type` and `patternIds` are read as
+  nothing and deleted on every write, via `PATTERN_RETIRED_FIELDS` — the habit `main`
+  established.
 
 - **The method's questions are a table.** `ESSENTIALS_SECTIONS` carries the key each one
   writes to, how the method numbers it, and the prompt — which is also what the form
@@ -405,13 +410,19 @@ src/
   because they are read as two lists and written at different times: you find what breaks
   it first, and what it survives only once you have tried.
 
-- **A motif says which tactic it is, and it is not a tag.** `kind` is four values because
+- **Mate is a kind, not a motif.** It began as a motif group under Tactics, which buried
+  a named mate among the forks and pins — and a sub-tag could only ever repeat what the
+  write-up is already called, since "Anastasia's Mate" names itself. There are dozens of
+  named mates and no fixed list could hold them, so the *kind* says it is a mate and the
+  *name* says which. `mate` is therefore the one kind that offers no motifs at all, and
+  it sits next to Tactics in the order because that is where you look for it.
+
+- **A motif says which tactic it is, and it is not a tag.** `kind` is a short list because
   "a pattern you cannot file under one of them is usually two patterns", and that
-  reasoning does not carry down a level: a fork, a pin and a back rank mate are all
-  tactics and all different things to train. So `MOTIFS_BY_KIND` is a longer vocabulary,
-  grouped the way `TAG_GROUPS` is so sixteen names stay scannable, and keyed by kind —
-  only tactics offers any today, and a kind with none shows no picker rather than an
-  empty row.
+  reasoning does not carry down a level: a fork, a pin and a deflection are all tactics
+  and all different things to train. So `MOTIFS_BY_KIND` is a longer vocabulary, grouped
+  the way `TAG_GROUPS` is so the names stay scannable, and keyed by kind — only tactics
+  offers any, and a kind with none shows no picker rather than an empty row.
 
   It is deliberately **not** a review tag, though the name is. A name says which idea you
   reached for; a motif classifies it, and tagging a mistake `fork` would put a
@@ -427,10 +438,11 @@ src/
   three-across grid, which reads well at four write-ups and becomes a page you scroll
   past at forty — and by then the question is "where is the one about back rank mates",
   which is a search rather than a scroll. So: a search box over the name, the motif and
-  the conditions, and chips for the kind, the kind of write-up and the motif. The list
-  underneath is one column of rows rather than cards, because twelve cards is a screenful
-  where twelve rows is a glance, and it is sorted by kind with the kind as a badge, so
-  browsing everything still reads grouped without four headings to scroll past.
+  the conditions, and chips for the kind, whether the essentials are answered, and the
+  motif. The list underneath is one column of rows rather than cards, because twelve
+  cards is a screenful where twelve rows is a glance, and it is sorted by kind with the
+  kind as a badge, so browsing everything still reads grouped without headings to scroll
+  past.
 
   **Every chip carries the count it would give you**, measured with the *other* filters in
   force but not its own — otherwise every chip except the active one reads zero and the
@@ -466,10 +478,12 @@ src/
   it was a tactic again. `updatePattern` therefore clears every optional field the body
   did not set.
 
-- **The link between a pattern and its essentials is stored once.** `patternIds` points
-  from the essentials document at the patterns it is written for; a pattern's page finds
-  its essentials by reading those the other way, exactly as it already finds its openings.
-  A stored back-reference would be a second copy of one fact to keep in step.
+- **A point is numbered by the list, so numbering you typed is taken off when drawn.**
+  The method's own write-ups come numbered — `(I)`, `(II)` — because that is how the page
+  you copy from sets them out, and printing them inside a numbered list reads `(i) (I)`.
+  `pointText` strips a leading numeral at the point it is drawn rather than on the way in,
+  so what you typed is what is stored. Only a numeral, never a bare letter, or a point
+  beginning "A piece on c4" would lose its first word.
 
 - **A pattern's line is a whole game pointed at a move, not a position.** A FEN would have
   been less to store and would have thrown away the two things worth keeping: how you get

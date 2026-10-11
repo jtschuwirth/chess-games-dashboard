@@ -18,7 +18,12 @@ import {
 import { db } from './firebase'
 import { normalizeAnalysis } from './analysis'
 import { normalizeOpening } from './opening'
-import { PATTERN_OPTIONAL_FIELDS, normalizePattern, patternBody } from './pattern'
+import {
+  PATTERN_OPTIONAL_FIELDS,
+  PATTERN_RETIRED_FIELDS,
+  normalizePattern,
+  patternBody,
+} from './pattern'
 import { studyBody, studyHasContent } from './study'
 import {
   normalizeSettings,
@@ -478,17 +483,13 @@ export async function updatePattern(
   */
   const body = patternBody(pattern)
   const cleared = Object.fromEntries(
-    PATTERN_OPTIONAL_FIELDS.filter(field => body[field] === undefined).map(field => [
-      field,
-      deleteField(),
-    ]),
+    [
+      ...PATTERN_OPTIONAL_FIELDS.filter(field => body[field] === undefined),
+      ...PATTERN_RETIRED_FIELDS,
+    ].map(field => [field, deleteField()]),
   )
 
-  await updateDoc(doc(db, 'users', userId, PATTERNS, patternId), {
-    ...body,
-    ...cleared,
-    main: deleteField(),
-  })
+  await updateDoc(doc(db, 'users', userId, PATTERNS, patternId), { ...body, ...cleared })
 }
 
 export async function deletePattern(userId: string, patternId: string): Promise<void> {
