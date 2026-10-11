@@ -23,9 +23,11 @@ import {
   emptyEssentials,
   emptyLine,
   emptyPositionLine,
+  fenIsValid,
   lineFromTree,
   lineHasContent,
   lineHome,
+  lineOrientation,
   lineTree,
   motifsFor,
   parsePatternPgn,
@@ -112,9 +114,19 @@ function LineFields({
       const moves = parsePatternPgn(line.pgn, startFen)
       setError(null)
       setMoved(null)
+
+      // the orientation is not written here: `lineOrientation` derives it from this
+      // position, so the stored field only ever holds a flip you asked for
       onChange({ ...line, startFen, moves, startPly: clampStartPly(line.startPly, moves) })
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Could not read that position.')
+    } catch {
+      // the field being edited is the position, so the complaint has to be about that:
+      // "check the move notation" sends you to the box you did not touch — which is why
+      // the thrown message is replaced rather than shown
+      setError(
+        !fenIsValid(startFen)
+          ? 'Invalid FEN — check the position and try again.'
+          : 'Those moves do not play from this position.',
+      )
       onChange({ ...line, startFen })
     }
   }
@@ -202,12 +214,9 @@ function LineFields({
           path={path}
           onPath={setMoved}
           onTree={setTree}
-          orientation={line.orientation ?? 'white'}
+          orientation={lineOrientation(line)}
           onFlip={() =>
-            onChange({
-              ...line,
-              orientation: (line.orientation ?? 'white') === 'white' ? 'black' : 'white',
-            })
+            onChange({ ...line, orientation: lineOrientation(line) === 'white' ? 'black' : 'white' })
           }
           home={home}
         />
@@ -228,7 +237,9 @@ function LineFields({
           </button>
           <span className="text-zinc-600">
             {line.startPly === 0
-              ? 'opens before the first move'
+              ? fromPosition
+                ? 'opens on the position'
+                : 'opens before the first move'
               : `opens on ${moveLabel(tree.startFen, line.startPly - 1, mainLine(tree)[line.startPly - 1] ?? '', true)}`}
           </span>
         </div>
@@ -404,7 +415,10 @@ export default function PatternForm({
   async function submit() {
     const trimmed = name.trim()
     if (trimmed.length === 0) {
-      setError('A pattern needs a name — it is the tag you will reach for in a review.')
+      // named for whichever document this is: the message is read while writing one
+      setError(
+        `${type === 'essentials' ? 'Essentials need' : 'A pattern needs'} a name — it is the tag you will reach for in a review.`,
+      )
       return
     }
 
@@ -448,6 +462,23 @@ export default function PatternForm({
   function pickKind(next: PatternKind) {
     setKind(next)
     if (motif && !motifsFor(next).includes(motif)) setMotif(null)
+  }
+
+  /**
+   * Asking for a position swaps out the empty example the form starts with.
+   *
+   * The form always shows one card so there is something to write in, and that card is
+   * a game. Appending a position under it leaves an untouched game card in the way that
+   * you then have to Remove — and it is dropped on save regardless, so it was never
+   * anything but clutter. Only the position button does this: swapping an empty game
+   * for another empty game is a press that appears to do nothing.
+   */
+  function addPosition() {
+    setExamples(prev =>
+      prev.length === 1 && !lineHasContent(prev[0])
+        ? [emptyPositionLine()]
+        : [...prev, emptyPositionLine()],
+    )
   }
 
   /** One of the method's four lists, edited as a line per point. */
@@ -617,7 +648,7 @@ export default function PatternForm({
           </button>
           <button
             type="button"
-            onClick={() => setExamples(prev => [...prev, emptyPositionLine()])}
+            onClick={addPosition}
             title="Start from a FEN and play the moves on top of it"
             className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
           >

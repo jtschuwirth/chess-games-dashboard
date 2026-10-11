@@ -15,6 +15,7 @@ import {
   essentialsCount,
   motifOf,
   normalizePattern,
+  patternBody,
   timesTagged,
   typeOf,
 } from '@/lib/pattern'
@@ -63,8 +64,12 @@ function PatternsBody({ userId }: { userId: string }) {
     setBusy(true)
     try {
       const id = await savePattern(userId, pattern)
-      // read it back through the normaliser, so a row shows what a reload would show
-      setPatterns(prev => [...(prev ?? []), normalizePattern({ ...pattern, id } as PatternRecord)])
+      // through the writer and then the reader, so the new row is exactly the row a
+      // reload would draw rather than the form's own untrimmed copy of it
+      setPatterns(prev => [
+        ...(prev ?? []),
+        normalizePattern({ ...patternBody(pattern), id } as PatternRecord),
+      ])
       setAdding(null)
       setError(null)
     } catch (caught) {
@@ -94,7 +99,14 @@ function PatternsBody({ userId }: { userId: string }) {
         kind,
         all,
         motifs: motifs.sort(),
-        shown: motif === null ? all : all.filter(row => row.motif === motif),
+        /*
+         * The chips belong to the section that offers them, and so does the filter. A
+         * motif only tactics has must not empty the endgame section — which is exactly
+         * what filtering every section by it did.
+         */
+        shown: motif !== null && motifs.includes(motif)
+          ? all.filter(row => row.motif === motif)
+          : all,
       }
     }).filter(section => section.all.length > 0)
   }, [patterns, games, motif])
@@ -107,8 +119,9 @@ function PatternsBody({ userId }: { userId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-zinc-500 max-w-xl">
-          Ideas you can carry between openings. Each one&apos;s name becomes a tag in the review
-          form, so a mistake can point at the thing you should have played.
+          Ideas you can carry between openings, and tactics worked out against the
+          essentials method. Either way the name becomes a tag in the review form, so a
+          mistake can point at the thing you should have played.
         </p>
         {adding === null && (
           <div className="flex items-center gap-2 shrink-0">
@@ -118,9 +131,15 @@ function PatternsBody({ userId }: { userId: string }) {
             >
               New pattern
             </button>
+            {/*
+              `aria-label` pins the accessible name to what the button says. Without it
+              the title can be read out in its place, so the control announces a sentence
+              about the method rather than the name of the thing it opens.
+            */}
             <button
               onClick={() => setAdding('essentials')}
-              title="Work a tactic out against the three questions: what each piece is doing, what weakness lets it happen, and what would break it"
+              aria-label="New essentials"
+              title="Work a tactic out against the method's questions: what each piece is responsible for, what weakness lets it happen, what would break it and what it survives"
               className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 border border-zinc-700 rounded-lg hover:bg-zinc-700 transition-colors"
             >
               New essentials
@@ -148,7 +167,8 @@ function PatternsBody({ userId }: { userId: string }) {
         </div>
       ) : patterns.length === 0 ? (
         <p className="py-12 text-center text-sm text-zinc-500">
-          No patterns yet — write up the first idea you keep missing.
+          Nothing written up yet — start with the idea you keep missing, or take a tactic
+          apart with the essentials method.
         </p>
       ) : (
         /*
@@ -190,11 +210,12 @@ function PatternsBody({ userId }: { userId: string }) {
                 )}
               </div>
 
-              {section.shown.length === 0 ? (
-                <p className="text-sm text-zinc-600">Nothing filed under {motif} here.</p>
-              ) : (
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {section.shown.map(({ pattern, times, motif: its }) => (
+              {/*
+                No empty branch: a section only filters on a motif it actually offers,
+                so what is shown can never be nothing.
+              */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {section.shown.map(({ pattern, times, motif: its }) => (
                     <Link
                       key={pattern.id}
                       href={`/patterns/${pattern.id}`}
@@ -231,10 +252,9 @@ function PatternsBody({ userId }: { userId: string }) {
                         )}
                         {times > 0 && <span className="text-amber-400/80">{times} flagged</span>}
                       </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
+                  </Link>
+                ))}
+              </div>
             </div>
           ))}
         </div>

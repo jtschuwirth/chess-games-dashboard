@@ -7,10 +7,12 @@ import {
   toPgn,
   walk,
   START_FEN,
+  colorAt,
   type MoveTree,
   type Path,
 } from './movetree'
 import type {
+  Color,
   GameRecord,
   NewPattern,
   PatternEssentials,
@@ -56,13 +58,17 @@ export const TYPE_LABEL: Record<PatternType, string> = {
 }
 
 /**
- * Zinc rather than a colour of its own, deliberately. The kind already owns the colour
- * on these pages, and a second coloured pill beside it would make a row read as two
- * categories of equal weight when one of them is only which form was filled in.
+ * Zinc for both, deliberately, and told apart by brightness rather than by hue.
+ *
+ * The kind already owns the colour on these pages, and a second coloured pill beside it
+ * would read as two categories of equal weight when one of them is only which form was
+ * filled in. Every hue is also spoken for: rose, sky, emerald and amber are the kinds
+ * themselves, violet is the engine, blue is a review. A fifth would have to mean
+ * something, and this does not.
  */
 export const TYPE_BADGE: Record<PatternType, string> = {
-  pattern: 'bg-zinc-800 text-zinc-300 border-zinc-700',
-  essentials: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+  pattern: 'bg-zinc-800/60 text-zinc-400 border-zinc-800',
+  essentials: 'bg-zinc-700/60 text-zinc-200 border-zinc-600',
 }
 
 /** Which type a stored document is. Absent means a pattern: everything predates this. */
@@ -195,6 +201,27 @@ export function motifOf(pattern: PatternRecord): string | null {
  */
 export function emptyPositionLine(): PatternLine {
   return { ...emptyLine(), startFen: START_FEN }
+}
+
+/**
+ * Which way round to read a line.
+ *
+ * Derived rather than stored, so the stored field only ever holds a deliberate flip. A
+ * position is read from whichever side is to move in it — paste a FEN where it is
+ * Black's turn and that is a Black idea, and seeing it from White's end is reading a
+ * different one. A game still opens from White unless you say otherwise, because its
+ * side to move changes every ply and says nothing about whose idea it is.
+ *
+ * Writing it down on the first edit instead was tried and is wrong: it pins the value,
+ * so every later change of position is read from whichever side the first one happened
+ * to have.
+ */
+export function lineOrientation(line: PatternLine): Color {
+  if (line.orientation) return line.orientation
+
+  const start = (line.startFen ?? '').trim()
+  if (start.length > 0 && fenIsValid(start)) return colorAt(start, 0)
+  return 'white'
 }
 
 /** An empty line, which is what a new example starts as. */

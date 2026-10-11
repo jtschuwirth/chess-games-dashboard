@@ -10,6 +10,8 @@ import { deletePattern, getGames, getOpenings, getPatterns, updatePattern } from
 import { openingLabel } from '@/lib/opening'
 import {
   ESSENTIALS_SECTIONS,
+  emptyEssentials,
+  essentialsHaveContent,
   KIND_BADGE,
   KIND_LABEL,
   TYPE_BADGE,
@@ -231,6 +233,18 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
         that fill them cannot drift. A question left unanswered is left out rather than
         shown empty: the form is where the prompts belong, and this is the read.
       */}
+      {/*
+        Unanswered questions are left out rather than shown as empty prompts — this is
+        the read, and the form is where the prompts belong. But a document with none of
+        them answered would then render nothing at all between its name and its
+        examples, which reads as a page that failed rather than one not written yet.
+      */}
+      {typeOf(pattern) === 'essentials' && !essentialsHaveContent(pattern.essentials ?? emptyEssentials()) && (
+        <p className="text-sm text-zinc-600">
+          Nothing answered yet — Edit to take this apart against the four questions.
+        </p>
+      )}
+
       {typeOf(pattern) === 'essentials' && pattern.essentials && (
         <div className="grid lg:grid-cols-2 gap-3">
           {ESSENTIALS_SECTIONS.map(section => {

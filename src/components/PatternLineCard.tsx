@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react'
 import MoveTreeBoard from '@/components/MoveTreeBoard'
-import { commentedNodes, lineHome, lineTree } from '@/lib/pattern'
+import { commentedNodes, lineHome, lineOrientation, lineTree } from '@/lib/pattern'
 import { moveLabel, type Path } from '@/lib/movetree'
 import type { PatternLine } from '@/types/chess'
 
@@ -48,7 +48,7 @@ export default function PatternLineCard({
             tree={tree}
             path={path}
             onPath={setMoved}
-            orientation={line.orientation ?? 'white'}
+            orientation={lineOrientation(line)}
             home={home}
           />
         </div>
