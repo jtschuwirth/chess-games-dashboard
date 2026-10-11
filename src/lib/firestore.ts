@@ -18,7 +18,7 @@ import {
 import { db } from './firebase'
 import { normalizeAnalysis } from './analysis'
 import { normalizeOpening } from './opening'
-import { normalizePattern } from './pattern'
+import { PATTERN_OPTIONAL_FIELDS, normalizePattern, patternBody } from './pattern'
 import { studyBody, studyHasContent } from './study'
 import {
   normalizeSettings,
@@ -457,7 +457,7 @@ export async function getPatterns(
 
 export async function savePattern(userId: string, pattern: NewPattern): Promise<string> {
   const ref = collection(db, 'users', userId, PATTERNS)
-  const docRef = await addDoc(ref, pattern)
+  const docRef = await addDoc(ref, patternBody(pattern))
   return docRef.id
 }
 
@@ -471,9 +471,22 @@ export async function updatePattern(
     any more simply stays in the document — and `normalizePattern` would keep putting it
     back at the front of the examples, so the line you just reordered or removed would
     reappear on the next read.
+
+    Every optional field needs the same treatment, for the same reason: a tactic re-filed
+    as an endgame stops writing its motif, and a merge would leave the old one sitting
+    there to be read back the moment it is a tactic again.
   */
+  const body = patternBody(pattern)
+  const cleared = Object.fromEntries(
+    PATTERN_OPTIONAL_FIELDS.filter(field => body[field] === undefined).map(field => [
+      field,
+      deleteField(),
+    ]),
+  )
+
   await updateDoc(doc(db, 'users', userId, PATTERNS, patternId), {
-    ...pattern,
+    ...body,
+    ...cleared,
     main: deleteField(),
   })
 }

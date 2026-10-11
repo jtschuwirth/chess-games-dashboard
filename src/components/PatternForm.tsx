@@ -5,6 +5,7 @@ import Chip from '@/components/Chip'
 import MoveTreeBoard from '@/components/MoveTreeBoard'
 import { buildOpeningTree, openingLabel, type OpeningNode } from '@/lib/opening'
 import {
+  START_FEN,
   commentAt as setComment,
   mainLine,
   mainPath,
@@ -14,17 +15,30 @@ import {
   type Path,
 } from '@/lib/movetree'
 import {
+  ESSENTIALS_SECTIONS,
   KIND_LABEL,
+  MOTIFS_BY_KIND,
   PATTERN_KINDS,
   clampStartPly,
+  emptyEssentials,
   emptyLine,
+  emptyPositionLine,
   lineFromTree,
   lineHasContent,
   lineHome,
   lineTree,
+  motifsFor,
   parsePatternPgn,
 } from '@/lib/pattern'
-import type { NewPattern, OpeningLine, PatternKind, PatternLine } from '@/types/chess'
+import type {
+  NewPattern,
+  OpeningLine,
+  PatternEssentials,
+  PatternKind,
+  PatternLine,
+  PatternRecord,
+  PatternType,
+} from '@/types/chess'
 
 function Label({ children, hint }: { children: React.ReactNode; hint?: string }) {
   return (
@@ -72,16 +86,36 @@ function LineFields({
     onChange(lineFromTree(line, next, line.startPly))
   }
 
+  /** Whether this example is a position with moves on it, or a whole game. */
+  const fromPosition = line.startFen !== undefined
+
   function setPgn(pgn: string) {
     // The PGN is kept whatever happens, so a typo does not throw away what you pasted.
     try {
-      const moves = parsePatternPgn(pgn)
+      const moves = parsePatternPgn(pgn, line.startFen)
       setError(null)
       setMoved(null)
       onChange({ ...line, pgn, moves, startPly: clampStartPly(line.startPly, moves) })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not read that PGN.')
       onChange({ ...line, pgn })
+    }
+  }
+
+  /**
+   * The position is kept whatever happens, the same as the PGN: half a pasted FEN is
+   * not a reason to lose the half that arrived. The moves are re-read from the new
+   * position, since a line written for one position rarely plays from another.
+   */
+  function setFen(startFen: string) {
+    try {
+      const moves = parsePatternPgn(line.pgn, startFen)
+      setError(null)
+      setMoved(null)
+      onChange({ ...line, startFen, moves, startPly: clampStartPly(line.startPly, moves) })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not read that position.')
+      onChange({ ...line, startFen })
     }
   }
 
@@ -106,15 +140,34 @@ function LineFields({
           )}
         </div>
 
+        {fromPosition && (
+          <div className="flex flex-col gap-1.5">
+            <Label hint="the moves below are played from here">Position</Label>
+            <textarea
+              value={line.startFen ?? ''}
+              onChange={event => setFen(event.target.value)}
+              rows={2}
+              placeholder={START_FEN}
+              className={`${INPUT} font-mono resize-y`}
+            />
+          </div>
+        )}
+
         <div className="flex flex-col gap-1.5">
-          <Label hint="brackets are variations, braces are comments — both survive a round trip">
-            PGN
+          <Label
+            hint={
+              fromPosition
+                ? 'the moves from the position above — a position on its own is a complete example'
+                : 'brackets are variations, braces are comments — both survive a round trip'
+            }
+          >
+            {fromPosition ? 'Moves' : 'PGN'}
           </Label>
           <textarea
             value={line.pgn}
             onChange={event => setPgn(event.target.value)}
-            rows={5}
-            placeholder="1. d4 Nf6 2. c4 e6 3. g3 d5 4. Bg2 dxc4"
+            rows={fromPosition ? 3 : 5}
+            placeholder={fromPosition ? 'Qxh7+ Kxh7 Rh3#' : '1. d4 Nf6 2. c4 e6 3. g3 d5 4. Bg2 dxc4'}
             className={`${INPUT} font-mono resize-y`}
           />
           {error ? (
@@ -316,19 +369,30 @@ function OpeningPicker({
  */
 export default function PatternForm({
   initial,
+  type = 'pattern',
   openings,
+  patterns = [],
   busy,
   onSubmit,
   onCancel,
 }: {
   initial?: NewPattern
+  /** Which document is being written. Fixed for the life of the form. */
+  type?: PatternType
   openings: OpeningLine[]
+  /** The patterns an essentials document may be written for. Ignored otherwise. */
+  patterns?: PatternRecord[]
   busy?: boolean
   onSubmit: (pattern: NewPattern) => Promise<void> | void
   onCancel?: () => void
 }) {
   const [name, setName] = useState(initial?.name ?? '')
   const [kind, setKind] = useState<PatternKind>(initial?.kind ?? 'tactics')
+  const [motif, setMotif] = useState<string | null>(initial?.motif ?? null)
+  const [essentials, setEssentials] = useState<PatternEssentials>(
+    initial?.essentials ?? emptyEssentials(),
+  )
+  const [patternIds, setPatternIds] = useState<string[]>(initial?.patternIds ?? [])
   const [conditions, setConditions] = useState((initial?.conditions ?? []).join('\n'))
   // always one editor on screen: a pattern with nothing in it is still being written
   const [examples, setExamples] = useState<PatternLine[]>(
@@ -345,9 +409,10 @@ export default function PatternForm({
     }
 
     setError(null)
-    await onSubmit({
+    const next: NewPattern = {
       name: trimmed,
       kind,
+      type,
       conditions: conditions
         .split('\n')
         .map(line => line.trim())
@@ -356,7 +421,41 @@ export default function PatternForm({
       examples: examples.filter(lineHasContent),
       openingIds,
       createdAt: initial?.createdAt ?? Date.now(),
-    })
+    }
+
+    // `patternBody` strips and checks all of this again on the way to Firestore; set
+    // here only what this document actually has, so nothing carries an undefined field
+    if (motif) next.motif = motif
+    if (type === 'essentials') {
+      next.essentials = essentials
+      if (patternIds.length > 0) next.patternIds = patternIds
+    }
+
+    await onSubmit(next)
+  }
+
+  /** The motifs this kind offers, which is none for three of the four. */
+  const motifGroups = MOTIFS_BY_KIND[kind]
+
+  /**
+   * Changing the kind drops a motif the new kind does not offer.
+   *
+   * Done on the press rather than derived in a render: the picker has to be able to
+   * show nothing selected, and re-deriving it every render would fight the click that
+   * selected it. `normalizePattern` drops a stale one on read as well, so a document
+   * that got one some other way still cannot show it.
+   */
+  function pickKind(next: PatternKind) {
+    setKind(next)
+    if (motif && !motifsFor(next).includes(motif)) setMotif(null)
+  }
+
+  /** One of the method's four lists, edited as a line per point. */
+  function setPoints(key: keyof PatternEssentials, text: string) {
+    setEssentials(current => ({
+      ...current,
+      [key]: text.split('\n'),
+    }))
   }
 
   return (
@@ -376,13 +475,86 @@ export default function PatternForm({
           <Label>Kind</Label>
           <div className="flex gap-1 flex-wrap">
             {PATTERN_KINDS.map(option => (
-              <Chip key={option} active={kind === option} onClick={() => setKind(option)}>
+              <Chip key={option} active={kind === option} onClick={() => pickKind(option)}>
                 {KIND_LABEL[option]}
               </Chip>
             ))}
           </div>
         </div>
       </div>
+
+      {/*
+        Only where the kind offers any, which today is tactics alone. A kind with no
+        motifs shows no picker rather than an empty row — there is nothing to choose.
+      */}
+      {motifGroups.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Label hint="which tactic it is">Motif</Label>
+          <div className="flex flex-col gap-1.5">
+            {motifGroups.map(group => (
+              <div key={group.name} className="flex gap-1.5 flex-wrap items-center">
+                <span className="text-[11px] uppercase tracking-wide text-zinc-600 w-full sm:w-44 shrink-0">
+                  {group.name}
+                </span>
+                {group.motifs.map(option => (
+                  <Chip
+                    key={option}
+                    active={motif === option}
+                    onClick={() => setMotif(motif === option ? null : option)}
+                  >
+                    {option}
+                  </Chip>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/*
+        The method's own questions, rendered from `ESSENTIALS_SECTIONS` rather than
+        written out here, so a screen cannot describe a question that does not exist.
+        One point per line: the answers in the method are short lettered points, not
+        paragraphs, and a textarea per point would be four forms instead of four fields.
+      */}
+      {type === 'essentials' &&
+        ESSENTIALS_SECTIONS.map(section => (
+          <div key={section.key} className="flex flex-col gap-1.5">
+            <Label hint="one per line">
+              {section.number}. {section.title}
+            </Label>
+            <textarea
+              value={essentials[section.key].join('\n')}
+              onChange={event => setPoints(section.key, event.target.value)}
+              rows={3}
+              placeholder={section.hint}
+              className={`${INPUT} resize-y`}
+            />
+          </div>
+        ))}
+
+      {type === 'essentials' && patterns.length > 0 && (
+        <div className="flex flex-col gap-1.5">
+          <Label hint="what this is the essentials for">Patterns</Label>
+          <div className="flex gap-1.5 flex-wrap">
+            {patterns.map(option => (
+              <Chip
+                key={option.id}
+                active={patternIds.includes(option.id)}
+                onClick={() =>
+                  setPatternIds(prev =>
+                    prev.includes(option.id)
+                      ? prev.filter(entry => entry !== option.id)
+                      : [...prev, option.id],
+                  )
+                }
+              >
+                {option.name}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="flex flex-col gap-1.5">
         <Label>Conditions</Label>
@@ -430,13 +602,28 @@ export default function PatternForm({
             }
           />
         ))}
-        <button
-          type="button"
-          onClick={() => setExamples(prev => [...prev, emptyLine()])}
-          className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-        >
-          + Add an example
-        </button>
+        {/*
+          Two buttons, because the two are not the same thing to write. A game is the
+          whole score pointed at a move; a position is the one you actually have in
+          front of you for most tactics, with the moves played on top of it.
+        */}
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setExamples(prev => [...prev, emptyLine()])}
+            className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+          >
+            + Add a game
+          </button>
+          <button
+            type="button"
+            onClick={() => setExamples(prev => [...prev, emptyPositionLine()])}
+            title="Start from a FEN and play the moves on top of it"
+            className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+          >
+            + Add a position
+          </button>
+        </div>
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}

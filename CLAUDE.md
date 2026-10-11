@@ -38,12 +38,19 @@ win/draw/loss splits for all games or for the games that followed one of those l
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
-6. `/patterns` — write up the ideas themselves: a name, a kind, the conditions that
-   bring it about, and the games showing it, each opened on the move where the idea
-   appears. Any move of a line can carry its own comment, and they
-   are listed beside the board to read or to jump to. Each pattern's name becomes a tag
-   in the review form, so a mistake can point at the idea you should have played, and the
-   pattern's own page lists the games where you did that.
+6. `/patterns` — write up the ideas themselves, grouped by kind. Two kinds of write-up,
+   each with its own button: a **pattern** is a name, a kind, the conditions that bring
+   it about and the examples showing it; **essentials** answers the four questions of the
+   *Pattern Internalisation Essentials* method — what each piece is responsible for, what
+   weakness lets the tactic exist, what would break it and what it survives — and links
+   to the patterns it is written for, which list it back. A tactical write-up can say
+   which tactic it is, and those motifs narrow the section. An example is a game opened
+   on the move where the idea appears, *or* a position pasted as a FEN with the moves
+   played on top of it, for the tactic you have without the game it came from. Any move
+   of a line can carry its own comment, and they are listed beside the board to read or
+   to jump to. Either kind's name becomes a tag in the review form, so a mistake can
+   point at the idea you should have played, and its own page lists the games where you
+   wanted it.
 7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
@@ -76,7 +83,7 @@ src/
 │   ├── dashboard/page.tsx      # Stats + opening filter + game list
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
-│   ├── patterns/[id]/page.tsx  # One pattern: conditions, lines, where you wanted it
+│   ├── patterns/[id]/page.tsx  # One write-up: the method or the conditions, lines, games
 │   ├── plans/page.tsx          # Study plans: list + create
 │   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's games
 │   ├── learn/page.tsx          # Drill over the reviewed positions
@@ -376,9 +383,85 @@ src/
   pattern leaves the old name behind on reviews already written, where it survives as an
   ordinary free tag; rewriting it everywhere would be a write per affected game, and the
   old name is still true about what you thought at the time.
+- **There are two kinds of write-up, in one collection.** A **pattern** is an idea you can
+  carry between openings. **Essentials** is the *Pattern Internalisation Essentials*
+  method — not "what is this idea" but "why does this tactic work, and what would break
+  it" — answered against four fixed questions. `type` on the document says which, and is
+  absent on everything written before: a pattern.
+
+  One collection rather than two, and the reason is the tag plumbing. `patternTag`,
+  `patternTags`, `gamesTagged`, `timesTagged` and `patternsByTag` all work on the name
+  alone, and the review form, the Mistake database, the tag filter and the drill already
+  consume those. So an essentials document is taggable, countable, filterable and
+  drillable without one of them learning that it exists. Two collections would have been
+  two reads and five functions duplicated.
+
+- **The method's questions are a table.** `ESSENTIALS_SECTIONS` carries the key each one
+  writes to, how the method numbers it, and the prompt — which is also what the form
+  shows as a placeholder and what the page leaves out when a question is unanswered. The
+  form and the page both render the table, so a question cannot be asked on one screen
+  and missing from the other. The third question splits into `3a` and `3b` — what breaks
+  the combination and what it survives — as two fields rather than one flagged list,
+  because they are read as two lists and written at different times: you find what breaks
+  it first, and what it survives only once you have tried.
+
+- **A motif says which tactic it is, and it is not a tag.** `kind` is four values because
+  "a pattern you cannot file under one of them is usually two patterns", and that
+  reasoning does not carry down a level: a fork, a pin and a back rank mate are all
+  tactics and all different things to train. So `MOTIFS_BY_KIND` is a longer vocabulary,
+  grouped the way `TAG_GROUPS` is so sixteen names stay scannable, and keyed by kind —
+  only tactics offers any today, and a kind with none shows no picker rather than an
+  empty row.
+
+  It is deliberately **not** a review tag, though the name is. A name says which idea you
+  reached for; a motif classifies it, and tagging a mistake `fork` would put a
+  classification into the Mistake database competing with the write-up you actually
+  wanted to point at.
+
+  A motif its kind does not offer is dropped on read, not shown — the case that produces
+  one is a document re-filed from tactics to endgame, and the form clears it on that
+  press for the same reason. Both, because the read has to hold for a document that got
+  one some other way.
+
+- **The overview is grouped by kind, so the kind comes off the rows.** Repeating "Tactics"
+  on every row under a heading that says Tactics is noise, and it leaves the row free for
+  what actually differs — which document it is, and which tactic. A kind nothing is filed
+  under is left out rather than shown empty, and the motifs actually present become chips
+  that narrow the section, the same habit as the Control chips listing only the clocks you
+  have played.
+
+- **An example is a game pointed at a move, or a position with moves on top of it.** The
+  second is the common case for a tactic and had nowhere to go: you have the position and
+  not the game it came from. `startFen` is one optional field on `PatternLine` rather than
+  a second shape, so the board, the card and the tree branch on nothing at all — and the
+  move tree has carried a `startFen` since it was written, with `fromPgn`, `treeFromMoves`,
+  `colorAt` and `moveNumberAt` all already taking one. The editor offers the two as two
+  buttons, because pasting a game and pasting a position are not the same thing to do.
+
+  **A position with no moves on it is a complete example**, which is why `lineHasContent`
+  counts a `startFen`: without that the thing this was built for would be dropped silently
+  on the way to Firestore. A FEN that will not read keeps the text and says so, like the
+  PGN beside it, and `lineTree` falls back to move one rather than throwing — it runs in a
+  render, and a hand-edited document must not be able to take the page down.
+
+- **`patternBody` is the writer, and `PATTERN_OPTIONAL_FIELDS` is why.** The same job
+  `studyBody` and `planBody` do: an `undefined` value rejects the whole document rather
+  than the field, so every optional field is set or left out and never assigned. An update
+  *merges*, so a field nobody writes any more just stays — the trap `main` already fell
+  into — and a tactic re-filed as an endgame would keep a motif to be read back the moment
+  it was a tactic again. `updatePattern` therefore clears every optional field the body
+  did not set.
+
+- **The link between a pattern and its essentials is stored once.** `patternIds` points
+  from the essentials document at the patterns it is written for; a pattern's page finds
+  its essentials by reading those the other way, exactly as it already finds its openings.
+  A stored back-reference would be a second copy of one fact to keep in step.
+
 - **A pattern's line is a whole game pointed at a move, not a position.** A FEN would have
   been less to store and would have thrown away the two things worth keeping: how you get
   there, which is what tells you a pattern is coming, and what it was worth afterwards.
+  That still holds for a *game* example, which is why the PGN is kept whole; `startFen`
+  above is the other case, where there is no game to keep.
   `startPly` is only where the board opens — every line steps anywhere in the game from
   there, and `⏮` returns to the pattern's own move rather than to move one, because that
   position is why the line is there at all. A board editor was the alternative and is

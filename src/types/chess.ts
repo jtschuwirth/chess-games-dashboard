@@ -463,15 +463,57 @@ export interface MoveVerdict {
 export type PatternKind = 'tactics' | 'strategy' | 'development' | 'endgame'
 
 /**
- * A game that shows a pattern, opened at the move where the idea appears.
+ * Which kind of write-up a document in `thematicPatterns` is.
  *
- * The whole PGN is kept, not just the position: the moves before the idea are how you
- * recognise when you are heading for it, and the moves after are what it was worth.
- * `startPly` is only where the board opens — you can still step anywhere in the game.
+ * `pattern` is the original: an idea you can carry between openings. `essentials` is the
+ * *Pattern Internalisation Essentials* method — not "what is this idea" but "why does
+ * this tactic work, and what would break it", answered against a fixed set of questions.
+ *
+ * One collection rather than two, because a name is a review tag whichever kind wrote
+ * it: everything counting, filtering and drilling tags works on strings and needs to
+ * learn nothing about either. Absent on everything written before this: a pattern.
+ */
+export type PatternType = 'pattern' | 'essentials'
+
+/**
+ * The questions the essentials method asks, each answered as a list of short points.
+ *
+ * The third question — change the position slightly and see what happens — is two
+ * fields rather than one flagged list, because the two halves are read as two lists and
+ * are written at different times: you find what breaks it first, and what it survives
+ * only once you have tried.
+ */
+export interface PatternEssentials {
+  /** 1. How the pieces interact, and what each is responsible for. */
+  interactions: string[]
+  /** 2. What in the opponent's position paves the way for it. */
+  weaknesses: string[]
+  /** 3a. Realistic changes that would make this combination fail. */
+  breaks: string[]
+  /** 3b. Changes it still works through. */
+  survives: string[]
+}
+
+/**
+ * An example of a pattern: a game pointed at the move where the idea appears, or a
+ * position with the moves played on top of it.
+ *
+ * When it is a game the whole PGN is kept, not just the position: the moves before the
+ * idea are how you recognise when you are heading for it, and the moves after are what
+ * it was worth. `startPly` is only where the board opens — you can still step anywhere.
+ *
+ * `startFen` is the other case, and the common one for a tactic: you have the position
+ * and not the game it came from. The moves in `pgn` are then read from there rather than
+ * from move one, and a position carrying no moves at all is still a complete example.
  */
 export interface PatternLine {
   /** What this line is called — "Catalan opening", "Panov Attack". */
   title: string
+  /**
+   * Where the line starts, when it is a position rather than a game. Absent means the
+   * ordinary starting position, which is every line written before this existed.
+   */
+  startFen?: string
   /** The PGN exactly as pasted, so it can be re-read and re-pointed later. */
   pgn: string
   /** Normalized SAN, parsed from the PGN at save time. */
@@ -507,6 +549,27 @@ export interface PatternRecord {
   /** Also the review tag, so it has to read as one. */
   name: string
   kind: PatternKind
+  /**
+   * Which tactic it actually is — `fork`, `pin`, `back rank mate`. One of the names
+   * `MOTIFS_BY_KIND` offers for this `kind`, and absent where the kind offers none.
+   *
+   * Not a review tag, though the name is: a name says which idea you reached for, while
+   * a motif classifies it, and tagging a mistake `fork` would compete with the write-up
+   * you actually wanted to point at.
+   */
+  motif?: string
+  /** Which kind of write-up this is. Absent on everything written before: a pattern. */
+  type?: PatternType
+  /** The method's answers. Only on an essentials document; omitted, never undefined. */
+  essentials?: PatternEssentials
+  /**
+   * Patterns this is the essentials for, by `PatternRecord` id.
+   *
+   * Only the forward link is stored. A pattern's page finds the essentials written for
+   * it by filtering on this, the same way it already finds its openings — a stored
+   * back-reference would be a second copy of one fact to keep in step.
+   */
+  patternIds?: string[]
   /** When the pattern applies — one condition per entry. */
   conditions: string[]
   /**

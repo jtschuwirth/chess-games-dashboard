@@ -6,10 +6,19 @@ import {
   mainPath,
   toPgn,
   walk,
+  START_FEN,
   type MoveTree,
   type Path,
 } from './movetree'
-import type { GameRecord, PatternKind, PatternLine, PatternRecord } from '@/types/chess'
+import type {
+  GameRecord,
+  NewPattern,
+  PatternEssentials,
+  PatternKind,
+  PatternLine,
+  PatternRecord,
+  PatternType,
+} from '@/types/chess'
 import { trainableMistakes } from './review'
 
 /**
@@ -35,6 +44,157 @@ export const KIND_BADGE: Record<PatternKind, string> = {
   strategy: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
   development: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
   endgame: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
+}
+
+/* ------------------------------------------------------- the two document types */
+
+export const PATTERN_TYPES: PatternType[] = ['pattern', 'essentials']
+
+export const TYPE_LABEL: Record<PatternType, string> = {
+  pattern: 'Pattern',
+  essentials: 'Essentials',
+}
+
+/**
+ * Zinc rather than a colour of its own, deliberately. The kind already owns the colour
+ * on these pages, and a second coloured pill beside it would make a row read as two
+ * categories of equal weight when one of them is only which form was filled in.
+ */
+export const TYPE_BADGE: Record<PatternType, string> = {
+  pattern: 'bg-zinc-800 text-zinc-300 border-zinc-700',
+  essentials: 'bg-violet-500/15 text-violet-300 border-violet-500/30',
+}
+
+/** Which type a stored document is. Absent means a pattern: everything predates this. */
+export function typeOf(pattern: PatternRecord): PatternType {
+  return pattern.type === 'essentials' ? 'essentials' : 'pattern'
+}
+
+export interface EssentialsSection {
+  /** The field it writes to. */
+  key: keyof PatternEssentials
+  /** How the method numbers it — "3a" is a half of one question, not a fourth one. */
+  number: string
+  title: string
+  /** The method's own prompt, which is also the section's empty state. */
+  hint: string
+}
+
+/**
+ * The questions the essentials method asks, in the order it asks them.
+ *
+ * A table for the reason `TRANSITIONS`, `GAME_NAMES` and `STUDY_SECTIONS` are: the form
+ * and the page both render it, so a question cannot be described on a screen without
+ * existing, and a fifth one is a row here and nothing else.
+ */
+export const ESSENTIALS_SECTIONS: EssentialsSection[] = [
+  {
+    key: 'interactions',
+    number: '1',
+    title: 'Piece interactions and responsibilities',
+    hint: 'Notice how the relevant pieces interact. What is each one responsible for in making the tactic possible?',
+  },
+  {
+    key: 'weaknesses',
+    number: '2',
+    title: 'Strategical weaknesses',
+    hint: "What in the opponent's position paves the way for the tactic?",
+  },
+  {
+    key: 'breaks',
+    number: '3a',
+    title: 'Changes that make it fail',
+    hint: 'Change the position slightly, in a realistic way. What stops this combination working?',
+  },
+  {
+    key: 'survives',
+    number: '3b',
+    title: 'Changes it survives',
+    hint: 'What can change and still leave the tactic — or a different one — available?',
+  },
+]
+
+export const ESSENTIALS_KEYS = ESSENTIALS_SECTIONS.map(section => section.key)
+
+/** The method answered by nobody yet. A function, so no two callers share one array. */
+export function emptyEssentials(): PatternEssentials {
+  return { interactions: [], weaknesses: [], breaks: [], survives: [] }
+}
+
+/** Whether anything has been written against any of the questions. */
+export function essentialsHaveContent(essentials: PatternEssentials): boolean {
+  return ESSENTIALS_KEYS.some(key => essentials[key].some(point => point.trim().length > 0))
+}
+
+/** How many points are written across all four, which is the figure a row shows. */
+export function essentialsCount(essentials: PatternEssentials | undefined): number {
+  if (!essentials) return 0
+  return ESSENTIALS_KEYS.reduce(
+    (total, key) => total + essentials[key].filter(point => point.trim().length > 0).length,
+    0,
+  )
+}
+
+/* ------------------------------------------------------------------ the motif */
+
+export interface MotifGroup {
+  name: string
+  motifs: string[]
+}
+
+/**
+ * Which tactic a write-up is about, offered per kind.
+ *
+ * `kind` is four values on purpose — "a pattern you cannot file under one of them is
+ * usually two patterns" — and that reasoning does not carry here: a fork, a pin and a
+ * back rank mate are all tactics and all different things to train. So this is a longer
+ * fixed vocabulary, grouped the way `TAG_GROUPS` is so that sixteen names stay
+ * scannable rather than becoming a wall.
+ *
+ * A kind with no groups shows no picker at all, which is what the other three do today.
+ * Giving the endgame its own motifs later is one entry in this table.
+ */
+export const MOTIFS_BY_KIND: Record<PatternKind, MotifGroup[]> = {
+  tactics: [
+    { name: 'Attacks', motifs: ['fork', 'double attack', 'discovered attack', 'x-ray'] },
+    { name: 'Restraint', motifs: ['pin', 'skewer', 'interference', 'trapped piece'] },
+    {
+      name: 'Removing the defence',
+      motifs: ['deflection', 'decoy', 'removing the defender', 'overloading', 'clearance'],
+    },
+    { name: 'Mate', motifs: ['mating net', 'back rank mate', 'smothered mate'] },
+  ],
+  strategy: [],
+  development: [],
+  endgame: [],
+}
+
+/** Every motif a kind offers, flat — what a stored value is checked against. */
+export function motifsFor(kind: PatternKind): string[] {
+  return MOTIFS_BY_KIND[kind].flatMap(group => group.motifs)
+}
+
+/**
+ * The motif a document actually carries, or null.
+ *
+ * Checked against the kind rather than trusted: a kind changed from tactics to endgame
+ * leaves a `fork` behind in the document, and a hand-edited one could name anything.
+ * Derived on read so neither needs a migration.
+ */
+export function motifOf(pattern: PatternRecord): string | null {
+  if (!pattern.motif) return null
+  return motifsFor(pattern.kind).includes(pattern.motif) ? pattern.motif : null
+}
+
+/**
+ * A new example that is a position rather than a game.
+ *
+ * It starts on the opening position rather than on an empty string, so the board has
+ * something to draw from the first render — you then paste over it. An empty FEN would
+ * be an invalid one, and the editor would open on a broken board.
+ */
+export function emptyPositionLine(): PatternLine {
+  return { ...emptyLine(), startFen: START_FEN }
 }
 
 /** An empty line, which is what a new example starts as. */
@@ -81,18 +241,46 @@ export function commentedPlies(line: PatternLine): Set<number> {
  * no moves at all: a pattern can be written up before you have a game to show it in,
  * and an example with an empty PGN is simply one with nothing to step through yet.
  */
-export function parsePatternPgn(pgn: string): string[] {
+export function parsePatternPgn(pgn: string, startFen?: string): string[] {
   const trimmed = pgn.trim()
+
+  // the position has to be checked even with no moves on it: a FEN is the whole example
+  // in the common tactical case, and an unreadable one must not reach a board
+  const chess = startFen ? fromFen(startFen) : new Chess()
   if (trimmed.length === 0) return []
 
-  const chess = new Chess()
   try {
-    chess.loadPgn(trimmed)
+    /*
+     * From a position, the moves are loaded as a PGN carrying it — which is where PGN
+     * has always put a setup position, and means a pasted line keeps working whether it
+     * is written `1... Qxh7+` or bare SAN.
+     */
+    if (startFen) chess.loadPgn(`[SetUp "1"]\n[FEN "${startFen}"]\n\n${trimmed}`)
+    else chess.loadPgn(trimmed)
   } catch {
     throw new Error('Invalid PGN — check the move notation and try again.')
   }
 
   return chess.history()
+}
+
+/** A position, or a readable complaint about it. The only place a FEN is validated. */
+export function fromFen(fen: string): Chess {
+  try {
+    return new Chess(fen.trim())
+  } catch {
+    throw new Error('Invalid FEN — check the position and try again.')
+  }
+}
+
+/** Whether a FEN can be read at all, for a form that wants to say so as you type. */
+export function fenIsValid(fen: string): boolean {
+  try {
+    fromFen(fen)
+    return true
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -104,11 +292,18 @@ export function clampStartPly(startPly: number, moves: string[]): number {
   return Math.max(0, Math.min(Math.round(startPly), moves.length))
 }
 
-/** A line is worth storing once it has a name or something to show. */
+/**
+ * A line is worth storing once it has a name or something to show.
+ *
+ * A `startFen` counts on its own. The case this was built for is a tactic where you have
+ * the position and not the game, and a position with no moves played on it yet is a
+ * complete example — without this it would be dropped silently on the way to Firestore.
+ */
 export function lineHasContent(line: PatternLine): boolean {
   return (
     line.title.trim().length > 0 ||
     line.moves.length > 0 ||
+    (line.startFen ?? '').trim().length > 0 ||
     line.note.trim().length > 0 ||
     commentedPlies(line).size > 0
   )
@@ -126,13 +321,100 @@ export function lineHasContent(line: PatternLine): boolean {
  */
 export function normalizePattern(raw: PatternRecord): PatternRecord {
   const stored = Array.isArray(raw.examples) ? raw.examples : []
+  const type = typeOf(raw)
+
   const normalized: PatternRecord = {
     ...raw,
+    type,
     examples: raw.main && lineHasContent(raw.main) ? [raw.main, ...stored] : stored,
+    patternIds: Array.isArray(raw.patternIds) ? raw.patternIds.filter(id => typeof id === 'string') : [],
   }
+
+  // every question answered by an array, whatever the document turned up holding, so no
+  // reader has to guard each one — and only on the type that has them
+  if (type === 'essentials') {
+    const held = (raw.essentials ?? {}) as Partial<PatternEssentials>
+    normalized.essentials = Object.fromEntries(
+      ESSENTIALS_KEYS.map(key => [
+        key,
+        (Array.isArray(held[key]) ? held[key] : []).filter(point => typeof point === 'string'),
+      ]),
+    ) as unknown as PatternEssentials
+  } else {
+    delete normalized.essentials
+  }
+
+  // a motif its kind does not offer is dropped rather than shown: a kind changed from
+  // tactics to endgame leaves one behind, and a hand-edited document could name anything
+  const motif = motifOf(raw)
+  if (motif) normalized.motif = motif
+  else delete normalized.motif
 
   delete normalized.main
   return normalized
+}
+
+/**
+ * The optional fields, named once so a write can clear the ones it is not setting.
+ *
+ * An update *merges*, so a field nobody writes any more simply stays in the document —
+ * which is the trap `main` already fell into. A pattern that used to be an essentials
+ * document, or a tactic re-filed as an endgame, would otherwise keep answers and a motif
+ * that `normalizePattern` cannot drop hard enough to stop them coming back.
+ */
+export const PATTERN_OPTIONAL_FIELDS = ['motif', 'essentials', 'patternIds'] as const
+
+/** An example in the shape Firestore will take: no key is ever present and undefined. */
+function exampleBody(line: PatternLine): PatternLine {
+  const next: PatternLine = { ...line }
+
+  const startFen = (next.startFen ?? '').trim()
+  if (startFen.length > 0) next.startFen = startFen
+  else delete next.startFen
+
+  if (!next.orientation) delete next.orientation
+  // kept rather than folded into the PGN here: an example the editor never opened still
+  // holds its comments in the old map, and `lineTree` is what grafts them on
+  if (!next.comments) delete next.comments
+
+  return next
+}
+
+/**
+ * A pattern in the shape Firestore will take.
+ *
+ * The same job `studyBody` and `planBody` do, and for the same reason: an `undefined`
+ * value rejects the whole document rather than the field, so every optional field is
+ * set or left out and never assigned. Whichever type it is, it is written with the
+ * fields that type has and no others.
+ */
+export function patternBody(pattern: NewPattern): NewPattern {
+  const type = typeOf(pattern as PatternRecord)
+
+  const body: NewPattern = {
+    name: pattern.name.trim(),
+    kind: pattern.kind,
+    type,
+    conditions: pattern.conditions.filter(condition => condition.trim().length > 0),
+    examples: pattern.examples.filter(lineHasContent).map(exampleBody),
+    openingIds: [...new Set(pattern.openingIds)],
+    createdAt: pattern.createdAt,
+  }
+
+  const motif = motifOf(pattern as PatternRecord)
+  if (motif) body.motif = motif
+
+  if (type === 'essentials') {
+    const held = pattern.essentials ?? emptyEssentials()
+    body.essentials = Object.fromEntries(
+      ESSENTIALS_KEYS.map(key => [key, held[key].filter(point => point.trim().length > 0)]),
+    ) as unknown as PatternEssentials
+
+    const patternIds = [...new Set(pattern.patternIds ?? [])].filter(id => id.length > 0)
+    if (patternIds.length > 0) body.patternIds = patternIds
+  }
+
+  return body
 }
 
 /**
@@ -197,12 +479,22 @@ export function patternsByTag(patterns: PatternRecord[]): Map<string, PatternRec
  * migrated, the same habit as `main` folding into `examples`.
  */
 export function lineTree(line: PatternLine): MoveTree {
-  let tree = fromPgn(line.pgn ?? '')
+  /*
+   * The tree has always carried a `startFen`; until now nothing ever gave it one but
+   * the opening position. A line that is a position rather than a game hands it over
+   * here, and everything downstream — the board, the move numbers, whose turn it is —
+   * already reads from it.
+   */
+  const stored = (line.startFen ?? '').trim()
+  // a FEN that will not read falls back to move one rather than throwing: this runs in a
+  // render, and a hand-edited document must not be able to take the page down with it
+  const start = stored.length > 0 && fenIsValid(stored) ? stored : undefined
+  let tree = fromPgn(line.pgn ?? '', start)
 
   // a line stored before the PGN was kept, or one whose PGN failed to parse, still has
   // its parsed moves — rebuild from those rather than showing an empty board
   if (tree.children.length === 0 && line.moves.length > 0) {
-    tree = fromPgn(line.moves.join(' '))
+    tree = fromPgn(line.moves.join(' '), start)
   }
 
   for (const [key, text] of Object.entries(line.comments ?? {})) {
