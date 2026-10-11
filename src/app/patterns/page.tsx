@@ -383,7 +383,7 @@ function PatternsBody({ userId }: { userId: string }) {
                   href={`/patterns/${pattern.id}`}
                   className="flex items-center gap-3 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors"
                 >
-                  <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-medium text-zinc-100">{pattern.name}</span>
                       <span
@@ -393,9 +393,6 @@ function PatternsBody({ userId }: { userId: string }) {
                       </span>
                       {motif && <span className="text-xs font-mono text-zinc-400">{motif}</span>}
                     </div>
-                    {pattern.conditions.length > 0 && (
-                      <p className="text-xs text-zinc-500 truncate">{pattern.conditions[0]}</p>
-                    )}
                   </div>
 
                   <div className="shrink-0 flex items-center gap-3 text-xs text-zinc-600">
@@ -405,7 +402,12 @@ function PatternsBody({ userId }: { userId: string }) {
                     {hasMethod(pattern) && (
                       <span>{essentialsCount(pattern.essentials)} points</span>
                     )}
-                    {times > 0 && <span className="text-amber-400/80">{times} flagged</span>}
+                    {/*
+                      Plain, not amber. It is one count among three on a row you scan,
+                      and a colour here was claiming an importance the figure does not
+                      have — the amber belongs where a mistake is being reported.
+                    */}
+                    {times > 0 && <span className="text-zinc-500">{times} flagged</span>}
                   </div>
                 </Link>
               ))}

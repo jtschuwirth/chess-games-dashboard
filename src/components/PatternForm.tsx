@@ -402,16 +402,20 @@ export default function PatternForm({
     initial?.examples?.length ? initial.examples : [emptyLine()],
   )
   const [openingIds, setOpeningIds] = useState<string[]>(initial?.openingIds ?? [])
+  /** Whether the opening picker is open. Decided once, from what is already linked. */
+  const [linking, setLinking] = useState(() => (initial?.openingIds ?? []).length > 0)
   const [error, setError] = useState<string | null>(null)
   /*
-   * The method is four more boxes, and a form that opens with eight empty ones is eight
-   * boxes left empty — the reason the sections were kept short in the first place. So it
-   * is folded away until asked for, and open from the start on a write-up that already
-   * has answers, which is the same rule a finished plan week follows. Decided once, in a
-   * lazy initialiser: deriving it every render would fold the section away under your
-   * hands as you cleared the last point.
+   * How this one is described: a couple of conditions, or the method in full.
+   *
+   * One or the other, because they answer the same question at two depths and a form
+   * offering both is a form with one of them left empty — which is what it looked like.
+   * Decided once, in a lazy initialiser, from what is already written: deriving it every
+   * render would switch the editor out from under you as you cleared the last point.
    */
-  const [method, setMethod] = useState(() => essentialsHaveContent(initial?.essentials ?? emptyEssentials()))
+  const [detailed, setDetailed] = useState(() =>
+    essentialsHaveContent(initial?.essentials ?? emptyEssentials()),
+  )
 
   async function submit() {
     const trimmed = name.trim()
@@ -542,9 +546,43 @@ export default function PatternForm({
         One point per line: the answers are short lettered points, not paragraphs, and a
         textarea per point would be four forms instead of four fields.
       */}
-      {method ? (
+      <div className="flex flex-col gap-3">
+        <div className="flex gap-2 items-baseline flex-wrap">
+          <Label>Description</Label>
+          <div className="flex gap-1.5">
+            <Chip active={!detailed} onClick={() => setDetailed(false)}>
+              simple
+            </Chip>
+            <Chip
+              active={detailed}
+              title="The essentials method: what each piece is responsible for, what weakness lets it happen, what would break it and what it survives"
+              onClick={() => setDetailed(true)}
+            >
+              essentials
+            </Chip>
+          </div>
+        </div>
+
+        {/*
+          Nothing is deleted by switching — the other shape stays on the document, and
+          this says so rather than letting text you wrote vanish without a word.
+        */}
+        {detailed && conditions.trim().length > 0 && (
+          <p className="text-xs text-zinc-600">
+            A simple description is written too, and is not shown while the essentials
+            are. Switch back to read or clear it.
+          </p>
+        )}
+        {!detailed && essentialsHaveContent(essentials) && (
+          <p className="text-xs text-zinc-600">
+            The essentials are answered, and are not shown while this is. Switch back to
+            read or clear them.
+          </p>
+        )}
+      </div>
+
+      {detailed ? (
         <div className="flex flex-col gap-3 border-l-2 border-zinc-800 pl-4">
-          <Label hint="why this works, and what would break it">The essentials</Label>
           {ESSENTIALS_SECTIONS.map(section => (
             <div key={section.key} className="flex flex-col gap-1.5">
               <Label hint="one per line">
@@ -561,41 +599,48 @@ export default function PatternForm({
           ))}
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setMethod(true)}
-          title="Take it apart: what each piece is responsible for, what weakness lets it happen, what would break it and what it survives"
-          className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-        >
-          + Answer the essentials
-        </button>
-      )}
-
-      <div className="flex flex-col gap-1.5">
-        <Label>Conditions</Label>
-        <textarea
-          value={conditions}
-          onChange={event => setConditions(event.target.value)}
-          rows={3}
-          placeholder={'A piece on c4/c5 to kick\nMy bishop still at home on f8'}
-          className={`${INPUT} resize-y`}
-        />
-      </div>
-
-      {openings.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          <Label>Openings</Label>
-          <OpeningPicker
-            openings={openings}
-            selected={openingIds}
-            onToggle={id =>
-              setOpeningIds(prev =>
-                prev.includes(id) ? prev.filter(entry => entry !== id) : [...prev, id],
-              )
-            }
+          <Label hint="when it applies — one per line">Conditions</Label>
+          <textarea
+            value={conditions}
+            onChange={event => setConditions(event.target.value)}
+            rows={3}
+            placeholder={'A piece on c4/c5 to kick\nMy bishop still at home on f8'}
+            className={`${INPUT} resize-y`}
           />
         </div>
       )}
+
+      {/*
+        Folded away until asked for, like the essentials were. The picker is a scrolling
+        list of every line you have saved — sixty-odd of them — and most write-ups are
+        not tied to an opening at all, so it was the tallest thing on a form that had
+        nothing to do with it. Open from the start on a write-up that already links to
+        one, so nothing is hidden.
+      */}
+      {openings.length > 0 &&
+        (linking ? (
+          <div className="flex flex-col gap-1.5">
+            <Label hint="where it turns up">Openings</Label>
+            <OpeningPicker
+              openings={openings}
+              selected={openingIds}
+              onToggle={id =>
+                setOpeningIds(prev =>
+                  prev.includes(id) ? prev.filter(entry => entry !== id) : [...prev, id],
+                )
+              }
+            />
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setLinking(true)}
+            className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+          >
+            + Link to an opening
+          </button>
+        ))}
 
       {/*
         One list, and nothing in it is the "main line". A pattern is not an opening — an

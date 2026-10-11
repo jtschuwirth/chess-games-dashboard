@@ -478,6 +478,24 @@ src/
   it was a tactic again. `updatePattern` therefore clears every optional field the body
   did not set.
 
+- **A write-up has one description, simple or detailed, and picks which.** Conditions and
+  the method answer the same question at two depths, so a form offering both is a form
+  with one of them left empty — which is exactly how it looked. A chip pair chooses, the
+  default is read from what is already written, and the page shows the method where it
+  has been answered and the conditions where it has not.
+
+  Switching **deletes nothing**: the other shape stays on the document, and the form says
+  so in a line rather than letting text vanish without a word. That is the difference
+  between choosing how to describe something and throwing the other description away.
+
+- **The long pickers are folded until asked for.** The openings list is every line you
+  have saved — sixty-odd — and most write-ups are tied to none, so it was the tallest
+  thing on the form and about something the write-up had nothing to do with.
+  `+ Link to an opening` reveals it, and it opens by itself on a write-up that already
+  links to one. Decided once in a lazy initialiser, never derived per render, or it would
+  fold away under your hands as you cleared the last link — the rule a finished plan week
+  already follows.
+
 - **A point is numbered by the list, so numbering you typed is taken off when drawn.**
   The method's own write-ups come numbered — `(I)`, `(II)` — because that is how the page
   you copy from sets them out, and printing them inside a numbered list reads `(i) (I)`.

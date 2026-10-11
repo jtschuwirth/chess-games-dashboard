@@ -165,6 +165,14 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
 
   const examples = pattern.examples.filter(lineHasContent)
 
+  /*
+   * One description, not two. They answer the same question at two depths, so the
+   * method replaces the conditions wherever it has been answered — which is the whole
+   * reason a write-up picks one in the form. Conditions written before that choice
+   * existed still show on a write-up with no method, so nothing is hidden for good.
+   */
+  const showConditions = !hasMethod(pattern) && pattern.conditions.length > 0
+
   return (
     <div className="flex flex-col gap-5">
       <Link href="/patterns" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
@@ -228,12 +236,6 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
         them answered would then render nothing at all between its name and its
         examples, which reads as a page that failed rather than one not written yet.
       */}
-      {!hasMethod(pattern) && (
-        <p className="text-sm text-zinc-600">
-          The essentials have not been answered for this one — Edit to take it apart.
-        </p>
-      )}
-
       {hasMethod(pattern) && pattern.essentials && (
         <div className="grid lg:grid-cols-2 gap-3">
           {ESSENTIALS_SECTIONS.map(section => {
@@ -273,9 +275,9 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
         two-column grid, so a pattern with only one of them gets the whole width instead
         of half and a gap.
       */}
-      {(pattern.conditions.length > 0 || linkedOpenings.length > 0) && (
+      {(showConditions || linkedOpenings.length > 0) && (
         <div className="flex flex-wrap gap-3 items-start">
-          {pattern.conditions.length > 0 && (
+          {showConditions && (
             <div className="flex-1 min-w-[16rem] bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
               <h3 className="text-xs uppercase tracking-wide text-zinc-500">Conditions</h3>
               <ul className="flex flex-col gap-1">
