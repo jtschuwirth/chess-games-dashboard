@@ -488,6 +488,20 @@ src/
   so in a line rather than letting text vanish without a word. That is the difference
   between choosing how to describe something and throwing the other description away.
 
+- **The example editor holds its cursor as moves, not as node ids.** Every edit there
+  writes the line back out and the tree is rebuilt from that PGN on the next render —
+  and `fromPgn` mints a fresh random id for every node it reads. So a path of ids was
+  stale the instant you played a move: the board found nothing at it and fell back to
+  the start position while the controls went on pointing at where you were, and you had
+  to step home and forward again to see what you had just played.
+
+  `sansAlong` on the way in and `pathOfLine` on the way out, so the cursor is expressed
+  in the one thing a PGN round trip preserves. A cursor whose moves no longer exist —
+  the PGN was edited under it — falls back to where the line opens rather than throwing.
+
+  The game view does not have this: it keeps the edited tree in state rather than
+  round-tripping it through a PGN, so its ids survive and a path of them is safe there.
+
 - **The long pickers are folded until asked for.** The openings list is every line you
   have saved — sixty-odd — and most write-ups are tied to none, so it was the tallest
   thing on the form and about something the write-up had nothing to do with.
