@@ -13,6 +13,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    descriptor is read from.
 3. `/openings` — paste an opening line, name it, optionally tie it to a colour; a line that
    continues an existing one nests under it as a sub-variation. Saved lines can be edited.
+   Each one opens as a **study** at `/openings/{id}`: what the opening is for, the plans on
+   both sides, and then three things read off what is already on disk — the sub-variations
+   under it, your games that reached it, and the patterns naming it. Under those, the
+   lichess studies where the lines are worked out, each playable on a board in the page,
+   and the references it came from. Writing is behind an Edit switch, saved by a button,
+   and what is unsaved is kept on the device.
 4. `/dashboard` — Sync games sits at the top, folded, so bringing in new games does not
    mean leaving the page. The Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
@@ -66,6 +72,7 @@ src/
 │   ├── page.tsx                # Sign-in + nav
 │   ├── profile/page.tsx        # Linked accounts + sync
 │   ├── openings/page.tsx       # Saved opening lines
+│   ├── openings/[id]/page.tsx  # One opening as a study: ideas, variants, games, links
 │   ├── dashboard/page.tsx      # Stats + opening filter + game list
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
@@ -82,13 +89,15 @@ src/
 │                               # AnalyseButton,
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
-│                               # EnginePanel, EngineMode, PatternForm, LineBoard,
+│                               # MoveTreeBoard, MoveNoteCard, ProposedMoves, TagPicker,
+│                               # EnginePanel, EngineMode, PatternForm,
 │                               # PatternLineCard,
+│                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
-│                               # GameShapePanel,
-│                               # HomeNav, RatingPanel
+│                               # GameShapePanel, ClockPanel, ThinkPanel, ConfigNotice,
+│                               # HomeNav, RatingPanel, SignInButton
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -116,6 +125,10 @@ src/
 │   ├── firestore.ts            # profile, games, openings CRUD
 │   ├── sync.ts                 # client calls to the provider routes
 │   ├── opening.ts              # position keys, opening parsing, matching
+│   ├── study.ts                # an opening written up: the sections table, ideas, links
+│   ├── movetree.ts             # the branch model: one tree behind every board
+│   ├── game-tree.ts            # a game's played moves, variations and proposals as one tree
+│   ├── draft.ts                # anything edited and not yet saved, kept on the device
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
@@ -435,6 +448,61 @@ src/
   practice — a browser whose cache held one of four patterns showed one pattern, and
   the copy it showed predated its own comments. `readDocs` trusts any cache that is
   not empty, so a partial one is indistinguishable from a complete one.
+
+- **A study is the saved opening line with what you know written on it.** Not a document
+  store of its own: the line is already in a repertoire tree and already matching games by
+  position, so the only new thing is the prose and everything else is read off disk. The
+  variants are the node's children, the games are the slice the dashboard would show, the
+  patterns are the ones naming this opening — none of it stored twice, so none of it can
+  drift. `study` and `updatedAt` are optional fields on `OpeningLine`, and openings finally
+  gained a `normalizeOpening` on read, which was a bare cast while the type was six
+  required fields and is not one now.
+
+  The study page is the one place openings are read `{ fresh: true }`. It is the plans
+  lesson: a document you write on a phone and open on a laptop must not come from the
+  laptop's cache. The dashboard's hot path keeps the cache-first default.
+
+- **The sections of a study come from a table**, `STUDY_SECTIONS` in `lib/study.ts`, for
+  the reason `TRANSITIONS` and `GAME_NAMES` do. Each row says what it holds — `ideas`
+  written here, `links` written here, or `derived` and read off something else — and
+  carries the `hint` that renders as its own empty state, so an unwritten section says
+  what belongs in it. Adding one is a row plus a panel; it is deliberately short, because
+  what makes a study standard is the *shape of an idea* — a side, a rank, the pattern it
+  belongs to, the games showing it — rather than eight boxes left empty.
+
+- **References are cards; line studies are boards.** They are two sections rather than one
+  because they are reached for at different moments. A reference is a video or an article:
+  something you go away and read, which an iframe would only take over the page to show
+  you. A line study is the moves themselves, and the whole point of naming it here is to
+  play a variation without leaving the page you are writing on — so it is embedded, which
+  is what lichess documents under *Embed a chess analysis in your site*.
+
+  The embed is per **chapter**: `/study/embed/{study}/{chapter}`. A URL naming only the
+  study has no chapter to show and that route answers 404, checked against the real site,
+  so it falls back to a card rather than framing an error — and the section's hint says so,
+  since that is the thing deciding what you get. In practice lichess puts the chapter in
+  the address bar as soon as you open one.
+
+  `lichessEmbed` **builds** the URL from parts it has checked — the host must be lichess
+  over https, both ids must be the plain alphanumeric ones lichess mints — rather than
+  rewriting the pasted string and handing it to an iframe. A query or fragment on the way
+  in does not survive. `bg=dark` rather than the documented `auto`, because this app is
+  dark whatever the device is set to and an embed reading the system theme would come up
+  white inside a black page.
+
+- **One `links` array holds both sections, and a link says which it is in.** The same shape
+  as `StudyIdea.section`, so a third links section is a row in the table rather than a
+  migration. A link carrying no section is **defaulted to `references`, not dropped** —
+  which is the opposite of what an unknown *idea* section does, and deliberately: an idea
+  has always carried one, so a bad value there is a hand-edited document naming a category
+  the screen cannot draw, while a link carrying none is every link written before the
+  second section existed. Throwing those away would be deleting references to make room
+  for a field. `studyBody` applies the same fallback, because the writer must not be able
+  to emit `section: undefined` — an undefined value rejects the whole document.
+
+  The panel is handed the study's *whole* list and told which section is its own, rather
+  than a ready-made subset. What `onChange` hands back becomes the new value of the field,
+  so a panel editing a subset would drop the other section's links on every edit.
 
 - **Thematic patterns live in `thematicPatterns`**, not `patterns`: the saved opening lines
   hold that collection id and are not moving for a cosmetic reason. See the note in

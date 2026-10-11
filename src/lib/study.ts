@@ -17,11 +17,13 @@ import type {
   OpeningStudy,
   StudyCitation,
   StudyIdea,
+  StudyLink,
+  StudyLinkSectionId,
   StudySectionId,
 } from '@/types/chess'
 
 export interface StudySection {
-  id: StudySectionId | 'variants' | 'games' | 'references'
+  id: StudySectionId | 'variants' | 'games' | StudyLinkSectionId
   title: string
   /** What belongs here, shown where the section is empty. The section's own prompt. */
   hint: string
@@ -69,6 +71,14 @@ export const STUDY_SECTIONS: StudySection[] = [
     holds: 'derived',
   },
   {
+    id: 'lines',
+    title: 'Line studies',
+    // says what belongs here *and* the thing that decides what you get: a chapter plays
+    // on a board, a bare study link can only be a link
+    hint: 'A lichess study of these lines. Paste a chapter and it plays here on a board.',
+    holds: 'links',
+  },
+  {
     id: 'references',
     title: 'References',
     hint: 'Where else this is written up — a video, a study, an article.',
@@ -95,6 +105,9 @@ export function panelId(section: StudySection['id']): string {
 
 /** The sections an idea may be filed under — the ones that hold prose. */
 export const IDEA_SECTIONS: StudySectionId[] = ['overview', 'plans']
+
+/** The sections a link may be filed under — the ones that hold links. */
+export const LINK_SECTIONS: StudyLinkSectionId[] = ['lines', 'references']
 
 export const RANKS: IdeaRank[] = ['main', 'alternative']
 
@@ -149,6 +162,17 @@ export function ideasIn(
       (side === undefined || idea.side === side) &&
       (rank === undefined || (idea.rank ?? 'main') === rank),
   )
+}
+
+/**
+ * The links in one section, in stored order — the links half of `ideasIn`.
+ *
+ * One array holds both sections, the same way one array holds the ideas of both prose
+ * sections. A second field per section would make adding a third one a migration rather
+ * than a row in the table above.
+ */
+export function linksIn(study: OpeningStudy, section: StudyLinkSectionId): StudyLink[] {
+  return study.links.filter(link => link.section === section)
 }
 
 /**
@@ -232,7 +256,15 @@ export function studyBody(study: OpeningStudy): OpeningStudy {
     ideas,
     links: study.links
       .filter(link => link.url.trim().length > 0)
-      .map(link => ({ url: link.url.trim(), title: link.title.trim() })),
+      .map(link => ({
+        url: link.url.trim(),
+        title: link.title.trim(),
+        // the same fallback `normalizeStudy` applies, because the writer must not be able
+        // to emit `section: undefined` — an undefined value rejects the whole document,
+        // not the field, and the type being required is not the same as the value being
+        // there on a study that reached here some other way
+        section: link.section ?? 'references',
+      })),
     alsoReaches: [...new Set(study.alsoReaches)],
   }
 }
@@ -275,9 +307,61 @@ export function normalizeStudy(raw: unknown): OpeningStudy {
         id: idea.id || `idea-${index}`,
         text: typeof idea.text === 'string' ? idea.text : '',
       })),
-    links: links.filter(link => link && typeof link.url === 'string' && link.url.length > 0),
+    links: links
+      .filter(link => link && typeof link.url === 'string' && link.url.length > 0)
+      .map(link => ({
+        url: link.url,
+        title: typeof link.title === 'string' ? link.title : '',
+        /*
+         * Defaulted rather than dropped, which is the opposite of what an idea's section
+         * does two lines up. An idea has always carried one, so an unknown value there is
+         * a hand-edited document naming a category the screen cannot draw. A link
+         * carrying none is *every* link written before this section existed, and throwing
+         * those away would be deleting someone's references to make room for a field.
+         */
+        section: LINK_SECTIONS.includes(link.section) ? link.section : 'references',
+      })),
     alsoReaches: alsoReaches.filter(id => typeof id === 'string'),
   }
+}
+
+/**
+ * A lichess study URL turned into one that can be put in an iframe, or null.
+ *
+ * Lichess documents this under *Embed a chess analysis in your site*, and the embed is
+ * per **chapter**: `/study/embed/{study}/{chapter}`. A study URL with no chapter in it
+ * has nothing to show and the embed route answers 404, so it stays a link card — which
+ * is rarely what you have anyway, since lichess puts the chapter in the address bar as
+ * soon as you open one.
+ *
+ * The returned URL is *built* from parts that have been checked, rather than the pasted
+ * string being rewritten and handed to an iframe: the host must be lichess, and both ids
+ * must be the plain alphanumeric ones lichess mints. Anything else gets a link.
+ *
+ * `bg=dark` rather than the documented `auto`, because this app is dark whatever the
+ * device is set to, and an embed that reads the system theme would come up white inside
+ * a black page.
+ */
+export function lichessEmbed(url: string): string | null {
+  let parsed: URL
+  try {
+    parsed = new URL(url.trim())
+  } catch {
+    return null
+  }
+
+  if (parsed.protocol !== 'https:') return null
+  if (parsed.hostname.replace(/^www\./, '') !== 'lichess.org') return null
+
+  const parts = parsed.pathname.split('/').filter(part => part.length > 0)
+  // /study/{study}/{chapter}, or one that is already an embed
+  const [head, ...rest] = parts
+  if (head !== 'study') return null
+  const ids = rest[0] === 'embed' ? rest.slice(1) : rest
+  if (ids.length !== 2) return null
+  if (!ids.every(id => /^[A-Za-z0-9]{6,12}$/.test(id))) return null
+
+  return `https://lichess.org/study/embed/${ids[0]}/${ids[1]}?theme=brown&bg=dark`
 }
 
 /** The host a reference points at — what a link card is read by. */

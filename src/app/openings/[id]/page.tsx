@@ -30,6 +30,7 @@ import {
   emptyIdea,
   emptyStudy,
   ideasIn,
+  linksIn,
   moveIdea,
   panelId,
   studyBody,
@@ -64,6 +65,16 @@ function section(id: string) {
   const found = SECTION_BY_ID.get(id as never)
   if (!found) throw new Error(`No study section called ${id}`)
   return found
+}
+
+/**
+ * What a links panel folds down to.
+ *
+ * Nothing at all when it is empty: a panel reading `0 links` is a figure saying there is
+ * no figure, and the hint inside already says what belongs there.
+ */
+function linkMeta(count: number, one: string, many: string): string | undefined {
+  return count === 0 ? undefined : `${count} ${count === 1 ? one : many}`
 }
 
 function StudyBody({ userId, openingId }: { userId: string; openingId: string }) {
@@ -581,9 +592,35 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
         )}
       </Panel>
 
-      <Panel id={panelId('references')} title={section('references').title}>
+      {/*
+        Line studies sit above References because they are not the same kind of link.
+        This is the study of the moves — the place you open mid-game to see a variation
+        worked out — where a reference is something you read once.
+      */}
+      <Panel
+        id={panelId('lines')}
+        title={section('lines').title}
+        meta={linkMeta(linksIn(study, 'lines').length, 'study', 'studies')}
+      >
         <StudyLinks
           links={study.links}
+          section="lines"
+          editing={editing}
+          hint={section('lines').hint}
+          placeholder="https://lichess.org/study/…"
+          embed
+          onChange={links => edit(current => ({ ...current, links }))}
+        />
+      </Panel>
+
+      <Panel
+        id={panelId('references')}
+        title={section('references').title}
+        meta={linkMeta(linksIn(study, 'references').length, 'link', 'links')}
+      >
+        <StudyLinks
+          links={study.links}
+          section="references"
           editing={editing}
           hint={section('references').hint}
           onChange={links => edit(current => ({ ...current, links }))}

@@ -321,10 +321,26 @@ export interface StudyIdea {
   games?: StudyCitation[]
 }
 
+/**
+ * Which part of a study a link belongs to.
+ *
+ * Two, and they are reached for at different moments. `lines` is a study of the moves
+ * themselves — a lichess study where the variations are worked out in full — which is
+ * the detail *behind* this page. `references` is where the page came from: a video, an
+ * article, somebody else's write-up. One list holding both would make the thing you open
+ * mid-game sit among the things you read once.
+ */
+export type StudyLinkSectionId = 'lines' | 'references'
+
 /** Somewhere else this is written up — a video, a lichess study, an article. */
 export interface StudyLink {
   url: string
   title: string
+  /**
+   * Which links section it sits under. Every link written before this field existed is a
+   * reference, which is what `normalizeStudy` reads a missing one as.
+   */
+  section: StudyLinkSectionId
 }
 
 export interface OpeningStudy {
