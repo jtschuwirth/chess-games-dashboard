@@ -1,7 +1,8 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { useSearchParams } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import Chip from '@/components/Chip'
 import PatternForm from '@/components/PatternForm'
@@ -10,6 +11,7 @@ import {
   KIND_BADGE,
   KIND_LABEL,
   PATTERN_KINDS,
+  PATTERN_TYPES,
   TYPE_BADGE,
   TYPE_LABEL,
   essentialsCount,
@@ -23,21 +25,110 @@ import type {
   GameRecord,
   NewPattern,
   OpeningLine,
+  PatternKind,
   PatternRecord,
   PatternType,
 } from '@/types/chess'
 
+/** One row of the list: the write-up and the figure read off the games. */
+interface Row {
+  pattern: PatternRecord
+  kind: PatternKind
+  type: PatternType
+  motif: string | null
+  times: number
+}
+
+/**
+ * What the finder is looking for.
+ *
+ * All four live in the query string, so a narrowed list is a link and Back from a
+ * write-up returns to the slice you came from rather than to everything — the
+ * dashboard's rule, for the same reason.
+ */
+interface Find {
+  text: string
+  kind: PatternKind | null
+  type: PatternType | null
+  motif: string | null
+}
+
+const NOTHING: Find = { text: '', kind: null, type: null, motif: null }
+
+function readFind(params: ReturnType<typeof useSearchParams>): Find {
+  const kind = params.get('kind')
+  const type = params.get('type')
+  return {
+    text: params.get('q') ?? '',
+    // an unknown value is dropped rather than passed through, so a hand-typed URL
+    // cannot invent a category the list has no way to draw
+    kind: PATTERN_KINDS.includes(kind as PatternKind) ? (kind as PatternKind) : null,
+    type: PATTERN_TYPES.includes(type as PatternType) ? (type as PatternType) : null,
+    motif: params.get('motif'),
+  }
+}
+
+function writeFind(find: Find): string {
+  const query = new URLSearchParams()
+  if (find.text.trim()) query.set('q', find.text.trim())
+  if (find.kind) query.set('kind', find.kind)
+  if (find.type) query.set('type', find.type)
+  if (find.motif) query.set('motif', find.motif)
+  const text = query.toString()
+  return text ? `?${text}` : ''
+}
+
+/** Everything a row can be found by: what it is called, what it is, and what it says. */
+function haystack(row: Row): string {
+  return [row.pattern.name, row.motif ?? '', ...row.pattern.conditions].join(' ').toLowerCase()
+}
+
+/**
+ * Whether a row survives a find, optionally ignoring one axis.
+ *
+ * The axis is left out when counting what a chip would give you: a kind's count has to
+ * be measured with every *other* filter in force but not with the kind itself, or every
+ * chip except the active one reads zero.
+ */
+function matches(row: Row, find: Find, ignore?: keyof Find): boolean {
+  if (ignore !== 'text' && find.text.trim()) {
+    if (!haystack(row).includes(find.text.trim().toLowerCase())) return false
+  }
+  if (ignore !== 'kind' && find.kind && row.kind !== find.kind) return false
+  if (ignore !== 'type' && find.type && row.type !== find.type) return false
+  if (ignore !== 'motif' && find.motif && row.motif !== find.motif) return false
+  return true
+}
+
+function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex gap-2 items-baseline flex-wrap">
+      <span className="text-[11px] uppercase tracking-wide text-zinc-600 w-24 shrink-0">
+        {label}
+      </span>
+      <div className="flex gap-1.5 flex-wrap">{children}</div>
+    </div>
+  )
+}
+
 function PatternsBody({ userId }: { userId: string }) {
+  const searchParams = useSearchParams()
   const [patterns, setPatterns] = useState<PatternRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [games, setGames] = useState<GameRecord[]>([])
   /** Which document the open form is writing, or null when it is closed. */
   const [adding, setAdding] = useState<PatternType | null>(null)
-  /** Narrow the tactics section to one motif. Null is all of them. */
-  const [motif, setMotif] = useState<string | null>(null)
+  const [find, setFind] = useState<Find>(() => readFind(searchParams))
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
+
+  const search = useMemo(() => writeFind(find), [find])
+
+  useEffect(() => {
+    // replaceState rather than a push, so narrowing the list does not fill the history
+    window.history.replaceState(null, '', window.location.pathname + search)
+  }, [search])
 
   useEffect(() => {
     let live = true
@@ -79,37 +170,52 @@ function PatternsBody({ userId }: { userId: string }) {
     }
   }
 
-  /**
-   * One section per kind, in the table's own order, and a kind you have written nothing
-   * under is left out rather than shown empty. The headings come from `PATTERN_KINDS`,
-   * so a fifth kind would bring its own section with it.
-   */
-  const sections = useMemo(() => {
-    const rows = (patterns ?? []).map(pattern => ({
-      pattern,
-      times: timesTagged(games, pattern),
-      motif: motifOf(pattern),
-    }))
+  const rows = useMemo<Row[]>(() => {
+    const order = new Map(PATTERN_KINDS.map((kind, at) => [kind, at]))
+    return (patterns ?? [])
+      .map(pattern => ({
+        pattern,
+        kind: pattern.kind,
+        type: typeOf(pattern),
+        motif: motifOf(pattern),
+        times: timesTagged(games, pattern),
+      }))
+      .sort(
+        (a, b) =>
+          (order.get(a.kind) ?? 0) - (order.get(b.kind) ?? 0) ||
+          a.pattern.name.localeCompare(b.pattern.name),
+      )
+  }, [patterns, games])
 
-    return PATTERN_KINDS.map(kind => {
-      const all = rows.filter(row => row.pattern.kind === kind)
-      // the chips offer only what is actually filed here, the way the Control chips do
-      const motifs = [...new Set(all.map(row => row.motif).filter((m): m is string => m !== null))]
-      return {
-        kind,
-        all,
-        motifs: motifs.sort(),
-        /*
-         * The chips belong to the section that offers them, and so does the filter. A
-         * motif only tactics has must not empty the endgame section — which is exactly
-         * what filtering every section by it did.
-         */
-        shown: motif !== null && motifs.includes(motif)
-          ? all.filter(row => row.motif === motif)
-          : all,
-      }
-    }).filter(section => section.all.length > 0)
-  }, [patterns, games, motif])
+  const shown = useMemo(() => rows.filter(row => matches(row, find)), [rows, find])
+
+  /** How many each chip would give you, measured with the other filters in force. */
+  const counts = useMemo(() => {
+    const of = (ignore: keyof Find, test: (row: Row) => boolean) =>
+      rows.filter(row => matches(row, find, ignore) && test(row)).length
+
+    return {
+      kind: new Map(PATTERN_KINDS.map(k => [k, of('kind', row => row.kind === k)])),
+      type: new Map(PATTERN_TYPES.map(t => [t, of('type', row => row.type === t)])),
+      anyKind: rows.filter(row => matches(row, find, 'kind')).length,
+      anyType: rows.filter(row => matches(row, find, 'type')).length,
+      anyMotif: rows.filter(row => matches(row, find, 'motif')).length,
+    }
+  }, [rows, find])
+
+  /**
+   * The motifs worth offering, which is the ones present in what you are already
+   * looking at — the Control chips rule. Without it the row would list sixteen names
+   * on an account that has used two.
+   */
+  const motifs = useMemo(() => {
+    const present = new Map<string, number>()
+    for (const row of rows) {
+      if (!row.motif || !matches(row, find, 'motif')) continue
+      present.set(row.motif, (present.get(row.motif) ?? 0) + 1)
+    }
+    return [...present].sort((a, b) => a[0].localeCompare(b[0]))
+  }, [rows, find])
 
   if (error && patterns === null) {
     return <LoadError message={error} onRetry={() => setReload(n => n + 1)} />
@@ -119,9 +225,9 @@ function PatternsBody({ userId }: { userId: string }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-zinc-500 max-w-xl">
-          Ideas you can carry between openings, and tactics worked out against the
-          essentials method. Either way the name becomes a tag in the review form, so a
-          mistake can point at the thing you should have played.
+          Ideas you can carry between openings, and tactics worked out against the essentials
+          method. Either way the name becomes a tag in the review form, so a mistake can point at
+          the thing you should have played.
         </p>
         {adding === null && (
           <div className="flex items-center gap-2 shrink-0">
@@ -131,11 +237,6 @@ function PatternsBody({ userId }: { userId: string }) {
             >
               New pattern
             </button>
-            {/*
-              `aria-label` pins the accessible name to what the button says. Without it
-              the title can be read out in its place, so the control announces a sentence
-              about the method rather than the name of the thing it opens.
-            */}
             <button
               onClick={() => setAdding('essentials')}
               aria-label="New essentials"
@@ -167,97 +268,159 @@ function PatternsBody({ userId }: { userId: string }) {
         </div>
       ) : patterns.length === 0 ? (
         <p className="py-12 text-center text-sm text-zinc-500">
-          Nothing written up yet — start with the idea you keep missing, or take a tactic
-          apart with the essentials method.
+          Nothing written up yet — start with the idea you keep missing, or take a tactic apart
+          with the essentials method.
         </p>
       ) : (
-        /*
-          Grouped by kind rather than one flat run. The kind then lives on the heading
-          and comes off the rows: repeating "Tactics" on every row under a heading that
-          says Tactics is noise, and it leaves the row free for what differs — which
-          document it is, and which tactic.
-        */
-        <div className="flex flex-col gap-6">
-          {sections.map(section => (
-            <div key={section.kind} className="flex flex-col gap-3">
-              <div className="flex items-center gap-3 flex-wrap">
-                <h2
-                  className={`text-xs uppercase tracking-wide px-2 py-0.5 rounded border ${
-                    KIND_BADGE[section.kind]
-                  }`}
+        <>
+          {/*
+            A finder rather than a heading per kind. Four headings over a grid of cards
+            reads well at four write-ups and becomes a page you scroll past at forty —
+            and by then the question is "where is the one about back rank mates", which
+            is a search rather than a scroll. The kind moves onto the row as a badge, and
+            the list is sorted by it, so browsing everything still reads grouped.
+          */}
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              <input
+                value={find.text}
+                onChange={event => setFind(current => ({ ...current, text: event.target.value }))}
+                placeholder="Find by name, motif or condition"
+                className="flex-1 min-w-[14rem] bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600"
+              />
+              <span className="text-xs text-zinc-500">
+                {shown.length === rows.length
+                  ? `${rows.length} write-up${rows.length === 1 ? '' : 's'}`
+                  : `${shown.length} of ${rows.length}`}
+              </span>
+              {search.length > 0 && (
+                <button
+                  onClick={() => setFind(NOTHING)}
+                  className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
                 >
-                  {KIND_LABEL[section.kind]}
-                </h2>
-                <span className="text-xs text-zinc-600">
-                  {section.all.length} write-up{section.all.length === 1 ? '' : 's'}
-                </span>
-
-                {section.motifs.length > 0 && (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <Chip active={motif === null} onClick={() => setMotif(null)}>
-                      any
-                    </Chip>
-                    {section.motifs.map(option => (
-                      <Chip
-                        key={option}
-                        active={motif === option}
-                        onClick={() => setMotif(motif === option ? null : option)}
-                      >
-                        {option}
-                      </Chip>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/*
-                No empty branch: a section only filters on a motif it actually offers,
-                so what is shown can never be nothing.
-              */}
-              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                {section.shown.map(({ pattern, times, motif: its }) => (
-                    <Link
-                      key={pattern.id}
-                      href={`/patterns/${pattern.id}`}
-                      className="flex flex-col gap-2 border border-zinc-800 rounded-xl p-3 bg-zinc-900 hover:bg-zinc-800 transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <span className="text-sm font-medium text-zinc-100 min-w-0">
-                          {pattern.name}
-                        </span>
-                        <span
-                          className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border shrink-0 ${
-                            TYPE_BADGE[typeOf(pattern)]
-                          }`}
-                        >
-                          {TYPE_LABEL[typeOf(pattern)]}
-                        </span>
-                      </div>
-
-                      {its && <span className="text-xs text-zinc-400 font-mono">{its}</span>}
-
-                      {pattern.conditions.length > 0 && (
-                        <p className="text-xs text-zinc-500 line-clamp-2">
-                          {pattern.conditions[0]}
-                        </p>
-                      )}
-
-                      <div className="flex items-center gap-3 text-xs text-zinc-600 mt-auto pt-1">
-                        <span>
-                          {pattern.examples.length} line
-                          {pattern.examples.length === 1 ? '' : 's'}
-                        </span>
-                        {typeOf(pattern) === 'essentials' && (
-                          <span>{essentialsCount(pattern.essentials)} points</span>
-                        )}
-                        {times > 0 && <span className="text-amber-400/80">{times} flagged</span>}
-                      </div>
-                  </Link>
-                ))}
-              </div>
+                  Reset
+                </button>
+              )}
             </div>
-          ))}
-        </div>
+
+            <FilterRow label="Kind">
+              <Chip
+                active={find.kind === null}
+                onClick={() => setFind(c => ({ ...c, kind: null, motif: null }))}
+              >
+                any {counts.anyKind}
+              </Chip>
+              {PATTERN_KINDS.filter(
+                kind => (counts.kind.get(kind) ?? 0) > 0 || find.kind === kind,
+              ).map(kind => (
+                <Chip
+                  key={kind}
+                  active={find.kind === kind}
+                  // a motif belongs to a kind, so changing the kind drops it rather than
+                  // leaving a filter on that nothing in the new slice could match
+                  onClick={() =>
+                    setFind(c => ({ ...c, kind: c.kind === kind ? null : kind, motif: null }))
+                  }
+                >
+                  {KIND_LABEL[kind]} {counts.kind.get(kind) ?? 0}
+                </Chip>
+              ))}
+            </FilterRow>
+
+            <FilterRow label="Written up as">
+              <Chip active={find.type === null} onClick={() => setFind(c => ({ ...c, type: null }))}>
+                any {counts.anyType}
+              </Chip>
+              {PATTERN_TYPES.map(type => (
+                <Chip
+                  key={type}
+                  active={find.type === type}
+                  onClick={() => setFind(c => ({ ...c, type: c.type === type ? null : type }))}
+                >
+                  {TYPE_LABEL[type]} {counts.type.get(type) ?? 0}
+                </Chip>
+              ))}
+            </FilterRow>
+
+            {motifs.length > 0 && (
+              <FilterRow label="Motif">
+                <Chip
+                  active={find.motif === null}
+                  onClick={() => setFind(c => ({ ...c, motif: null }))}
+                >
+                  any {counts.anyMotif}
+                </Chip>
+                {motifs.map(([name, count]) => (
+                  <Chip
+                    key={name}
+                    active={find.motif === name}
+                    onClick={() => setFind(c => ({ ...c, motif: c.motif === name ? null : name }))}
+                  >
+                    {name} {count}
+                  </Chip>
+                ))}
+              </FilterRow>
+            )}
+          </div>
+
+          {shown.length === 0 ? (
+            <p className="py-10 text-center text-sm text-zinc-500">
+              Nothing matches that.{' '}
+              <button
+                onClick={() => setFind(NOTHING)}
+                className="text-zinc-300 underline hover:text-zinc-100"
+              >
+                Clear the finder
+              </button>
+              .
+            </p>
+          ) : (
+            /*
+              Rows rather than cards. A card is three across and a hand tall, so twelve
+              of them is a screenful; the same twelve as rows is a glance, and running
+              your eye down a column of names is what you came to do.
+            */
+            <div className="border border-zinc-800 rounded-xl overflow-hidden divide-y divide-zinc-800">
+              {shown.map(({ pattern, kind, type, motif, times }) => (
+                <Link
+                  key={pattern.id}
+                  href={`/patterns/${pattern.id}`}
+                  className="flex items-center gap-3 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors"
+                >
+                  <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium text-zinc-100">{pattern.name}</span>
+                      <span
+                        className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${KIND_BADGE[kind]}`}
+                      >
+                        {KIND_LABEL[kind]}
+                      </span>
+                      <span
+                        className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${TYPE_BADGE[type]}`}
+                      >
+                        {TYPE_LABEL[type]}
+                      </span>
+                      {motif && <span className="text-xs font-mono text-zinc-400">{motif}</span>}
+                    </div>
+                    {pattern.conditions.length > 0 && (
+                      <p className="text-xs text-zinc-500 truncate">{pattern.conditions[0]}</p>
+                    )}
+                  </div>
+
+                  <div className="shrink-0 flex items-center gap-3 text-xs text-zinc-600">
+                    <span>
+                      {pattern.examples.length} line{pattern.examples.length === 1 ? '' : 's'}
+                    </span>
+                    {type === 'essentials' && (
+                      <span>{essentialsCount(pattern.essentials)} points</span>
+                    )}
+                    {times > 0 && <span className="text-amber-400/80">{times} flagged</span>}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </>
       )}
     </div>
   )
@@ -266,7 +429,17 @@ function PatternsBody({ userId }: { userId: string }) {
 export default function PatternsPage() {
   return (
     <PageShell title="Patterns" wide>
-      {user => <PatternsBody userId={user.uid} />}
+      {user => (
+        <Suspense
+          fallback={
+            <div className="py-16 flex justify-center">
+              <Spinner size="w-6 h-6" />
+            </div>
+          }
+        >
+          <PatternsBody userId={user.uid} />
+        </Suspense>
+      )}
     </PageShell>
   )
 }

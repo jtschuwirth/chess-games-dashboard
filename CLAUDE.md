@@ -423,12 +423,26 @@ src/
   press for the same reason. Both, because the read has to hold for a document that got
   one some other way.
 
-- **The overview is grouped by kind, so the kind comes off the rows.** Repeating "Tactics"
-  on every row under a heading that says Tactics is noise, and it leaves the row free for
-  what actually differs — which document it is, and which tactic. A kind nothing is filed
-  under is left out rather than shown empty, and the motifs actually present become chips
-  that narrow the section, the same habit as the Control chips listing only the clocks you
-  have played.
+- **The overview is a finder, not a wall of cards.** It was a heading per kind over a
+  three-across grid, which reads well at four write-ups and becomes a page you scroll
+  past at forty — and by then the question is "where is the one about back rank mates",
+  which is a search rather than a scroll. So: a search box over the name, the motif and
+  the conditions, and chips for the kind, the kind of write-up and the motif. The list
+  underneath is one column of rows rather than cards, because twelve cards is a screenful
+  where twelve rows is a glance, and it is sorted by kind with the kind as a badge, so
+  browsing everything still reads grouped without four headings to scroll past.
+
+  **Every chip carries the count it would give you**, measured with the *other* filters in
+  force but not its own — otherwise every chip except the active one reads zero and the
+  row stops being worth looking at. A kind nothing is filed under is dropped, and the
+  motif row offers only the motifs actually present in what you are already looking at:
+  the Control chips rule, which exists so a list of sixteen names does not appear on an
+  account that has used two. Changing the kind clears the motif, since a motif belongs to
+  a kind and would otherwise leave a filter on that nothing could match.
+
+  The four live in the query string, like the dashboard's, so a narrowed list is a link
+  and Back from a write-up returns to the slice you came from. An unknown value is dropped
+  on read rather than passed through, so a hand-typed URL cannot invent a category.
 
 - **An example is a game pointed at a move, or a position with moves on top of it.** The
   second is the common case for a tactic and had nowhere to go: you have the position and

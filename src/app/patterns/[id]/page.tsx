@@ -46,6 +46,8 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
   const [missing, setMissing] = useState(false)
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
+  /** Whether Delete has been pressed once and is waiting to be meant. */
+  const [confirming, setConfirming] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
 
@@ -87,13 +89,27 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
     }
   }
 
+  /**
+   * Deleting asks first, and asks in place rather than in a dialog.
+   *
+   * It used to go on the first click. A write-up is the only copy of work you typed —
+   * the method's answers, the lines, the comments on them — and nothing here can undo
+   * it, so a mis-click next to Edit cost the lot. The second press is the confirmation,
+   * which keeps it one control rather than a modal to dismiss.
+   */
   async function handleDelete() {
+    if (!confirming) {
+      setConfirming(true)
+      return
+    }
+
     setBusy(true)
     try {
       await deletePattern(userId, patternId)
       router.push('/patterns')
     } catch (caught) {
       setError(errorText(caught, 'Could not delete that pattern.'))
+      setConfirming(false)
       setBusy(false)
     }
   }
@@ -218,10 +234,21 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
           <button
             onClick={handleDelete}
             disabled={busy}
-            className="text-xs text-zinc-600 hover:text-red-400 transition-colors disabled:opacity-40"
+            title={confirming ? 'This cannot be undone' : undefined}
+            className={`text-xs transition-colors disabled:opacity-40 ${
+              confirming ? 'text-red-400 font-medium' : 'text-zinc-600 hover:text-red-400'
+            }`}
           >
-            Delete
+            {confirming ? 'Really delete?' : 'Delete'}
           </button>
+          {confirming && (
+            <button
+              onClick={() => setConfirming(false)}
+              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              Keep
+            </button>
+          )}
         </div>
       </div>
 
