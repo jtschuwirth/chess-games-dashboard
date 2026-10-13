@@ -384,7 +384,41 @@ export const OFF_BOARD: OffBoard[] = [
   { result: 'draw', board: 'loss', endings: [], name: 'escaped with a draw' },
 ]
 
+/**
+ * Whether the last point of the series is the end of the game.
+ *
+ * The first pass evaluates the position before and after each of *your* moves, so the
+ * series ends where you last moved. Your opponent's reply is normally caught by the
+ * `cpBefore` of the move you played next — but when the game ends on that reply there is
+ * no next move of yours, and the final position was never evaluated at all. 44% of
+ * analysed games end that way, always by exactly one ply.
+ */
+export function measuredToEnd(game: GameRecord): boolean {
+  const moves = game.analysis?.moves ?? []
+  if (moves.length === 0) return false
+  return moves[moves.length - 1].ply === game.moves.length - 1
+}
+
 export function offBoardOf(game: GameRecord, shape: GameShape, config = settings()): string | null {
+  /*
+   * Naming one of these asserts what the board said *at the end*, and that is only
+   * knowable when the end is what was measured. It was not, on a real game: 42 plies
+   * played, the last evaluation taken at ply 40 reading −9, and the move never seen was
+   * the piece blunder that made the opponent resign. The board "said draw" and the game
+   * was named `they resigned a draw` — a game that had stopped being drawn one ply
+   * earlier than anything here could see.
+   *
+   * A move at the end is exactly where this matters, too: a player who resigns straight
+   * after moving is usually resigning *because* of the move, so the one ply missing is
+   * the one that explains the ending. So the name is withheld and the game keeps its arc,
+   * which is read from what was actually measured.
+   *
+   * The cure rather than the guard would be for the first pass to evaluate the final
+   * position as well — one more search per game. That is a change to what is stored, so
+   * it would bump `ANALYSIS_VERSION` and mark every analysed game stale.
+   */
+  if (!measuredToEnd(game)) return null
+
   const board = boardSaid(shape, config)
   if (board === game.result) return null
 

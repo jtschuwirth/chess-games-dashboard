@@ -994,6 +994,28 @@ src/
   The table carves the real data: 13 of 15 cells populated over 270 games, the two empty
   ones exactly the impossible pair, and the arcs almost pure against the result — `held it`
   won 99%, `threw it` won 0%, `recovered` 95%.
+- **The series stops where you last moved, which is not always where the game ended.**
+  The first pass evaluates the position before and after each of *your* moves, so your
+  opponent's reply is normally caught by the `cpBefore` of the move you played next —
+  and when the game ends on that reply there is no next move of yours, so the final
+  position was never evaluated at all. **44% of analysed games end that way**, always by
+  exactly one ply.
+
+  That made `offBoardOf` lie. Naming one of those asserts what the board said *at the
+  end*, and a real game had 42 plies played, the last reading taken at ply 40 showing
+  −9, and the move nobody saw was the piece blunder that made the opponent resign: the
+  board "said draw", so the game was called `they resigned a draw` about a game that had
+  stopped being drawn one ply earlier. It is exactly where the gap bites, too — a player
+  who resigns straight after moving is usually resigning *because* of the move, so the
+  one ply missing is the one that explains the ending.
+
+  So `measuredToEnd` guards it: no off-board name unless the last ply of the game is one
+  with a reading, and the game keeps its arc, which is read from what was measured. It
+  cost 9 of 33 names and every flag and walk-away survived, because those end on your own
+  move. The cure rather than the guard would be for the first pass to evaluate the final
+  position too — one more search per game — but that changes what is stored, so it would
+  bump `ANALYSIS_VERSION` and mark every analysed game stale.
+
 - **Where a game turned is a number it already had.** `settledAt` walks back from the
   end to the last point in a different band from the one the game finished in — which
   is the moment *every* arc is named after, whichever arc it is: a game you recovered
