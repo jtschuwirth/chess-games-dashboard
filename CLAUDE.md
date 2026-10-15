@@ -705,9 +705,20 @@ src/
   different jobs: `cpLoss` has to mean what *you* gave away and `classifyMove`'s guards ask
   whether *you* were already lost, so everything stored and every rule is in your frame. Boards
   are not — positive favours White whoever is reading — and a Black player shown a raw stored
-  `−2.2` reads "I am winning" when it means the opposite. `formatEval(cp, color)` in
-  `lib/review.ts` flips the sign at the point of display and is the only place that does; the
-  export keeps the stored frame, which is what its field comments say.
+  `−2.2` reads "I am winning" when it means the opposite. The conversion happens at the point
+  of display and nowhere else: `formatEval(cp, color)` in `lib/review.ts` for a number, and
+  `boardWord(end, color)` in `lib/shape.ts` for the one thing that names a *side*. The export
+  keeps the stored frame, which is what its field comments say.
+
+  **Anything that names a colour is a display of an evaluation, and the eval graph's caption
+  proved it the hard way.** `boardWord` read a stored end-of-game evaluation as though it were
+  already White's and so named the wrong side on every game played as Black — 14 of the 24
+  games that show the sentence at all. It survived because it sat in a line where nothing
+  else needs the frame: a band name is true from both ends of the board, so "best you stood:
+  winning" reads correctly either way and only the colour was wrong. It sat directly under a
+  chart that converts correctly, which is what finally made it visible — the caption said
+  Black while the fill above it said White. The lesson is the rule above restated: a band is
+  frame-free, a number and a colour are not.
 - **One depth, `ENGINE_DEPTH` (21), and no picker.** It covers a game's analysis, the engine's
   choice on a move, the verdict on an alternative you typed, and the drill. Splitting it into a
   careful depth and a fast one was tried and was wrong: these numbers are read side by side, your

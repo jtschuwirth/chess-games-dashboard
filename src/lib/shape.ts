@@ -194,6 +194,27 @@ export function decidedPhrase(telling: GameTelling, config = settings()): string
   return `${DECIDED_IN[telling.arc]} the ${phase.name.toLowerCase()}`
 }
 
+/**
+ * Which way the evaluations were pointing, named as a colour.
+ *
+ * This is the only thing read off a shape that names a *side* rather than a band, and so
+ * the only thing here that has to be converted out of your frame. Everything else is true
+ * from both ends of the board — "best you stood: winning" says the same whoever you were —
+ * which is exactly why this one was missed: it sat in a sentence where nothing else needed
+ * a colour, under a chart that converts correctly, and so it read as White's while being
+ * yours. Every game you played as Black named the wrong side.
+ *
+ * It takes your colour for the same reason `formatEval` does, and does the same thing with
+ * it. A `level` end still has a sign, so this can say "to White" about a game the off-board
+ * table calls a draw: it is the direction the evaluations lean, not a verdict.
+ */
+export function boardWord(end: number, color: GameRecord['color']): string {
+  const white = color === 'white' ? end : -end
+  if (white > 0) return 'to White'
+  if (white < 0) return 'to Black'
+  return 'nowhere'
+}
+
 /** The three standings a shape is read through, for anything that wants to name it. */
 export function standingsOf(
   shape: GameShape,

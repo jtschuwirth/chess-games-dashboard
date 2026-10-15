@@ -10,6 +10,7 @@ import {
   ARC_BADGE,
   ARC_LABEL,
   TEXTURE_LABEL,
+  boardWord,
   decidedPhrase,
   tellingHint,
   tellingOf,
@@ -252,7 +253,7 @@ export default function EvalGraph({
         {telling.offBoard && (
           <>
             <Dot />
-            the board was sending it <Fact>{boardWord(telling.shape.end)}</Fact>
+            the board was sending it <Fact>{boardWord(telling.shape.end, game.color)}</Fact>
           </>
         )}
       </p>
@@ -275,13 +276,6 @@ function shortName(name: string): string {
   return (first ?? name).toLowerCase()
 }
 
-
-/** Which way the evaluations were pointing, for a game the ending decided instead. */
-function boardWord(end: number): string {
-  if (end > 0) return 'to White'
-  if (end < 0) return 'to Black'
-  return 'nowhere'
-}
 
 function Yours() {
   return <span className="text-violet-400"> · you</span>
