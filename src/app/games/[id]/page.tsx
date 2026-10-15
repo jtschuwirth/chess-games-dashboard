@@ -34,7 +34,7 @@ import {
 import { opponentMoves } from '@/lib/analysis'
 import { onAnalysed } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
-import { getGames, getOpenings, getPatterns, saveVariations } from '@/lib/firestore'
+import { getGames, getOpenings, getPatterns, getTagGroups, saveVariations } from '@/lib/firestore'
 import { buildOpeningTree, matchingPath, openingLabel } from '@/lib/opening'
 import { patternTags } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
@@ -42,10 +42,10 @@ import {
   formatEval,
   hasReview,
   isFault,
-  knownTags,
   markColor,
   reviewedPlies,
 } from '@/lib/review'
+import { DEFAULT_TAG_GROUPS, type TagGroup } from '@/lib/tags'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
 import type {
@@ -120,6 +120,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const [games, setGames] = useState<GameRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [patterns, setPatterns] = useState<PatternRecord[]>([])
+  const [vocabulary, setVocabulary] = useState<TagGroup[]>(DEFAULT_TAG_GROUPS)
   const [missing, setMissing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
   /**
@@ -150,11 +151,15 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
         getGames(userId, options),
         getOpenings(userId, options),
         getPatterns(userId, options),
+        // read from the same user document the games already waited on, so it costs
+        // nothing beyond the promise
+        getTagGroups(userId),
       ])
-        .then(([loadedGames, loadedOpenings, loadedPatterns]) => {
+        .then(([loadedGames, loadedOpenings, loadedPatterns, loadedTags]) => {
           setGames(loadedGames)
           setOpenings(loadedOpenings)
           setPatterns(loadedPatterns)
+          setVocabulary(loadedTags)
           setLoadError(null)
         })
         .catch(caught => {
@@ -443,7 +448,6 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     }
   }, [games, game, tree, keys, filters])
 
-  const suggestedTags = useMemo(() => knownTags(games ?? []), [games])
   /** Your patterns, as tags, so a mistake can point at the idea you should have used. */
   const patternTagList = useMemo(() => patternTags(patterns), [patterns])
 
@@ -821,7 +825,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
         userId={userId}
         game={game}
         plies={replay.plies}
-        suggestedTags={suggestedTags}
+        tagGroups={vocabulary}
         patternTags={patternTagList}
         onShowPly={ply => setMoved(mainPath(moveTree, ply + 1))}
         lineOnBoard={lineOnBoard}

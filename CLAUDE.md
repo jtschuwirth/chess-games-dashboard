@@ -10,7 +10,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
 2. `/profile` — save chess.com / lichess usernames, and paste in a PGN to study. Syncing
    itself lives on the dashboard. The two screens that explain the analysis live here as
    well: the thresholds the move marks are a judgement about, and what a whole game's
-   descriptor is read from.
+   descriptor is read from. So does **your tag vocabulary** — the words the Mistake
+   database counts, in groups you name, where renaming one renames it on every review
+   already carrying it and removing one takes it off them.
 3. `/openings` — paste an opening line, name it, optionally tie it to a colour; a line that
    continues an existing one nests under it as a sub-variation. Saved lines can be edited.
    Each one opens as a **study** at `/openings/{id}`: what the opening is for, the plans on
@@ -97,7 +99,7 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # MoveTreeBoard, MoveNoteCard, ProposedMoves, TagPicker,
-│                               # EnginePanel, EngineMode, PatternForm,
+│                               # EnginePanel, EngineMode, PatternForm, TagGroupsPanel,
 │                               # PatternLineCard,
 │                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
@@ -137,6 +139,7 @@ src/
 │   ├── game-tree.ts            # a game's played moves, variations and proposals as one tree
 │   ├── draft.ts                # anything edited and not yet saved, kept on the device
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
+│   ├── tags.ts                 # your own tag vocabulary: groups, stable ids, display names
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
 │   ├── days.ts                 # day keys, the 6am rule, calendar arithmetic
@@ -650,10 +653,54 @@ src/
 - **Thematic patterns live in `thematicPatterns`**, not `patterns`: the saved opening lines
   hold that collection id and are not moving for a cosmetic reason. See the note in
   `lib/firestore.ts`.
-- **Tags are a fixed vocabulary you can extend.** `TAG_GROUPS` in `lib/review.ts` groups them by
-  what actually broke — tactics missed, tactics allowed, calculation, strategy, endgame, opening,
-  mindset — because a count is only comparable across months if the words stay the same. The
-  groups carried a one-line gloss each; the names say it.
+- **The tag vocabulary is fixed when you use it, and you are the one who fixes it.** It lives in
+  `lib/tags.ts` and on your own user document, seeded with `DEFAULT_TAG_GROUPS` — grouped by what
+  actually broke: tactics missed, tactics allowed, calculation, strategy, endgame, opening,
+  mindset — and edited in the maintainer on the profile page. A count is only comparable across
+  months if the words stay the same, which is what a fixed list bought and what the review form's
+  free-text box quietly took back: anything typed into it became a tag, so `fork` and
+  `italian fork` were two rows of the Mistake database describing one mistake and neither total
+  was true about either. Adding a tag is a deliberate act now, which is the difference between a
+  vocabulary and a pile of words. The groups carried a one-line gloss each; the names say it.
+
+- **A tag is an id that cannot change and a name that can, and the split is what makes the list
+  editable at all.** Reviews store the **id**, so renaming a tag renames it on every entry already
+  carrying it with nothing rewritten, no migration and no backfill — the name is read at the point
+  of display and nowhere else. Removing one is the mirror image and genuinely destructive:
+  `removeTagEverywhere` strips it from every review that carries it, because a word struck off the
+  list but still being counted would be worse than leaving it there. So the ✕ beside each tag says
+  how many entries it would take the tag off, and nothing is written — not the vocabulary, not one
+  review — until Save.
+
+  **Each seeded tag's id is the word itself**, and that is load-bearing rather than lazy. Every
+  review ever written stored exactly those strings, so the vocabulary arrives with every existing
+  entry already pointing at the right tag: zero migration, and `?tag=` links stay readable. A tag
+  you add later gets a minted id, because an id spelled out of the name would change with the name
+  and orphan everything carrying the old one.
+
+  Moving a tag between groups is free and had to be possible: the group is derived at read time and
+  never stored on a review, so without a move control the only way to re-file a tag would be to
+  delete it — which would take the entries with it. That is a trap, not a feature.
+
+  This is the opposite bargain to a pattern's name, which *is* its tag and so leaves the old string
+  behind when renamed. The difference is that a pattern is a document you wrote and a tag is a word
+  in a list, and a word in a list is exactly the kind of thing you fix the spelling of.
+
+- **The maintainer reads the games fresh, and only once it is open.** It is the one screen that
+  writes to many games at once, and the footprint under every ✕ is counted from that list — a
+  cache missing a game written on another device would quote a number it does not have and then
+  leave that game still tagged, so "deleted everywhere" would not be everywhere. It bit immediately:
+  a review written the same morning was missing from the cache, and the panel listed four unfiled
+  tags where there were five. Fresh means a billed read per game, so it waits for the panel to be
+  opened — folded, it costs the one document the vocabulary is in, which is enough for the count in
+  its heading. The same reasoning as the plans page and the study, for considerably more at stake.
+
+- **A tag written before the vocabulary offered it is `UNFILED`, and the maintainer is where it
+  gets a home.** Everything hand-written before there was a list lands there, with the number of
+  entries carrying it and a group to drop it into — which is how a personal word gets into the
+  vocabulary without the app's own seed carrying one user's vocabulary around. The review form
+  shows such a tag too, under *Not in your vocabulary*: a tag that vanished from the form while
+  staying on the review would read as the form being broken.
 - **A search fails in three ways, and they are three tags.** The move was never a candidate
   (`never considered the move`); it was a candidate, got cut, and was good (`abandoned a good
   line`); or the whole think ended before it was finished (`stopped calculating too early`).
@@ -667,8 +714,8 @@ src/
   (`hung a piece`, `allowed a fork`) since a tag appears alone in the mistake table. The existing
   tags were not renamed: only the group was, from `Tactics` to `Tactics missed`, and group names
   are derived at read time while tag strings are stored — so nothing already written was
-  orphaned. Free tags are still allowed
-  and are offered back as suggestions (`knownTags`), landing in a "Your own" group.
+  orphaned — and still is not, now that the whole list is editable, because the group a tag is in
+  is derived from the vocabulary rather than stored beside it.
 - **Reviews live on the game document**, like the analysis, not in a subcollection. The dashboard
   already holds every game, so filtering by review state, counting tags and finding the next game
   to review cost no extra reads. `saveGames` merges, so a re-sync never clears a review.

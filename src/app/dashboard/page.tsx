@@ -22,6 +22,7 @@ import { onAnalysed, stopAll } from '@/lib/analysis-queue'
 import { ARC_LABEL, gameNames } from '@/lib/shape'
 import { getGames, getOpenings, getPatterns, getProfile, getRatingHistory } from '@/lib/firestore'
 import { patternTags } from '@/lib/pattern'
+import { tagName } from '@/lib/tags'
 import { sinceTimestamp } from '@/lib/game-filters'
 import type { RatingHistory } from '@/lib/rating-history'
 import {
@@ -552,7 +553,7 @@ function DashboardBody({ userId }: { userId: string }) {
                 title="Clear the tag filter"
                 className="px-3 py-1 text-xs rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 transition-colors"
               >
-                {tag} ✕
+                {tagName(tag)} ✕
               </button>
             )}
           </div>

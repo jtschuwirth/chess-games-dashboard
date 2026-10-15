@@ -3,6 +3,7 @@ import { deny, requireUser } from '@/lib/api-auth'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { buildExport } from '@/lib/export'
 import { isSinceKey, matchesCriteria, type GameCriteria, type SinceKey } from '@/lib/game-filters'
+import { applyTagGroups, normalizeTagGroups } from '@/lib/tags'
 import type { GameRecord, OpeningLine, UserProfile } from '@/types/chess'
 
 const DEFAULT_GAME_LIMIT = 200
@@ -77,6 +78,16 @@ export async function GET(request: Request) {
     ])
 
     const data = profileSnap.data() ?? {}
+
+    /*
+     * The account's own vocabulary, before anything counts a tag.
+     *
+     * The export runs outside the browser, so the module value the client sets when it
+     * reads this document was never set here — and without it every tag would be grouped
+     * under whatever the app ships rather than under what this account calls things. The
+     * document is already in hand, so it costs nothing.
+     */
+    applyTagGroups(normalizeTagGroups(data.tags))
     const profile: UserProfile = {
       chesscomUsername: data.chesscomUsername ?? null,
       lichessUsername: data.lichessUsername ?? null,

@@ -3,6 +3,7 @@ import AnalyseButton from '@/components/AnalyseButton'
 import StatusTag from '@/components/StatusTag'
 import { ENGINE_DEPTH, isStale } from '@/lib/analysis'
 import { hasReview, trainableMistakes } from '@/lib/review'
+import { tagName } from '@/lib/tags'
 import type { GameRecord, GameResult } from '@/types/chess'
 import { SOURCE_LABEL } from '@/types/chess'
 
@@ -33,7 +34,9 @@ export default function GameRow({
   href: string
 }) {
   const reviewed = hasReview(game)
-  const tags = trainableMistakes(game.review).flatMap(mistake => mistake.tags)
+  const tags = trainableMistakes(game.review).flatMap(mistake =>
+    mistake.tags.map(id => tagName(id)),
+  )
   const stale = isStale(game)
 
   return (

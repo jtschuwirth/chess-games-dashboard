@@ -5,6 +5,7 @@ import Link from 'next/link'
 import AnalysisSettingsPanel from '@/components/AnalysisSettingsPanel'
 import GameShapePanel from '@/components/GameShapePanel'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
+import TagGroupsPanel from '@/components/TagGroupsPanel'
 import UploadPanel from '@/components/UploadPanel'
 import { getProfile, getSettings, saveProfile } from '@/lib/firestore'
 import { DEFAULT_SETTINGS, type AnalysisSettings } from '@/lib/settings'
@@ -135,6 +136,8 @@ function ProfileBody({ userId }: { userId: string }) {
       </section>
 
       <AnalysisSettingsPanel userId={userId} settings={analysis} onSaved={setAnalysis} />
+
+      <TagGroupsPanel userId={userId} />
 
       {/* the move descriptors are explained above; this is the same for a whole game */}
       <GameShapePanel />

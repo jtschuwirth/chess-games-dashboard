@@ -1,5 +1,6 @@
 import { SEVERITY_MARK } from './bands'
 import { settings, type Severity } from './settings'
+import { tagGroupOf, tagIds, tagName, type TagGroup } from './tags'
 import type {
   Color,
   GameRecord,
@@ -27,123 +28,16 @@ import type {
  */
 export const MAX_REVIEW_MISTAKES = 3
 
-export interface TagGroup {
-  name: string
-  tags: string[]
-}
-
 /**
- * The shared vocabulary. Free tags are allowed — anything already used in a review is
- * offered back as a suggestion — but a fixed list is what makes the counts comparable
- * across months, which is the entire reason for keeping them.
+ * Which group a tag belongs to, under the account's own vocabulary.
  *
- * Tactics come in two directions and they are different mistakes. Missing a fork your
- * opponent left you is a failure to look; walking into one is a failure to check what
- * your move allows, and the training for each is nothing like the other. One list of
- * bare motifs could only ever mean one of them.
+ * The vocabulary moved to `lib/tags.ts` and onto the user document when it stopped being
+ * the app's list and became yours. This stays here because everything that *counts* tags
+ * is here, and it is one line: the group is derived at read time, never stored on a
+ * review, so re-filing a tag re-files every entry already carrying it.
  */
-export const TAG_GROUPS: TagGroup[] = [
-  {
-    // the tags are unchanged: only the group is renamed, and group names are not stored
-    name: 'Tactics missed',
-    tags: [
-      'hanging piece',
-      'hanging pawn',
-      'fork',
-      'pin',
-      'skewer',
-      'discovered attack',
-      'back rank',
-      'removing the defender',
-      'overloaded defender',
-      'trapped piece',
-      'mate threat',
-      'in-between move',
-    ],
-  },
-  {
-    name: 'Tactics allowed',
-    tags: [
-      'hung a piece',
-      'hung a pawn',
-      'allowed a fork',
-      'allowed a pin',
-      'allowed a skewer',
-      'allowed a discovered attack',
-      'allowed back rank mate',
-      'my defender was removed',
-      'my defender was overloaded',
-      'let a piece get trapped',
-      'allowed a mate threat',
-    ],
-  },
-  {
-    name: 'Calculation',
-    tags: [
-      "missed opponent's reply",
-      // three ways a search can fail, and they are not the same failure: the move was
-      // never a candidate, it was a candidate and got cut while it was still good, or
-      // the whole think ended before it was finished
-      'never considered the move',
-      'abandoned a good line',
-      'stopped calculating too early',
-      'skipped checks and captures',
-      'miscounted material',
-      'lost track of the position',
-      // both directions: answering a threat that was never real, or making one and
-      // believing in it yourself
-      'empty threat',
-    ],
-  },
-  {
-    name: 'Strategy',
-    tags: [
-      'wrong plan',
-      'weakened my king',
-      'pawn structure',
-      'conceded a square',
-      'wrong piece traded',
-      'misplaced piece',
-      'premature pawn push',
-      'opened the position badly',
-      "ignored opponent's plan",
-    ],
-  },
-  {
-    name: 'Endgame',
-    tags: ['king activity', 'pawn race', 'conversion technique', 'wrong trade into the endgame'],
-  },
-  {
-    name: 'Opening',
-    tags: ['out of book', 'forgot the theory', 'wrong move order'],
-  },
-  {
-    name: 'Mindset',
-    tags: [
-      'played too fast',
-      'time pressure',
-      'autopilot move',
-      'impatient',
-      'overconfident while winning',
-      'panicked while worse',
-      'rattled by a surprise',
-    ],
-  },
-]
-
-const GROUP_BY_TAG = new Map<string, string>(
-  TAG_GROUPS.flatMap(group => group.tags.map(tag => [tag, group.name] as const)),
-)
-
-/**
- * Which group a tag belongs to. A tag that names one of your written-up patterns is a
- * Pattern, which has to be passed in because patterns are yours and this list is not;
- * anything else you invented lands in "Your own".
- */
-export function tagGroup(tag: string, patternTags?: Set<string>): string {
-  const known = GROUP_BY_TAG.get(tag)
-  if (known) return known
-  return patternTags?.has(tag) ? 'Pattern' : 'Your own'
+export function tagGroup(tag: string, patternTags?: Set<string>, groups?: TagGroup[]): string {
+  return tagGroupOf(tag, patternTags, groups)
 }
 
 /**
@@ -291,23 +185,47 @@ export function tagsOf(game: GameRecord): string[] {
   return [...tags]
 }
 
-/** Every tag ever written, for suggesting your own additions back to you. */
-export function knownTags(games: GameRecord[]): string[] {
-  const tags = new Set<string>()
+/**
+ * Tags written on your reviews that the vocabulary does not offer, worst first.
+ *
+ * This used to feed the review form, where it was the free-text escape hatch offering
+ * your own inventions back to you — and so the thing that let the vocabulary drift. It
+ * feeds the maintainer instead: the same list, read as a question rather than an answer.
+ * These are the tags with nowhere to live, each one either worth filing under a group or
+ * worth leaving in the past.
+ *
+ * Both mistakes and move notes, because a tag invented on a note counts the same.
+ */
+export function unfiledTags(
+  games: GameRecord[],
+  groups?: TagGroup[],
+  patternTags?: Set<string>,
+): { tag: string; count: number }[] {
+  const offered = tagIds(groups)
+  const counts = new Map<string, number>()
+
   const add = (written: string[]) => {
-    for (const tag of written) if (!GROUP_BY_TAG.has(tag)) tags.add(tag)
+    for (const tag of written) {
+      if (offered.has(tag) || patternTags?.has(tag)) continue
+      counts.set(tag, (counts.get(tag) ?? 0) + 1)
+    }
   }
 
   for (const game of games) {
     for (const mistake of game.review?.mistakes ?? []) add(mistake.tags)
-    // a tag you invented on a note is one you will want offered back on the next one
     for (const note of moveNotesOf(game.review)) add(note.tags)
   }
-  return [...tags].sort()
+
+  return [...counts.entries()]
+    .map(([tag, count]) => ({ tag, count }))
+    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
 }
 
 export interface TagTally {
+  /** The stored id: what reviews carry, and what a `?tag=` link names. */
   tag: string
+  /** What it is called now. The id is the identity; this is the only thing to print. */
+  name: string
   group: string
   /** How many entries carry this tag. */
   count: number
@@ -318,7 +236,11 @@ export interface TagTally {
 }
 
 /** The mistake database: which ideas keep appearing, worst first. */
-export function aggregateTags(games: GameRecord[], patternTags?: Set<string>): TagTally[] {
+export function aggregateTags(
+  games: GameRecord[],
+  patternTags?: Set<string>,
+  groups?: TagGroup[],
+): TagTally[] {
   const counts = new Map<string, { count: number; games: Set<string>; losses: number }>()
 
   for (const game of games) {
@@ -338,7 +260,8 @@ export function aggregateTags(games: GameRecord[], patternTags?: Set<string>): T
   return [...counts.entries()]
     .map(([tag, entry]) => ({
       tag,
-      group: tagGroup(tag, patternTags),
+      name: tagName(tag, groups),
+      group: tagGroup(tag, patternTags, groups),
       count: entry.count,
       games: entry.games.size,
       losses: entry.losses,

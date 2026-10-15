@@ -30,6 +30,7 @@ import {
   applySettings,
   type AnalysisSettings,
 } from './settings'
+import { applyTagGroups, normalizeTagGroups, type TagGroup } from './tags'
 import { normalizePlan } from './plan'
 import {
   closingRatings,
@@ -134,40 +135,88 @@ export async function saveProfile(userId: string, profile: Partial<UserProfile>)
 /* ------------------------------------------------------------------ games */
 
 /**
- * The account's analysis settings, cached for the session.
+ * Everything on the account that the pure functions read through a module value.
  *
- * Read before the games are, because the marks are re-derived as they are read and a
- * mark derived from the defaults and then shown under your own bands would be two
- * answers to one question. One extra document read, once.
+ * Two things qualify, and both for the same reason: the analysis thresholds, because
+ * the marks are re-derived as the games are read and a mark derived from the defaults
+ * and then shown under your own bands would be two answers to one question; and the tag
+ * vocabulary, because every screen that groups a tag would otherwise have it threaded
+ * through from whichever page did the loading.
+ *
+ * One read for both, because they are two fields of one document and reading it twice
+ * to fill two caches would be a billed read to answer a question already answered.
  */
-const settingsCache = new Map<string, Promise<AnalysisSettings>>()
+interface AccountConfig {
+  analysis: AnalysisSettings
+  tags: TagGroup[]
+}
 
-export function getSettings(userId: string): Promise<AnalysisSettings> {
-  const cached = settingsCache.get(userId)
+const configCache = new Map<string, Promise<AccountConfig>>()
+
+function getConfig(userId: string): Promise<AccountConfig> {
+  const cached = configCache.get(userId)
   if (cached) return cached
 
   const loading = getProfileDoc(userId)
-    .then(data => normalizeSettings((data as { analysis?: Partial<AnalysisSettings> })?.analysis))
-    .catch(() => normalizeSettings(undefined))
+    .catch(() => null)
+    .then(data => {
+      const raw = (data ?? {}) as { analysis?: Partial<AnalysisSettings>; tags?: unknown }
+      return { analysis: normalizeSettings(raw.analysis), tags: normalizeTagGroups(raw.tags) }
+    })
     .then(loaded => {
-      applySettings(loaded)
+      applySettings(loaded.analysis)
+      applyTagGroups(loaded.tags)
       return loaded
     })
 
-  settingsCache.set(userId, loading)
+  configCache.set(userId, loading)
   return loading
+}
+
+export function getSettings(userId: string): Promise<AnalysisSettings> {
+  return getConfig(userId).then(config => config.analysis)
+}
+
+/** The account's own tag vocabulary. Seeded from `DEFAULT_TAG_GROUPS` until one is saved. */
+export function getTagGroups(userId: string): Promise<TagGroup[]> {
+  return getConfig(userId).then(config => config.tags)
+}
+
+/** Replaces whichever field was saved, and leaves the other exactly as it was. */
+async function saveConfig(userId: string, patch: Partial<AccountConfig>): Promise<AccountConfig> {
+  const current = await getConfig(userId)
+  const next: AccountConfig = { ...current, ...patch }
+
+  await setDoc(
+    doc(db, 'users', userId),
+    patch.analysis ? { analysis: next.analysis } : { tags: next.tags },
+    { merge: true },
+  )
+
+  applySettings(next.analysis)
+  applyTagGroups(next.tags)
+  configCache.set(userId, Promise.resolve(next))
+  return next
 }
 
 export async function saveSettings(
   userId: string,
   analysis: AnalysisSettings,
 ): Promise<AnalysisSettings> {
-  const next = normalizeSettings(analysis)
-  await setDoc(doc(db, 'users', userId), { analysis: next }, { merge: true })
+  const next = await saveConfig(userId, { analysis: normalizeSettings(analysis) })
+  return next.analysis
+}
 
-  applySettings(next)
-  settingsCache.set(userId, Promise.resolve(next))
-  return next
+/**
+ * The vocabulary, written whole.
+ *
+ * It replaces rather than merges, because a group you removed has to actually go — an
+ * array field is overwritten by a write, which is the one shape where Firestore's merge
+ * does what is wanted here without a `deleteField` dance.
+ */
+export async function saveTagGroups(userId: string, groups: TagGroup[]): Promise<TagGroup[]> {
+  const next = await saveConfig(userId, { tags: normalizeTagGroups(groups) })
+  return next.tags
 }
 
 export async function getGames(userId: string, options?: ReadOptions): Promise<GameRecord[]> {
@@ -305,6 +354,76 @@ export async function saveVariations(
 
 export async function deleteReview(userId: string, gameId: string): Promise<void> {
   await updateDoc(doc(db, 'users', userId, 'games', gameId), { review: deleteField() })
+}
+
+/**
+ * Takes a tag off every review that carries it.
+ *
+ * Deleting a tag from the vocabulary has to mean deleting it, or the Mistake database
+ * goes on counting a word that is no longer in the list and the only way to be rid of it
+ * is to open each game and unpick it by hand. So the removal cascades.
+ *
+ * This is the one write in the app that touches many games at once, and it is affordable
+ * for the same reason the second pass is: it only touches games that actually carry the
+ * tag, which is a handful rather than a thousand. It is also the one write that cannot be
+ * undone by writing the tag back — the entries that carried it are gone — so the control
+ * that calls it asks first and says how many it will touch.
+ *
+ * Only `tags` is rewritten. An entry stripped of its last tag keeps its cause, its lines
+ * and its reasoning: the tag was a label on the explanation, not the explanation.
+ */
+export async function removeTagEverywhere(
+  userId: string,
+  games: GameRecord[],
+  tagId: string,
+): Promise<number> {
+  const carries = (tags: string[] | undefined) => (tags ?? []).includes(tagId)
+  const without = (tags: string[] | undefined) => (tags ?? []).filter(tag => tag !== tagId)
+
+  const affected = games.filter(
+    game =>
+      (game.review?.mistakes ?? []).some(entry => carries(entry.tags)) ||
+      (game.review?.moveNotes ?? []).some(note => carries(note.tags)),
+  )
+
+  await Promise.all(
+    affected.map(game => {
+      const review = game.review as GameReview
+      const next: GameReview = {
+        ...review,
+        mistakes: (review.mistakes ?? []).map(entry => ({ ...entry, tags: without(entry.tags) })),
+      }
+      // written only when it is there: an undefined field rejects the whole document
+      if (review.moveNotes) {
+        next.moveNotes = review.moveNotes.map(note => ({ ...note, tags: without(note.tags) }))
+      }
+
+      return setDoc(doc(db, 'users', userId, 'games', game.id), { review: next }, { merge: true })
+    }),
+  )
+
+  return affected.length
+}
+
+/** How many games and entries a tag is on, for the warning before it is removed. */
+export function tagFootprint(
+  games: GameRecord[],
+  tagId: string,
+): { games: number; entries: number } {
+  let entries = 0
+  let touched = 0
+
+  for (const game of games) {
+    const here =
+      (game.review?.mistakes ?? []).filter(entry => (entry.tags ?? []).includes(tagId)).length +
+      (game.review?.moveNotes ?? []).filter(note => (note.tags ?? []).includes(tagId)).length
+    if (here > 0) {
+      touched++
+      entries += here
+    }
+  }
+
+  return { games: touched, entries }
 }
 
 /**

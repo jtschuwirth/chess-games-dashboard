@@ -5,6 +5,7 @@ import TagPicker from '@/components/TagPicker'
 import { ENGINE_DEPTH } from '@/lib/analysis'
 import { plyLabel } from '@/lib/board'
 import { formatEval } from '@/lib/review'
+import { tagName, type TagGroup } from '@/lib/tags'
 import type { Color } from '@/types/chess'
 
 /** A note being written. The editor's working shape, parsed into a `MoveNote` on save. */
@@ -45,7 +46,7 @@ export default function MoveNoteCard({
   onShowPly,
   verdicts,
   patternTags,
-  suggestedTags,
+  tagGroups,
   asking,
   onAsk,
   engineAnswer,
@@ -66,7 +67,7 @@ export default function MoveNoteCard({
   onShowPly: () => void
   verdicts: Record<string, Verdict>
   patternTags: string[]
-  suggestedTags: string[]
+  tagGroups: TagGroup[]
   asking: boolean
   onAsk: () => void
   engineAnswer?: string
@@ -130,7 +131,7 @@ export default function MoveNoteCard({
       {folded ? (
         <p className="text-xs text-zinc-500 truncate">
           {draft.tags.length > 0
-            ? draft.tags.join(' · ')
+            ? draft.tags.map(id => tagName(id, tagGroups)).join(' · ')
             : draft.note.trim() || 'Nothing written yet.'}
         </p>
       ) : (
@@ -187,7 +188,7 @@ export default function MoveNoteCard({
               onToggleOpen={onToggleTags}
               onChange={tags => onChange({ tags })}
               patternTags={patternTags}
-              suggestedTags={suggestedTags}
+              groups={tagGroups}
             />
           </div>
         </>

@@ -25,6 +25,7 @@ import {
   moveNotesOf,
   noteHasContent,
 } from '@/lib/review'
+import { tagName, type TagGroup } from '@/lib/tags'
 import type {
   GameRecord,
   GameReview,
@@ -108,7 +109,7 @@ export default function ReviewEditor({
   userId,
   game,
   plies,
-  suggestedTags,
+  tagGroups,
   patternTags,
   onShowPly,
   lineOnBoard,
@@ -118,7 +119,7 @@ export default function ReviewEditor({
   game: GameRecord
   plies: Ply[]
   /** Tags you have invented in other reviews, offered back for consistency. */
-  suggestedTags: string[]
+  tagGroups: TagGroup[]
   /**
    * Your written-up patterns, offered as tags. A pattern's name is its tag, so picking
    * one here is what connects "I should have played this" to the thing you wrote.
@@ -652,7 +653,7 @@ export default function ReviewEditor({
             onShowPly={() => onShowPly(draft.ply)}
             verdicts={verdicts}
             patternTags={patternTags}
-            suggestedTags={suggestedTags}
+            tagGroups={tagGroups}
             asking={asking === draft.ply}
             onAsk={() => ask(draft.ply)}
             engineAnswer={engine[draft.ply]}
@@ -723,7 +724,7 @@ export default function ReviewEditor({
                 {draft.unreasonable
                   ? 'Hard to find'
                   : draft.tags.length > 0
-                    ? draft.tags.join(' · ')
+                    ? draft.tags.map(id => tagName(id, tagGroups)).join(' · ')
                     : 'Nothing written down yet.'}
               </p>
             ) : (
@@ -798,7 +799,7 @@ export default function ReviewEditor({
                 }
                 onChange={newTags => patch(draft.ply, { tags: newTags })}
                 patternTags={patternTags}
-                suggestedTags={suggestedTags}
+                groups={tagGroups}
               />
             </div>
 

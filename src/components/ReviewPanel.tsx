@@ -117,14 +117,14 @@ export default function ReviewPanel({
               title={
                 activeTag === entry.tag
                   ? 'Clear the tag filter'
-                  : `Show only games tagged "${entry.tag}"`
+                  : `Show only games tagged "${entry.name}"`
               }
               className={`grid grid-cols-[1fr_3.5rem_3.5rem_3.5rem] gap-2 px-2 py-2 text-sm text-left border-b border-zinc-800/60 transition-colors ${
                 activeTag === entry.tag ? 'bg-zinc-800' : 'hover:bg-zinc-800/60'
               }`}
             >
               <span className="min-w-0">
-                <span className="text-zinc-100">{entry.tag}</span>
+                <span className="text-zinc-100">{entry.name}</span>
                 <span className="text-xs text-zinc-600"> · {entry.group}</span>
                 <span className="block mt-1 h-1 rounded-full bg-zinc-800 overflow-hidden">
                   <span

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import Board from '@/components/Board'
+import { tagName } from '@/lib/tags'
 import { Spinner } from '@/components/PageShell'
 import { formatLine, playMove, plyLabel, sanFromUci } from '@/lib/board'
 import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
@@ -321,7 +322,7 @@ export default function DrillCardView({
                         key={tag}
                         className="px-2 py-0.5 text-xs rounded-full border border-zinc-700 text-zinc-400"
                       >
-                        {tag}
+                        {tagName(tag)}
                       </span>
                     ))}
                   </div>
