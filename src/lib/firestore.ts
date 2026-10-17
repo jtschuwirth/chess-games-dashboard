@@ -45,6 +45,7 @@ import type {
   GameRecord,
   MoveVerdict,
   GameReview,
+  PatternDrillStat,
   StoredAnalysis,
   NewOpeningLine,
   NewPattern,
@@ -583,6 +584,28 @@ export async function savePattern(userId: string, pattern: NewPattern): Promise<
   const ref = collection(db, 'users', userId, PATTERNS)
   const docRef = await addDoc(ref, patternBody(pattern))
   return docRef.id
+}
+
+/**
+ * One answered card, keyed by the point it belongs to.
+ *
+ * `merge` on a map field merges keys, so answering one boundary never clears what you
+ * have done on the rest — the same reason `drills` and `verdicts` on a game are maps
+ * rather than arrays. Keying by the point's id rather than its place in the list is what
+ * makes a record survive the list being reordered, which is the whole reason a point has
+ * an id at all.
+ */
+export async function savePatternDrill(
+  userId: string,
+  patternId: string,
+  pointId: string,
+  stat: PatternDrillStat,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, PATTERNS, patternId),
+    { drills: { [pointId]: stat } },
+    { merge: true },
+  )
 }
 
 export async function updatePattern(

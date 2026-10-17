@@ -12,6 +12,7 @@ import {
   type Path,
 } from './movetree'
 import type {
+  EssentialsPoint,
   Color,
   GameRecord,
   NewPattern,
@@ -135,9 +136,65 @@ export function emptyEssentials(): PatternEssentials {
   return { interactions: [], weaknesses: [], breaks: [], survives: [] }
 }
 
+/**
+ * An id for a point, derived from the point itself.
+ *
+ * FNV-1a, the same fingerprint an uploaded game is identified by. Deterministic on
+ * purpose: every point written before ids existed has to read back with the *same* id
+ * every time, or a drill record would never find the point it belongs to. Once a
+ * write-up is saved the id is stored and stops depending on the text, so rewording a
+ * point from then on keeps whatever you have learned about it.
+ *
+ * The window where that is not true is a point you reword before ever saving the
+ * write-up again, which loses a card that has by definition never been drilled.
+ */
+export function pointId(text: string): string {
+  let hash = 0x811c9dc5
+  const seed = text.trim().toLowerCase()
+  for (let i = 0; i < seed.length; i++) {
+    hash ^= seed.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return `p${hash.toString(16).padStart(8, '0')}`
+}
+
+/** A fresh point, for the form. */
+export function newPoint(text = ''): EssentialsPoint {
+  return { id: pointId(text + Math.random().toString(36)), text }
+}
+
+/**
+ * One stored answer in the shape the rest of the code expects.
+ *
+ * Two shapes are read: a plain string, which is every point written before a point had
+ * an id, and the object. Normalise on read, never migrate — the habit `betterMovesOf`
+ * and the pre-game ratings already follow.
+ */
+export function normalizePoint(raw: unknown): EssentialsPoint | null {
+  if (typeof raw === 'string') {
+    const text = raw
+    return text.trim().length > 0 ? { id: pointId(text), text } : null
+  }
+  if (!raw || typeof raw !== 'object') return null
+
+  const point = raw as Partial<EssentialsPoint>
+  const text = typeof point.text === 'string' ? point.text : ''
+  if (text.trim().length === 0) return null
+
+  const normalized: EssentialsPoint = {
+    id: typeof point.id === 'string' && point.id.length > 0 ? point.id : pointId(text),
+    text,
+  }
+  // a FEN that will not read is dropped rather than kept to fail in a board later
+  if (typeof point.fen === 'string' && fenIsValid(point.fen)) normalized.fen = point.fen.trim()
+  return normalized
+}
+
 /** Whether anything has been written against any of the questions. */
 export function essentialsHaveContent(essentials: PatternEssentials): boolean {
-  return ESSENTIALS_KEYS.some(key => essentials[key].some(point => point.trim().length > 0))
+  return ESSENTIALS_KEYS.some(key =>
+    essentials[key].some(point => point.text.trim().length > 0),
+  )
 }
 
 /**
@@ -165,7 +222,7 @@ export function hasMethod(pattern: PatternRecord): boolean {
 export function essentialsCount(essentials: PatternEssentials | undefined): number {
   if (!essentials) return 0
   return ESSENTIALS_KEYS.reduce(
-    (total, key) => total + essentials[key].filter(point => point.trim().length > 0).length,
+    (total, key) => total + essentials[key].filter(point => point.text.trim().length > 0).length,
     0,
   )
 }
@@ -390,11 +447,13 @@ export function normalizePattern(raw: PatternRecord): PatternRecord {
    * keeps no `essentials` at all rather than an empty shell, which is what `hasMethod`
    * reads and what stops a blank set counting as an answer.
    */
-  const held = (raw.essentials ?? {}) as Partial<PatternEssentials>
+  const held = (raw.essentials ?? {}) as Record<string, unknown>
   const answered = Object.fromEntries(
     ESSENTIALS_KEYS.map(key => [
       key,
-      (Array.isArray(held[key]) ? held[key] : []).filter(point => typeof point === 'string'),
+      (Array.isArray(held[key]) ? (held[key] as unknown[]) : [])
+        .map(normalizePoint)
+        .filter((point): point is EssentialsPoint => point !== null),
     ]),
   ) as unknown as PatternEssentials
 
@@ -474,7 +533,13 @@ export function patternBody(pattern: NewPattern): NewPattern {
   // apart carries no empty shell for `hasMethod` to trip over
   const held = pattern.essentials ?? emptyEssentials()
   const answered = Object.fromEntries(
-    ESSENTIALS_KEYS.map(key => [key, held[key].filter(point => point.trim().length > 0)]),
+    ESSENTIALS_KEYS.map(key => [
+      key,
+      held[key]
+        .filter(point => point.text.trim().length > 0)
+        // never `fen: undefined`: an undefined value rejects the whole document
+        .map(point => (point.fen ? { id: point.id, text: point.text, fen: point.fen } : { id: point.id, text: point.text })),
+    ]),
   ) as unknown as PatternEssentials
   if (essentialsHaveContent(answered)) body.essentials = answered
 

@@ -27,6 +27,7 @@ import {
   emptyLine,
   emptyPositionLine,
   fenIsValid,
+  newPoint,
   lineFromTree,
   lineHasContent,
   lineHome,
@@ -36,6 +37,7 @@ import {
   parsePatternPgn,
 } from '@/lib/pattern'
 import type {
+  EssentialsPoint,
   NewPattern,
   OpeningLine,
   PatternEssentials,
@@ -504,12 +506,37 @@ export default function PatternForm({
     )
   }
 
-  /** One of the method's four lists, edited as a line per point. */
-  function setPoints(key: keyof PatternEssentials, text: string) {
-    setEssentials(current => ({
-      ...current,
-      [key]: text.split('\n'),
-    }))
+  /**
+   * One of the method's four lists, edited a point at a time.
+   *
+   * A row each rather than one textarea of lines, because a point now has an id and
+   * a drill record keyed to it: re-deriving the list from text on every keystroke
+   * would mint a new id the moment you fixed a typo in a point, and take whatever you
+   * had learned about it along with the old id.
+   *
+   * The cost is bulk entry, which `setPointText` buys back: text arriving with
+   * newlines in it, which is what pasting a list does, splits into a row each.
+   */
+  function setPoints(key: keyof PatternEssentials, next: EssentialsPoint[]) {
+    setEssentials(current => ({ ...current, [key]: next }))
+  }
+
+  function setPointText(key: keyof PatternEssentials, index: number, text: string) {
+    const lines = text.split('\n')
+    setEssentials(current => {
+      const points = current[key]
+      const replacement =
+        lines.length === 1
+          ? [{ ...points[index], text }]
+          : // a pasted list: the row keeps its id and the rest arrive as new points
+            lines.map((line, at) =>
+              at === 0 ? { ...points[index], text: line } : newPoint(line),
+            )
+      return {
+        ...current,
+        [key]: [...points.slice(0, index), ...replacement, ...points.slice(index + 1)],
+      }
+    })
   }
 
   return (
@@ -607,21 +634,60 @@ export default function PatternForm({
       </div>
 
       {detailed ? (
-        <div className="flex flex-col gap-3 border-l-2 border-zinc-800 pl-4">
-          {ESSENTIALS_SECTIONS.map(section => (
-            <div key={section.key} className="flex flex-col gap-1.5">
-              <Label hint="one per line">
-                {section.number}. {section.title}
-              </Label>
-              <textarea
-                value={essentials[section.key].join('\n')}
-                onChange={event => setPoints(section.key, event.target.value)}
-                rows={3}
-                placeholder={section.hint}
-                className={`${INPUT} resize-y`}
-              />
-            </div>
-          ))}
+        <div className="flex flex-col gap-4 border-l-2 border-zinc-800 pl-4">
+          {ESSENTIALS_SECTIONS.map(section => {
+            const points = essentials[section.key]
+            /*
+              Only the two halves of question 3 can carry a position. 1 and 2 describe the
+              pattern itself, which the example already shows; 3a and 3b describe a
+              *changed* board, and that is the one thing a drill can put in front of you
+              and ask a question whose answer you do not already have by heart.
+            */
+            const testable = section.tone !== 'neutral'
+
+            return (
+              <div key={section.key} className="flex flex-col gap-1.5">
+                <Label hint={points.length === 0 ? section.hint : undefined}>
+                  {section.number}. {section.title}
+                </Label>
+
+                {points.map((point, index) => (
+                  <PointRow
+                    key={point.id}
+                    point={point}
+                    testable={testable}
+                    onText={text => setPointText(section.key, index, text)}
+                    onFen={fen =>
+                      setPoints(
+                        section.key,
+                        points.map((entry, at) => {
+                          if (at !== index) return entry
+                          if (fen) return { ...entry, fen }
+                          // rebuilt without it rather than set to undefined, which
+                          // Firestore refuses outright
+                          return { id: entry.id, text: entry.text }
+                        }),
+                      )
+                    }
+                    onRemove={() =>
+                      setPoints(
+                        section.key,
+                        points.filter((_, at) => at !== index),
+                      )
+                    }
+                  />
+                ))}
+
+                <button
+                  type="button"
+                  onClick={() => setPoints(section.key, [...points, newPoint()])}
+                  className="self-start text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+                >
+                  + {points.length === 0 ? 'Answer this' : 'Another'}
+                </button>
+              </div>
+            )
+          })}
         </div>
       ) : (
         <div className="flex flex-col gap-1.5">
@@ -732,6 +798,105 @@ export default function PatternForm({
           </button>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * One answer to one of the method's questions.
+ *
+ * For 3a and 3b it can carry a position: the board with that change made. That is what
+ * turns a boundary from a sentence you nod at into something a drill can put in front of
+ * you — "Black has an f6 Knight" is a claim about a board, and with the board stored the
+ * question becomes whether the pattern still works, which is the one thing about a
+ * pattern you cannot answer from having memorised its diagram.
+ *
+ * The FEN box is behind a press, because most points will never have one and a second
+ * input on every row would make answering four questions look like filling in a form.
+ */
+function PointRow({
+  point,
+  testable,
+  onText,
+  onFen,
+  onRemove,
+}: {
+  point: EssentialsPoint
+  testable: boolean
+  onText: (text: string) => void
+  onFen: (fen: string | null) => void
+  onRemove: () => void
+}) {
+  const [open, setOpen] = useState(() => Boolean(point.fen))
+  const [fen, setFen] = useState(point.fen ?? '')
+
+  const valid = fen.trim().length === 0 || fenIsValid(fen)
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-start gap-1.5">
+        <textarea
+          value={point.text}
+          onChange={event => onText(event.target.value)}
+          rows={1}
+          placeholder="one point"
+          className={`${INPUT} flex-1 min-w-0 resize-y`}
+        />
+
+        {testable && (
+          <button
+            type="button"
+            onClick={() => setOpen(current => !current)}
+            title={
+              point.fen
+                ? 'This point has a position, and is drilled'
+                : 'Add the position with this change made, to drill it'
+            }
+            className={`shrink-0 px-2 py-2 text-xs rounded-lg border transition-colors ${
+              point.fen
+                ? 'border-zinc-700 bg-zinc-800 text-zinc-200'
+                : 'border-zinc-800 text-zinc-600 hover:text-zinc-300 hover:border-zinc-700'
+            }`}
+          >
+            {point.fen ? '▣' : '▢'}
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={onRemove}
+          title="Remove this point"
+          className="shrink-0 px-2 py-2 text-xs text-zinc-600 hover:text-red-400 transition-colors"
+        >
+          ✕
+        </button>
+      </div>
+
+      {testable && open && (
+        <div className="flex flex-col gap-1 pl-1">
+          <input
+            value={fen}
+            onChange={event => {
+              setFen(event.target.value)
+              const next = event.target.value.trim()
+              onFen(next.length > 0 && fenIsValid(next) ? next : null)
+            }}
+            placeholder="FEN of the position with this change made"
+            className={`${INPUT} font-mono text-[11px]`}
+          />
+          {!valid && (
+            <span className="text-[11px] text-red-400">
+              That FEN will not read, so it is not stored yet.
+            </span>
+          )}
+          {valid && fen.trim().length > 0 && (
+            <span className="text-[11px] text-zinc-600">
+              Drilled: you will be shown this board and asked whether the pattern still
+              works.
+            </span>
+          )}
+        </div>
+      )}
     </div>
   )
 }

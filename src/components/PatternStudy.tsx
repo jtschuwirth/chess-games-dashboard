@@ -11,7 +11,8 @@ import {
   lineTree,
   pointText,
 } from '@/lib/pattern'
-import { moveLabel, type Path } from '@/lib/movetree'
+import { emptyTree, moveLabel, type Path } from '@/lib/movetree'
+import { sideToMove } from '@/lib/board'
 import type { PatternLine, PatternRecord } from '@/types/chess'
 
 /**
@@ -70,6 +71,17 @@ export default function PatternStudy({
   const [shown, setShown] = useState(0)
   const example: PatternLine | undefined = examples[Math.min(shown, examples.length - 1)]
 
+  /*
+   * A boundary you are looking at, shown on the board instead of the example.
+   *
+   * "Black has an f6 Knight" is a claim about a position, and until you can see that
+   * position it is a sentence you nod at. Clicking the point puts the board it describes
+   * up, which is the whole reason a point can carry a FEN — and it is the same position
+   * the drill will ask you about, so reading here and being tested later are the same
+   * board rather than two descriptions of one.
+   */
+  const [preview, setPreview] = useState<string | null>(null)
+
   return (
     <div className="grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] gap-6 items-start">
       {/*
@@ -77,7 +89,9 @@ export default function PatternStudy({
         scroll container is PageShell's, so `top` is measured from the header.
       */}
       <div className="w-full max-w-[26rem] mx-auto lg:mx-0 lg:sticky lg:top-2">
-        {example ? (
+        {preview ? (
+          <PreviewBoard fen={preview} onClose={() => setPreview(null)} />
+        ) : example ? (
           <ExampleBoard
             key={shown}
             line={example}
@@ -99,7 +113,7 @@ export default function PatternStudy({
         {hasMethod(pattern) && pattern.essentials ? (
           ESSENTIALS_SECTIONS.map(section => {
             const points = pattern.essentials![section.key].filter(
-              point => point.trim().length > 0,
+              point => point.text.trim().length > 0,
             )
             // unanswered questions are left out rather than shown empty: this is the
             // read, and the form is where the prompts belong
@@ -124,16 +138,48 @@ export default function PatternStudy({
                 </h3>
 
                 <ol className="flex flex-col gap-2.5">
-                  {points.map((point, index) => (
-                    <li key={index} className="flex gap-2.5">
-                      <span className="text-[11px] font-mono text-zinc-500 shrink-0 pt-1 w-5 text-right">
-                        {roman(index + 1)}
-                      </span>
-                      <span className="min-w-0 text-[15px] leading-relaxed text-zinc-200">
-                        {pointText(point)}
-                      </span>
-                    </li>
-                  ))}
+                  {points.map((point, index) => {
+                    const shownHere = preview !== null && preview === point.fen
+
+                    return (
+                      <li key={point.id} className="flex gap-2.5">
+                        <span className="text-[11px] font-mono text-zinc-500 shrink-0 pt-1 w-5 text-right">
+                          {roman(index + 1)}
+                        </span>
+
+                        {/*
+                          A point with a position is a button; one without is text. Not
+                          every sentence is a board, and making them all look clickable
+                          would promise something three quarters of them cannot do.
+                        */}
+                        {point.fen ? (
+                          <button
+                            type="button"
+                            onClick={() => setPreview(shownHere ? null : point.fen!)}
+                            className={`min-w-0 text-left text-[15px] leading-relaxed transition-colors ${
+                              shownHere
+                                ? 'text-zinc-50'
+                                : 'text-zinc-200 hover:text-white'
+                            }`}
+                            title={shownHere ? 'Back to the example' : 'See this position'}
+                          >
+                            {pointText(point.text)}
+                            <span
+                              className={`ml-1.5 text-[11px] align-middle ${
+                                shownHere ? 'text-zinc-300' : 'text-zinc-600'
+                              }`}
+                            >
+                              ▣
+                            </span>
+                          </button>
+                        ) : (
+                          <span className="min-w-0 text-[15px] leading-relaxed text-zinc-200">
+                            {pointText(point.text)}
+                          </span>
+                        )}
+                      </li>
+                    )
+                  })}
                 </ol>
               </section>
             )
@@ -267,6 +313,34 @@ function ExampleBoard({
           ))}
         </div>
       )}
+    </div>
+  )
+}
+
+/**
+ * One position on its own, with nothing to step through.
+ *
+ * A boundary is a single board — the pattern's position with one thing changed — so it
+ * has no moves and needs no controls. It is read from whichever side is to move, the
+ * same rule a pasted position already follows.
+ */
+function PreviewBoard({ fen, onClose }: { fen: string; onClose: () => void }) {
+  const tree = useMemo(() => emptyTree(fen), [fen])
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-sm font-medium text-zinc-300">The changed position</span>
+        <button
+          type="button"
+          onClick={onClose}
+          className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+        >
+          back to the example
+        </button>
+      </div>
+
+      <MoveTreeBoard tree={tree} path={[]} onPath={() => {}} orientation={sideToMove(fen)} />
     </div>
   )
 }

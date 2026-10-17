@@ -52,7 +52,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
    it came from. Any move of a line can carry its own comment, and they are listed beside
    the board to read or to jump to. The name becomes a tag in the review form, so a
    mistake can point at the idea you should have played, and its own page lists the games
-   where you wanted it.
+   where you wanted it. The boundaries you write under 3a and 3b become a **drill**
+   at `/patterns/drill`: a change is put in front of you and you say whether the pattern
+   still works, scheduled so the ones you get wrong come back soonest.
 7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
@@ -85,6 +87,7 @@ src/
 │   ├── dashboard/page.tsx      # Stats + opening filter + game list
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
+│   ├── patterns/drill/page.tsx # Does the pattern still work here?
 │   ├── patterns/[id]/page.tsx  # One write-up: the method or the conditions, lines, games
 │   ├── plans/page.tsx          # Study plans: list + create
 │   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's games
@@ -139,6 +142,7 @@ src/
 │   ├── game-tree.ts            # a game's played moves, variations and proposals as one tree
 │   ├── draft.ts                # anything edited and not yet saved, kept on the device
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
+│   ├── pattern-drill.ts        # the boundary drill: cards off 3a/3b, and when they come back
 │   ├── tags.ts                 # your own tag vocabulary: groups, stable ids, display names
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
@@ -711,6 +715,71 @@ src/
   This is the opposite bargain to a pattern's name, which *is* its tag and so leaves the old string
   behind when renamed. The difference is that a pattern is a document you wrote and a tag is a word
   in a list, and a word in a list is exactly the kind of thing you fix the spelling of.
+
+- **The drill asks where the pattern stops working, because that is the part looking
+  cannot teach you.** Showing a write-up's own diagram and asking what the idea is tests
+  whether you remember a picture, and you are right every time within a week. Recognising
+  Anastasia's Mate in the position you wrote it up from is not the skill; seeing the f6
+  knight and knowing the mate is off is the skill.
+
+  Questions 3a and 3b already record exactly that, and the useful discovery is that
+  **every boundary point is a complete card with nothing new written**. A point under 3a
+  is a change the pattern fails under; one under 3b is a change it survives — so the
+  section a point sits in *is* the answer. That makes the drill marked rather than
+  self-graded, and it worked on all eight write-ups the day it landed: 31 cards, none of
+  which anyone had to author.
+
+  A `fen` on a point upgrades a card rather than enabling one. With a position you are
+  shown the board and have to find the change yourself; without one you are told the
+  change in words and asked the same question. The first is the real exercise, the second
+  is what the method gives away for free, and the drill needs neither to exist before it
+  is useful.
+
+  Questions 1 and 2 make no cards. They describe the pattern itself, which the example
+  already shows, and neither states something that can be true or false of a position.
+
+- **A point has an id that does not change and text that does.** A drill record is keyed
+  to the point, so rewording one keeps what you have learned about it instead of quietly
+  starting a new card — the same split the tag vocabulary makes, for the same reason.
+
+  **A point written before ids existed is given one derived from its own text**, FNV-1a
+  over the trimmed lower-cased string, which is stable across reads and so lets a record
+  find its point again with nothing migrated. It becomes permanent the first time the
+  write-up is saved. The window where that is not true is a point reworded before the
+  write-up has ever been saved again, which loses a card that by definition has never been
+  drilled. That is why the editor is a row per point rather than one textarea of lines:
+  re-deriving the list from text on every keystroke would mint a new id the moment you
+  fixed a typo. Pasting text with newlines in it still splits into a row each, which is
+  the bulk entry that cost.
+
+- **The schedule is a ladder you can read, and a miss falls all the way down.** 1, 3, 7,
+  16, 35 then 90 days, forward a rung on a right answer. A plain ladder rather than SM-2's
+  arithmetic, because the thing being spaced is a handful of boundaries per pattern and a
+  schedule you can state in one line is one you can reason about when it puts something in
+  front of you too often.
+
+  A miss goes back to tomorrow rather than one rung down: the boundaries are the whole
+  point of the method, so getting one wrong means the pattern is not learned in the way
+  that matters. The queue is taken once per session and never re-sorts, the rule the game
+  drill already follows — the next card must not move while you are looking at this one.
+
+  `drills` lives on the pattern document keyed by point id, like `verdicts` and `drills`
+  on a game: a `merge` write on a map field merges keys, so answering one boundary never
+  clears the rest.
+
+- **It is its own page rather than a third source in `/learn`.** The two drills share a
+  concept and almost no mechanics — this one is two buttons and no engine, no filters, no
+  proposed moves — and threading a foreign card type through `/learn` would have made
+  every prop of `DrillCardView` conditional. The way in is from the patterns finder, which
+  carries the number due and disappears when there is nothing to drill at all, because a
+  control that always says nothing due is one you stop reading.
+
+- **Clicking a boundary on the write-up puts its position on the board.** "Black has an f6
+  Knight" is a claim about a board, and until you can see that board it is a sentence you
+  nod at. It is the same position the drill will ask about, so reading it and being tested
+  on it are one board rather than two descriptions of one. A point with no position stays
+  plain text: making every sentence look clickable would promise something three quarters
+  of them cannot do.
 
 - **The maintainer reads the games fresh, and only once it is open.** It is the one screen that
   writes to many games at once, and the footprint under every ✕ is counted from that list — a

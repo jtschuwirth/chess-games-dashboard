@@ -470,15 +470,55 @@ export type PatternKind = 'tactics' | 'mate' | 'strategy' | 'development' | 'end
  * are written at different times: you find what breaks it first, and what it survives
  * only once you have tried.
  */
+/**
+ * One answer to one of the method's questions.
+ *
+ * The text is what you wrote. The `id` is stable and is what a drill record is keyed by,
+ * so rewording a point keeps its history rather than quietly starting a new card — the
+ * same split the tag vocabulary makes, for the same reason. A point written before ids
+ * existed is given one derived from its own text on read, which is stable across reads
+ * and becomes permanent the first time the write-up is saved.
+ *
+ * `fen` turns a boundary into something testable. "Black has an f6 Knight" is a claim
+ * about a position, and with that position stored the drill can show it and ask whether
+ * the pattern still works — which is the one question about a pattern whose answer you
+ * cannot get by recognising a diagram you have already memorised.
+ */
+export interface EssentialsPoint {
+  id: string
+  text: string
+  /** The position with this change made. Absent on a point nobody has set up yet. */
+  fen?: string
+}
+
 export interface PatternEssentials {
   /** 1. How the pieces interact, and what each is responsible for. */
-  interactions: string[]
+  interactions: EssentialsPoint[]
   /** 2. What in the opponent's position paves the way for it. */
-  weaknesses: string[]
+  weaknesses: EssentialsPoint[]
   /** 3a. Realistic changes that would make this combination fail. */
-  breaks: string[]
+  breaks: EssentialsPoint[]
   /** 3b. Changes it still works through. */
-  survives: string[]
+  survives: EssentialsPoint[]
+}
+
+/**
+ * Your record on one drilled point, and when it is next due.
+ *
+ * `DrillStat`'s three counters say how you have done; `due` and `streak` say when to ask
+ * again. Separate from the game drill's record because it is keyed to a pattern's point
+ * rather than to a game's ply, and because that one deliberately has no schedule — it
+ * sorts by how badly you are doing, where this one spaces by how well.
+ */
+export interface PatternDrillStat {
+  attempts: number
+  correct: number
+  lastAt: number
+  lastCorrect: boolean
+  /** How many right in a row, which is the rung of the interval ladder it sits on. */
+  streak: number
+  /** When it next comes up. */
+  due: number
 }
 
 /**
@@ -555,6 +595,15 @@ export interface PatternRecord {
    * its own name says.
    */
   essentials?: PatternEssentials
+  /**
+   * How you have done on each of its points, keyed by point id.
+   *
+   * On the pattern rather than in a collection of its own, the same decision reviews and
+   * verdicts make: there are a handful of patterns and they are already read whole, so a
+   * record here costs nothing to load. A `merge` write on a map field merges keys, so
+   * answering one point never clears the rest.
+   */
+  drills?: Record<string, PatternDrillStat>
   /** When the pattern applies — one condition per entry. */
   conditions: string[]
   /**

@@ -4,6 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
+import { drillSummary } from '@/lib/pattern-drill'
 import Chip from '@/components/Chip'
 import PatternForm from '@/components/PatternForm'
 import { getGames, getOpenings, getPatterns, savePattern } from '@/lib/firestore'
@@ -117,6 +118,7 @@ function PatternsBody({ userId }: { userId: string }) {
   const [adding, setAdding] = useState(false)
   const [find, setFind] = useState<Find>(() => readFind(searchParams))
   const [busy, setBusy] = useState(false)
+  const [mountedAt] = useState(() => Date.now())
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
 
@@ -219,6 +221,11 @@ function PatternsBody({ userId }: { userId: string }) {
     return <LoadError message={error} onRetry={() => setReload(n => n + 1)} />
   }
 
+  // how much the boundary drill has waiting, which is what the link says
+  // read once at mount: calling the clock in a render is what the purity rule forbids,
+  // and a due count that changed mid-render would be a different answer each time
+  const drill = drillSummary(patterns ?? [], mountedAt)
+
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -228,12 +235,35 @@ function PatternsBody({ userId }: { userId: string }) {
           apart against the essentials method.
         </p>
         {!adding && (
-          <button
-            onClick={() => setAdding(true)}
-            className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors shrink-0"
-          >
-            New pattern
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            {/*
+              Only once there is something to do. A control that is always there and
+              always says nothing due is a control you stop reading.
+            */}
+            {drill.total > 0 && (
+              <Link
+                href="/patterns/drill"
+                title={
+                  drill.due > 0
+                    ? `${drill.due} of ${drill.total} boundaries are due`
+                    : 'Nothing due — every boundary is scheduled ahead'
+                }
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
+                  drill.due > 0
+                    ? 'border-zinc-700 bg-zinc-800 text-zinc-100 hover:bg-zinc-700'
+                    : 'border-zinc-800 text-zinc-500 hover:text-zinc-300'
+                }`}
+              >
+                Drill{drill.due > 0 ? ` · ${drill.due}` : ''}
+              </Link>
+            )}
+            <button
+              onClick={() => setAdding(true)}
+              className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors"
+            >
+              New pattern
+            </button>
+          </div>
         )}
       </div>
 

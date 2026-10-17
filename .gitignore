@@ -51,3 +51,4 @@ next-env.d.ts
 
 # the local copy of the stored games the analysis skill reads
 .analysis-snapshot.json
+.patterns-snapshot.json
