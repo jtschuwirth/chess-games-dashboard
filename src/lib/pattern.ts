@@ -72,6 +72,18 @@ export interface EssentialsSection {
   title: string
   /** The method's own prompt, which is also the section's empty state. */
   hint: string
+  /**
+   * What kind of answer it is, which is what the study page colours it by.
+   *
+   * `breaks` and `survives` are the two halves of one question and say opposite things,
+   * so drawn alike they were two identical grey boxes you had to read the heading of to
+   * tell apart — on the one page where the distinction is the entire lesson. Carried in
+   * the table rather than switched on `key` at the point of drawing, so a fifth question
+   * arrives with its own appearance instead of falling through to a default nobody chose.
+   */
+  tone: 'neutral' | 'breaks' | 'survives'
+  /** A heading short enough to sit above the answers rather than wrap over them. */
+  short: string
 }
 
 /**
@@ -86,24 +98,32 @@ export const ESSENTIALS_SECTIONS: EssentialsSection[] = [
     key: 'interactions',
     number: '1',
     title: 'Piece interactions and responsibilities',
+    short: 'How it works',
+    tone: 'neutral',
     hint: 'Notice how the relevant pieces interact. What is each one responsible for in making the tactic possible?',
   },
   {
     key: 'weaknesses',
     number: '2',
     title: 'Strategical weaknesses',
+    short: 'What lets it happen',
+    tone: 'neutral',
     hint: "What in the opponent's position paves the way for the tactic?",
   },
   {
     key: 'breaks',
     number: '3a',
     title: 'Changes that make it fail',
+    short: 'What breaks it',
+    tone: 'breaks',
     hint: 'Change the position slightly, in a realistic way. What stops this combination working?',
   },
   {
     key: 'survives',
     number: '3b',
     title: 'Changes it survives',
+    short: 'What it survives',
+    tone: 'survives',
     hint: 'What can change and still leave the tactic — or a different one — available?',
   },
 ]

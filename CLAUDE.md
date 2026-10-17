@@ -99,8 +99,8 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # MoveTreeBoard, MoveNoteCard, ProposedMoves, TagPicker,
+│                               # PatternStudy,
 │                               # EnginePanel, EngineMode, PatternForm, TagGroupsPanel,
-│                               # PatternLineCard,
 │                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
@@ -405,10 +405,12 @@ src/
   established.
 
 - **The method's questions are a table.** `ESSENTIALS_SECTIONS` carries the key each one
-  writes to, how the method numbers it, and the prompt — which is also what the form
-  shows as a placeholder and what the page leaves out when a question is unanswered. The
-  form and the page both render the table, so a question cannot be asked on one screen
-  and missing from the other. The third question splits into `3a` and `3b` — what breaks
+  writes to, how the method numbers it, the prompt — which is also what the form shows as
+  a placeholder and what the page leaves out when a question is unanswered — and, since
+  the study page was rebuilt, how it looks: a `tone` and a `short` heading. The form and
+  the page both render the table, so a question cannot be asked on one screen and missing
+  from the other, and a fifth question arrives with its own appearance rather than falling
+  through to a default nobody chose. The third question splits into `3a` and `3b` — what breaks
   the combination and what it survives — as two fields rather than one flagged list,
   because they are read as two lists and written at different times: you find what breaks
   it first, and what it survives only once you have tried.
@@ -569,10 +571,34 @@ src/
   reader and under it in the editor, instead of both being squeezed into the board's own
   column. `moved` stays null until you actually step, so while you are still pointing a
   line in the editor the board follows `startPly` as you change it.
-- **A pattern board is read at the size you would study at**, 28rem, with the commentary
+- **A pattern board is read at the size you would study at**, with the commentary
   beside it — and the split waits for `lg` rather than `md`. At tablet width a
   two-column row squeezes the board back to the 20rem it was before it was made bigger,
   which is the opposite of the point, so below that the commentary stacks underneath.
+  26rem rather than 28 on the study page, which buys the answers beside it a readable
+  measure; checked at a 390px container, where it collapses to one column and the board
+  takes the full 358px with nothing overflowing sideways.
+
+- **The write-up is a study page, and the board is pinned to it.** It was four boxes of
+  prose stacked above the board, so the position — which every one of those sentences is
+  *about* — was a scroll away from the sentence describing it. "White Knight covers g6 and
+  g8" is a claim you check by looking, and you could not look and read at once. The board
+  now sits in its own column and stays put while the answers scroll past it, which is the
+  whole of what made the old page hard to study from.
+
+  **The two halves of question 3 are coloured against each other**, rose for what breaks
+  it and emerald for what it survives. They were two identical grey boxes distinguishable
+  only by reading the heading, on the one page where that distinction is the entire
+  lesson — knowing the edges is what separates a pattern you recognise from one you can
+  find. The tone comes off the sections table, not a switch on the key.
+
+  Several examples are **chips over one board** rather than a column of boards. Three
+  boards down a page is three things to scroll past to compare two of them, and the
+  question a second example answers is "what does this look like somewhere else", which
+  is a swap rather than a list. A write-up with no method shows **Take this one apart**
+  in the space the answers would fill: an empty column beside a board reads as the page
+  saying there is nothing more to know, when the truth is that nobody has written it
+  down yet.
 - **When a pattern applies and where it turns up answer the same question**, so they sit
   on one row above the board rather than one on each side of it, and the openings are
   pills: two underlined links side by side read as one long name. The row wraps rather

@@ -5,33 +5,19 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import PatternForm from '@/components/PatternForm'
-import PatternLineCard from '@/components/PatternLineCard'
+import PatternStudy from '@/components/PatternStudy'
 import { deletePattern, getGames, getOpenings, getPatterns, updatePattern } from '@/lib/firestore'
 import { openingLabel } from '@/lib/opening'
 import {
-  ESSENTIALS_SECTIONS,
   KIND_BADGE,
   KIND_LABEL,
   gamesTagged,
-  hasMethod,
-  pointText,
   lineHasContent,
   motifOf,
   normalizePattern,
 } from '@/lib/pattern'
 import { trainableMistakes } from '@/lib/review'
 import type { GameRecord, NewPattern, OpeningLine, PatternRecord } from '@/types/chess'
-
-/**
- * (i), (ii), (iii) — how the method itself letters its points.
- *
- * Only ever a handful per question, so the numerals stop where they stop being read at
- * a glance; past that it falls back to the figure, which is the honest thing to show.
- */
-const NUMERALS = ['i', 'ii', 'iii', 'iv', 'v', 'vi', 'vii', 'viii', 'ix', 'x']
-function roman(n: number): string {
-  return NUMERALS[n - 1] ?? String(n)
-}
 
 function PatternBody({ userId, patternId }: { userId: string; patternId: string }) {
   const router = useRouter()
@@ -164,170 +150,96 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
   }
 
   const examples = pattern.examples.filter(lineHasContent)
-
-  /*
-   * One description, not two. They answer the same question at two depths, so the
-   * method replaces the conditions wherever it has been answered — which is the whole
-   * reason a write-up picks one in the form. Conditions written before that choice
-   * existed still show on a write-up with no method, so nothing is hidden for good.
-   */
-  const showConditions = !hasMethod(pattern) && pattern.conditions.length > 0
+  const studied = { ...pattern, examples }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       <Link href="/patterns" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
         ← All patterns
       </Link>
 
-      <div className="flex items-start justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3 flex-wrap min-w-0">
-          <h2 className="text-xl font-semibold text-zinc-100">{pattern.name}</h2>
-          <span
-            className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
-              KIND_BADGE[pattern.kind]
-            }`}
-          >
-            {KIND_LABEL[pattern.kind]}
-          </span>
-          {motifOf(pattern) && (
-            <span className="text-xs font-mono text-zinc-400">{motifOf(pattern)}</span>
-          )}
+      {/*
+        The whole identity of the write-up in one band: what it is called, what kind of
+        thing it is, and where it turns up. The openings used to be a boxed section of
+        their own further down, which gave a line of pills the same weight as a question
+        of the method — they are a label on the pattern, not something to study.
+      */}
+      <div className="flex flex-col gap-3 border-b border-zinc-800 pb-5">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3 flex-wrap min-w-0">
+            <h2 className="text-2xl font-semibold text-zinc-100">{pattern.name}</h2>
+            <span
+              className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${
+                KIND_BADGE[pattern.kind]
+              }`}
+            >
+              {KIND_LABEL[pattern.kind]}
+            </span>
+            {motifOf(pattern) && (
+              <span className="text-xs font-mono text-zinc-400">{motifOf(pattern)}</span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => setEditing(true)}
+              className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 rounded-lg hover:bg-zinc-700 transition-colors"
+            >
+              Edit
+            </button>
+            <button
+              onClick={handleDelete}
+              disabled={busy}
+              title={confirming ? 'This cannot be undone' : undefined}
+              className={`text-xs transition-colors disabled:opacity-40 ${
+                confirming ? 'text-red-400 font-medium' : 'text-zinc-600 hover:text-red-400'
+              }`}
+            >
+              {confirming ? 'Really delete?' : 'Delete'}
+            </button>
+            {confirming && (
+              <button
+                onClick={() => setConfirming(false)}
+                className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+              >
+                Keep
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <button
-            onClick={() => setEditing(true)}
-            className="px-3 py-1.5 text-xs font-medium bg-zinc-800 text-zinc-100 rounded-lg hover:bg-zinc-700 transition-colors"
-          >
-            Edit
-          </button>
-          <button
-            onClick={handleDelete}
-            disabled={busy}
-            title={confirming ? 'This cannot be undone' : undefined}
-            className={`text-xs transition-colors disabled:opacity-40 ${
-              confirming ? 'text-red-400 font-medium' : 'text-zinc-600 hover:text-red-400'
-            }`}
-          >
-            {confirming ? 'Really delete?' : 'Delete'}
-          </button>
-          {confirming && (
-            <button
-              onClick={() => setConfirming(false)}
-              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-            >
-              Keep
-            </button>
-          )}
-        </div>
+        {linkedOpenings.length > 0 && (
+          <div className="flex gap-1.5 flex-wrap items-center">
+            <span className="text-xs text-zinc-600">turns up in</span>
+            {linkedOpenings.map(opening => (
+              <Link
+                key={opening.id}
+                href={`/dashboard?opening=${opening.id}`}
+                className="px-2 py-0.5 rounded-md border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+              >
+                {openingLabel(opening)}
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}
 
-      {/*
-        The method's own answers, in the order it asks for them and rendered from the
-        same table the form writes against — so the questions on the page and the fields
-        that fill them cannot drift. A question left unanswered is left out rather than
-        shown empty: the form is where the prompts belong, and this is the read.
-      */}
-      {/*
-        Unanswered questions are left out rather than shown as empty prompts — this is
-        the read, and the form is where the prompts belong. But a document with none of
-        them answered would then render nothing at all between its name and its
-        examples, which reads as a page that failed rather than one not written yet.
-      */}
-      {hasMethod(pattern) && pattern.essentials && (
-        <div className="grid lg:grid-cols-2 gap-3">
-          {ESSENTIALS_SECTIONS.map(section => {
-            const points = pattern.essentials![section.key].filter(
-              point => point.trim().length > 0,
-            )
-            if (points.length === 0) return null
-
-            return (
-              <div
-                key={section.key}
-                className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2"
-              >
-                <h3 className="text-xs uppercase tracking-wide text-zinc-500">
-                  <span className="text-zinc-600">{section.number}.</span> {section.title}
-                </h3>
-                <ol className="flex flex-col gap-1.5">
-                  {points.map((point, index) => (
-                    <li key={index} className="text-sm text-zinc-300 flex gap-2">
-                      {/* lettered the way the method writes them up */}
-                      <span className="text-zinc-600 font-mono shrink-0">
-                        ({roman(index + 1)})
-                      </span>
-                      <span className="min-w-0">{pointText(point)}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            )
-          })}
-        </div>
-      )}
+      <PatternStudy pattern={studied} onTakeApart={() => setEditing(true)} />
 
       {/*
-        When it applies and where it turns up answer the same question, so they sit on one
-        row above the board rather than one on each side of it. Wrapping rather than a
-        two-column grid, so a pattern with only one of them gets the whole width instead
-        of half and a gap.
+        Last, and quiet when it is empty. It is a record of what this idea has cost, not
+        part of learning the idea — so it reads as a footnote rather than as a fifth
+        question.
       */}
-      {(showConditions || linkedOpenings.length > 0) && (
-        <div className="flex flex-wrap gap-3 items-start">
-          {showConditions && (
-            <div className="flex-1 min-w-[16rem] bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
-              <h3 className="text-xs uppercase tracking-wide text-zinc-500">Conditions</h3>
-              <ul className="flex flex-col gap-1">
-                {pattern.conditions.map((condition, index) => (
-                  <li key={index} className="text-sm text-zinc-300 flex gap-2">
-                    <span className="text-zinc-600">•</span>
-                    <span className="min-w-0">{condition}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {linkedOpenings.length > 0 && (
-            <div className="flex-1 min-w-[16rem] bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
-              <h3 className="text-xs uppercase tracking-wide text-zinc-500">
-                Openings it turns up in
-              </h3>
-              <div className="flex gap-1.5 flex-wrap">
-                {/* pills, because two underlined links side by side read as one long name */}
-                {linkedOpenings.map(opening => (
-                  <Link
-                    key={opening.id}
-                    href={`/dashboard?opening=${opening.id}`}
-                    className="px-2 py-1 rounded-md border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-300 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
-                  >
-                    {openingLabel(opening)}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {examples.length > 0 && (
-        <div className="flex flex-col gap-3">
-          <h3 className="text-xs uppercase tracking-wide text-zinc-500">Examples</h3>
-          {examples.map((example, index) => (
-            <PatternLineCard key={index} line={example} fallbackTitle={`Example ${index + 1}`} />
-          ))}
-        </div>
-      )}
-
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-2">
+      <div className="border-t border-zinc-800 pt-5 flex flex-col gap-2">
         <h3 className="text-xs uppercase tracking-wide text-zinc-500">
           Games where this could have been used
+          {flagged.length > 0 && <span className="text-zinc-600"> · {flagged.length}</span>}
         </h3>
         {flagged.length === 0 ? (
-          <p className="text-sm text-zinc-500">
+          <p className="text-sm text-zinc-600">
             Nothing tagged with this yet — it shows up in the review form under Patterns.
           </p>
         ) : (
