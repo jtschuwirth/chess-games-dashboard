@@ -659,6 +659,17 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             fen={fen}
             orientation={orientation}
             highlight={standing ? [standing.from, standing.to] : []}
+            /*
+              The mark on the square the move landed on. `cursor` is -1 off the game's
+              own line, which is exactly right: a move you played out in a variation was
+              never analysed, so there is nothing to say about it — and only your own
+              moves are in `engineTags` at all, because only yours are analysed.
+            */
+            badge={
+              standing && cursor >= 0 && engineTags.has(cursor)
+                ? { square: standing.to, mark: engineTags.get(cursor)! }
+                : null
+            }
             onPlay={move => {
               const played = playAt(moveTree, path, move)
               if (!played) return

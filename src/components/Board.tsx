@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState } from 'react'
 import PieceSprites, { spriteId } from '@/components/PieceSprites'
 import { legalMovesFrom, sideToMove, squaresFrom } from '@/lib/board'
+import { markBadge } from '@/lib/review'
 import type { Color } from '@/types/chess'
 
 /**
@@ -66,12 +67,21 @@ export default function Board({
   fen,
   orientation,
   highlight = [],
+  badge = null,
   onPlay,
 }: {
   fen: string
   orientation: Color
   /** Squares to wash, normally the from and to of the move just played. */
   highlight?: string[]
+  /**
+   * A mark pinned to the square a move landed on — `??` on the one that lost the game.
+   *
+   * The move list already carries the marks, and reading them there means looking away
+   * from the board to find out that the move you are staring at is the mistake. On the
+   * square it is the same fact where you are already looking.
+   */
+  badge?: { square: string; mark: string } | null
   /** Omit to leave the board read-only, which is what most of them are. */
   onPlay?: (move: BoardMove) => void
 }) {
@@ -250,6 +260,8 @@ export default function Board({
           const target = byTarget.get(square.name)
           const piece = square.piece
           const canLift = interactive && piece?.color === turn
+          const badgeHere = badge?.square === square.name
+          const mark = badgeHere ? markBadge(badge.mark) : null
 
           return (
             <div
@@ -309,6 +321,46 @@ export default function Board({
                   aria-label={`${piece.color} piece on ${square.name}`}
                 >
                   <use href={`#${spriteId(piece.type, piece.color)}`} />
+                </svg>
+              )}
+
+              {/*
+                Over the piece, because it is about the piece. Drawn in the square's
+                own viewBox like the sprites are, so it scales exactly with the board at
+                every width instead of needing a font size per breakpoint.
+
+                Flush inside the corner rather than straddling it. Straddling reads
+                better on a square in the middle and is wrong at the edges: the board
+                clips its own overflow, so a mistake played to the a-file came out as a
+                circle with a slice missing — and the squares a blunder lands on are
+                disproportionately the edge ones.
+              */}
+              {badgeHere && mark && (
+                <svg
+                  viewBox="0 0 45 45"
+                  className="absolute inset-0 w-full h-full pointer-events-none overflow-visible"
+                  role="img"
+                  aria-label={`${badge!.mark} ${mark.label}`}
+                >
+                  <circle
+                    cx="34.5"
+                    cy="10.5"
+                    r="10.5"
+                    fill={mark.fill}
+                    stroke="rgba(0,0,0,0.35)"
+                    strokeWidth="0.6"
+                  />
+                  <text
+                    x="34.5"
+                    y="10.5"
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    fontSize={badge!.mark.length > 1 ? 11 : 14}
+                    fontWeight="700"
+                    fill={mark.ink}
+                  >
+                    {badge!.mark}
+                  </text>
                 </svg>
               )}
 

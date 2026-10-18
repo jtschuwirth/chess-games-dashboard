@@ -366,6 +366,25 @@ export function markColor(tag: string | null | undefined): string {
   return (tag && MARK_COLOR[tag]) || 'text-zinc-500'
 }
 
+/**
+ * The same scale drawn as a filled badge rather than written as ink.
+ *
+ * Beside `MARK_COLOR` rather than in the board, for the reason that map exists at all:
+ * the marks are a severity scale and a scale only works if it means the same thing
+ * everywhere. The colours are a step stronger than the text ones because these sit on a
+ * light board square rather than on a dark panel, and the ink is whichever of white or
+ * near-black reads on the fill — a chip you cannot read the mark on is a coloured dot.
+ */
+const MARK_BADGE: Record<string, { fill: string; ink: string; label: string }> = {
+  '??': { fill: '#e04b43', ink: '#ffffff', label: 'blunder' },
+  '?': { fill: '#e0a23c', ink: '#1c1917', label: 'mistake' },
+  '?!': { fill: '#a1a1aa', ink: '#1c1917', label: 'inaccuracy' },
+}
+
+export function markBadge(tag: string | null | undefined) {
+  return (tag && MARK_BADGE[tag]) || null
+}
+
 export interface MistakeCandidate {
   ply: number
   san: string

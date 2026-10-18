@@ -277,6 +277,36 @@ src/
   sized to their contents grew around a tall piece, and a board column sized with
   `minmax(0,28rem)` took its width from the readout *under* the board, so the board shrank on
   moves with no clock reading to show. The track is a fixed `28rem` for the same reason.
+- **The mark is on the square the move landed on, not only in the list.** The move list
+  has always carried the `?` and `??`, and reading them there means looking away from the
+  board to find out that the move you are staring at is the mistake. On the square it is
+  the same fact where you are already looking: a filled circle in the corner of the
+  destination, red for a blunder and amber for a mistake, the way a chess site marks one.
+
+  It is drawn in the square's own `viewBox`, like the piece sprites, so it scales exactly
+  with the board at every width rather than needing a font size per breakpoint. **Flush
+  inside the corner rather than straddling it**: straddling reads better on a square in
+  the middle and is wrong at the edges, because the board clips its own overflow — a
+  mistake played to the a-file came out as a circle with a slice missing, and the squares
+  a blunder lands on are disproportionately the edge ones.
+
+  The colours sit beside `MARK_COLOR` in `lib/review.ts` rather than in the board, for
+  the reason that map exists at all: the marks are a severity scale and a scale only
+  works if it means the same thing everywhere. `markBadge` is a step stronger than the
+  written ink because it sits on a light board square rather than a dark panel, and it
+  carries its own ink colour, since white on amber cannot be read.
+
+  **It covers the whole scale, not just the two marks usually shown.** `marks` on the
+  account decides what counts as a fault and defaults to `?` and `??`; turn inaccuracies
+  on and `?!` starts reaching the move list, and would reach the board. A mark with no
+  badge would draw nothing at all, which reads as the board having failed rather than as
+  a setting being on.
+
+  It shows only on the game as played. `cursor` is -1 off the game's own line, so a move
+  you played out in a variation carries nothing — which is right, because it was never
+  analysed. Checked on the real thing: standing on the variation that *replaces* a
+  blunder, at the same ply, draws no badge.
+
 - **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
   engine depth as a violet `⚙ d21`, and what the engine found when it found anything —
   `2??` in red and `1?` in amber.
