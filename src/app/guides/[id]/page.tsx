@@ -12,6 +12,7 @@ import {
   exerciseHasContent,
   guideBody,
   guideProgress,
+  moveExercise,
 } from '@/lib/exercise'
 import { deleteGuide, getGuides, updateGuide } from '@/lib/firestore'
 import type { ExerciseGuide } from '@/types/chess'
@@ -212,6 +213,7 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
             key={exercise.id}
             exercise={exercise}
             index={index}
+            last={index === guide.exercises.length - 1}
             open={openId === exercise.id}
             onToggleOpen={() => setOpenId(current => (current === exercise.id ? null : exercise.id))}
             onChange={next =>
@@ -226,6 +228,12 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
               edit(current => ({
                 ...current,
                 exercises: current.exercises.filter(entry => entry.id !== exercise.id),
+              }))
+            }
+            onMove={direction =>
+              edit(current => ({
+                ...current,
+                exercises: moveExercise(current.exercises, exercise.id, direction),
               }))
             }
           />

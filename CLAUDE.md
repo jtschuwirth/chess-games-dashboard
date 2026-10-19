@@ -820,6 +820,17 @@ src/
   deliberately not `lineHasContent`, which counts any `startFen` at all — and every
   exercise has one, so it answered yes to a card nobody had touched.
 
+  **An exercise can be moved up or down the sheet**, because the order is the sheet's and
+  an import that lands one out of place should not mean typing the rest again. The
+  controls sit on the folded header rather than inside the open card: reordering is
+  something you do to the list, where the run of them is visible at once. `moveExercise`
+  finds the exercise **by id, never by the index the render captured** — several presses
+  land in one React batch and each would otherwise swap against the list as it was drawn
+  rather than as it is, which is how three quick taps become one. A move off either end
+  returns the list unchanged, so no caller has to range-check first. The buttons stay in
+  the layout when they cannot be used, or the row would shift under the cursor as you walk
+  something down the list.
+
   **Solved is what you said, not what the app worked out.** Nothing here checks an answer:
   a position you solved in your head and wrote one line for is as done as one annotated to
   the last move. The figure beside it is the honest middle — `started`, something written

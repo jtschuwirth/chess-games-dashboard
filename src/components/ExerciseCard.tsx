@@ -26,17 +26,29 @@ const INPUT =
 export default function ExerciseCard({
   exercise,
   index,
+  last,
   open,
   onToggleOpen,
   onChange,
   onRemove,
+  onMove,
 }: {
   exercise: Exercise
   index: number
+  /** Whether it is the last on the sheet, so Move down knows to go. */
+  last: boolean
   open: boolean
   onToggleOpen: () => void
   onChange: (next: Exercise) => void
   onRemove: () => void
+  /**
+   * Move it one place up or down the sheet, or null at the end it cannot go.
+   *
+   * Null rather than a disabled handler so the card does not have to know how long the
+   * sheet is — the guide knows, and the button is simply absent where there is nowhere
+   * to go.
+   */
+  onMove: (direction: -1 | 1) => void | null
 }) {
   /*
    * Two complaints, not one. A bad FEN and a bad line are different mistakes about
@@ -127,6 +139,21 @@ export default function ExerciseCard({
         </span>
 
         <div className="ml-auto flex items-center gap-3 shrink-0">
+          {/*
+            Always here, not only while the card is open: reordering a sheet is something
+            you do to the folded list, where you can see the run of them at once. They sit
+            before the checkbox because this is about where the exercise is, not about
+            what you did with it.
+          */}
+          <div className="flex items-center gap-0.5">
+            <MoveButton label="Move up" onClick={() => onMove(-1)} disabled={index === 0}>
+              ↑
+            </MoveButton>
+            <MoveButton label="Move down" onClick={() => onMove(1)} disabled={last}>
+              ↓
+            </MoveButton>
+          </div>
+
           <label className="flex items-center gap-1.5 text-xs text-zinc-400 cursor-pointer">
             <input
               type="checkbox"
@@ -279,5 +306,33 @@ export default function ExerciseCard({
         </div>
       )}
     </div>
+  )
+}
+
+/** One of the two move controls: small, square, and gone rather than greyed at an end. */
+function MoveButton({
+  label,
+  onClick,
+  disabled,
+  children,
+}: {
+  label: string
+  onClick: () => void
+  disabled: boolean
+  children: React.ReactNode
+}) {
+  // kept in the layout when it cannot be used, so the row does not shift as you move
+  // something down the list and the buttons jump under the cursor
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className="w-5 h-5 rounded text-xs leading-none text-zinc-500 hover:text-zinc-100 hover:bg-zinc-800 transition-colors disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-zinc-500"
+    >
+      {children}
+    </button>
   )
 }

@@ -169,6 +169,31 @@ export function guideProgress(guide: ExerciseGuide): GuideProgress {
   return { total, solved, attempted }
 }
 
+/**
+ * One exercise moved a place up or down the sheet.
+ *
+ * Found by id rather than by an index the caller captured: several presses can land in
+ * one React batch, and each would otherwise swap against the list as it was drawn rather
+ * than as it is — three quick taps would then land as one. The same rule every plan edit
+ * follows.
+ *
+ * A move off either end is no move: the list comes back as it was, so the caller never
+ * has to range-check before asking.
+ */
+export function moveExercise(
+  exercises: Exercise[],
+  id: string,
+  direction: -1 | 1,
+): Exercise[] {
+  const at = exercises.findIndex(entry => entry.id === id)
+  const to = at + direction
+  if (at < 0 || to < 0 || to >= exercises.length) return exercises
+
+  const next = [...exercises]
+  ;[next[at], next[to]] = [next[to], next[at]]
+  return next
+}
+
 /** Whose move it is in the diagram, which is what the sheet means by "White to play". */
 export function toPlay(exercise: Exercise): 'white' | 'black' {
   const fen = exercise.line.startFen ?? START_FEN
