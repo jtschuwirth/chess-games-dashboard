@@ -249,7 +249,7 @@ export default function Board({
         ref={boardRef}
         className="grid grid-cols-[repeat(8,minmax(0,1fr))] grid-rows-[repeat(8,minmax(0,1fr))] w-full h-full"
       >
-        {rows.flat().map(square => {
+        {rows.flat().map((square, index) => {
           const file = square.name[0]
           const rank = square.name[1]
           // coordinates sit on the outer edge only, the way a printed diagram labels them
@@ -262,6 +262,14 @@ export default function Board({
           const canLift = interactive && piece?.color === turn
           const badgeHere = badge?.square === square.name
           const mark = badgeHere ? markBadge(badge.mark) : null
+          /*
+            `rows` is already in the order it is drawn, so the first eight are the top
+            row and every eighth is the right-hand column — whichever way the board is
+            turned. That is what the badge needs: not which square it is, but whether
+            there is board left for it to hang over.
+          */
+          const atTop = index < 8
+          const atRight = index % 8 === 7
 
           return (
             <div
@@ -329,11 +337,13 @@ export default function Board({
                 own viewBox like the sprites are, so it scales exactly with the board at
                 every width instead of needing a font size per breakpoint.
 
-                Flush inside the corner rather than straddling it. Straddling reads
-                better on a square in the middle and is wrong at the edges: the board
-                clips its own overflow, so a mistake played to the a-file came out as a
-                circle with a slice missing — and the squares a blunder lands on are
-                disproportionately the edge ones.
+                It straddles the corner, which is how a chess site draws one and reads
+                better than a circle tucked inside the square. The board clips its own
+                overflow, though, so a badge on the top row or the right-hand column
+                would come out as a circle with a slice missing — which is not rare, since
+                a mistake lands on an edge square often enough. So it is pulled flush on
+                exactly those squares and straddles everywhere else: the look is kept
+                where there is room for it and dropped only where it cannot be had.
               */}
               {badgeHere && mark && (
                 <svg
@@ -343,16 +353,16 @@ export default function Board({
                   aria-label={`${badge!.mark} ${mark.label}`}
                 >
                   <circle
-                    cx="34.5"
-                    cy="10.5"
+                    cx={atRight ? 34.5 : 38.5}
+                    cy={atTop ? 10.5 : 6.5}
                     r="10.5"
                     fill={mark.fill}
                     stroke="rgba(0,0,0,0.35)"
                     strokeWidth="0.6"
                   />
                   <text
-                    x="34.5"
-                    y="10.5"
+                    x={atRight ? 34.5 : 38.5}
+                    y={atTop ? 10.5 : 6.5}
                     textAnchor="middle"
                     dominantBaseline="central"
                     fontSize={badge!.mark.length > 1 ? 11 : 14}

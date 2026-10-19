@@ -284,11 +284,18 @@ src/
   destination, red for a blunder and amber for a mistake, the way a chess site marks one.
 
   It is drawn in the square's own `viewBox`, like the piece sprites, so it scales exactly
-  with the board at every width rather than needing a font size per breakpoint. **Flush
-  inside the corner rather than straddling it**: straddling reads better on a square in
-  the middle and is wrong at the edges, because the board clips its own overflow — a
-  mistake played to the a-file came out as a circle with a slice missing, and the squares
-  a blunder lands on are disproportionately the edge ones.
+  with the board at every width rather than needing a font size per breakpoint.
+
+  **It straddles the corner, and is pulled flush only where it would be cut.** Straddling
+  is how a chess site draws one and reads better than a circle tucked inside the square —
+  but the board clips its own overflow for its rounded corners, so a badge on the top row
+  or the right-hand column came out as a circle with a slice missing. Flush everywhere was
+  the first fix and it traded the look on fifty-odd squares to rescue fourteen. `rows` is
+  already in the order it is drawn, so the first eight entries are the top row and every
+  eighth is the right-hand column whichever way the board is turned — which is all the
+  badge needs to know: not which square it is on, but whether there is board left for it
+  to hang over. Each axis is clamped on its own, so a mistake on the top row still
+  straddles sideways.
 
   The colours sit beside `MARK_COLOR` in `lib/review.ts` rather than in the board, for
   the reason that map exists at all: the marks are a severity scale and a scale only
