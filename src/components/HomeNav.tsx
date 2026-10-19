@@ -35,6 +35,12 @@ const NAV_ITEMS = [
     href: '/plans',
   },
   {
+    icon: '📄',
+    title: 'Exercise guides',
+    description: 'A coach’s sheet of positions, solved on a board and written up',
+    href: '/guides',
+  },
+  {
     icon: '🎯',
     title: 'Learn from your mistakes',
     description: 'Find the move again in the positions you got wrong',

@@ -10,12 +10,10 @@ import {
   mainLine,
   mainPath,
   moveLabel,
-  nodeAt,
-  pathOfLine,
-  sansAlong,
   type MoveTree,
   type Path,
 } from '@/lib/movetree'
+import { useLineEditor } from '@/lib/use-line-editor'
 import {
   ESSENTIALS_SECTIONS,
   KIND_LABEL,
@@ -28,11 +26,8 @@ import {
   emptyPositionLine,
   fenIsValid,
   newPoint,
-  lineFromTree,
   lineHasContent,
-  lineHome,
   lineOrientation,
-  lineTree,
   motifsFor,
   parsePatternPgn,
 } from '@/lib/pattern'
@@ -77,41 +72,18 @@ function LineFields({
   onRemove?: () => void
 }) {
   const [error, setError] = useState<string | null>(null)
-  /**
-   * Where the cursor is, held as the *moves* leading to it rather than the ids of the
-   * nodes along the way.
-   *
-   * Every edit here writes the line back out and the tree is rebuilt from that PGN on
-   * the next render — and `fromPgn` mints a fresh random id for every node it reads. So
-   * a path of ids is stale the instant you play a move: the board found nothing at it
-   * and fell back to the start position while the controls went on pointing at where
-   * you were. Moves survive the rebuild, because they are what the PGN carries.
-   *
-   * Null means "wherever the line opens", which is what stepping right back does.
+  /*
+   * The cursor lives in `useLineEditor`, which the exercise guides share. It is held as
+   * the moves leading to it rather than the ids along the way, for the reason documented
+   * there — the ids are re-minted on every PGN round trip.
    */
-  const [movedSans, setMovedSans] = useState<string[] | null>(null)
+  const { tree, home, path, standing, stepTo, setTree: applyTree, resetCursor } =
+    useLineEditor(line, onChange)
 
-  const tree = useMemo(() => lineTree(line), [line])
-  const home = useMemo(() => lineHome(tree, line.startPly), [tree, line.startPly])
-  const path = useMemo(
-    // a line that no longer plays — the PGN was edited under it — opens at home rather
-    // than throwing, the same fallback a bad FEN gets
-    () => (movedSans ? (pathOfLine(tree, movedSans) ?? home) : home),
-    [tree, movedSans, home],
-  )
-  const standing = nodeAt(tree, path)
-
-  /** Step to a node of the tree on screen, keeping the moves that lead to it. */
-  function stepTo(at: Path) {
-    setMovedSans(sansAlong(tree, at))
-  }
-
-  /** An edit on the board becomes the stored line: PGN, main line and where it opens. */
+  /** An edit on the board becomes the stored line, and clears any parse complaint. */
   function setTree(next: MoveTree, at: Path) {
-    // read against `next`, not `tree`: the path belongs to the tree the edit produced
-    setMovedSans(sansAlong(next, at))
     setError(null)
-    onChange(lineFromTree(line, next, line.startPly))
+    applyTree(next, at)
   }
 
   /** Whether this example is a position with moves on it, or a whole game. */
@@ -122,7 +94,7 @@ function LineFields({
     try {
       const moves = parsePatternPgn(pgn, line.startFen)
       setError(null)
-      setMovedSans(null)
+      resetCursor()
       onChange({ ...line, pgn, moves, startPly: clampStartPly(line.startPly, moves) })
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not read that PGN.')
@@ -139,7 +111,7 @@ function LineFields({
     try {
       const moves = parsePatternPgn(line.pgn, startFen)
       setError(null)
-      setMovedSans(null)
+      resetCursor()
 
       // the orientation is not written here: `lineOrientation` derives it from this
       // position, so the stored field only ever holds a flip you asked for

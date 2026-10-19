@@ -18,7 +18,7 @@
  */
 
 /** What is being drafted. Also the key's prefix, so two kinds cannot collide. */
-export type DraftKind = 'plan' | 'study'
+export type DraftKind = 'plan' | 'study' | 'guide'
 
 export interface Draft<T> {
   body: T

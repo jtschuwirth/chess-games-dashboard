@@ -63,7 +63,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    history with nothing to press. Weeks fold, and more can be added as the plan runs on.
    Editing is local until you press Save, and what you have not saved is kept on the
    device, so closing the tab or switching app does not cost you it.
-8. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
+8. `/guides` — a coach's sheet of positions written up. A guide is a name, a line
+   saying what the set trains, and the exercises themselves; an exercise is a diagram
+   pasted in as a FEN and the board you solve it on, with variations, a comment on any
+   move and a note on the whole thing. Tick one off when you have it, and the sheet says
+   how far through you are.
+9. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
 
@@ -88,6 +93,8 @@ src/
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
 │   ├── patterns/drill/page.tsx # Does the pattern still work here?
+│   ├── guides/page.tsx         # Exercise guides: list + create
+│   ├── guides/[id]/page.tsx    # One sheet: the positions, solved on a board
 │   ├── patterns/[id]/page.tsx  # One write-up: the method or the conditions, lines, games
 │   ├── plans/page.tsx          # Study plans: list + create
 │   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's games
@@ -102,7 +109,7 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # MoveTreeBoard, MoveNoteCard, ProposedMoves, TagPicker,
-│                               # PatternStudy,
+│                               # PatternStudy, ExerciseCard,
 │                               # EnginePanel, EngineMode, PatternForm, TagGroupsPanel,
 │                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
@@ -143,6 +150,8 @@ src/
 │   ├── draft.ts                # anything edited and not yet saved, kept on the device
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
 │   ├── pattern-drill.ts        # the boundary drill: cards off 3a/3b, and when they come back
+│   ├── exercise.ts             # a coach's sheet: guides, exercises, how far through
+│   ├── use-line-editor.ts      # editing a line on a board, cursor held as moves
 │   ├── tags.ts                 # your own tag vocabulary: groups, stable ids, display names
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
@@ -767,6 +776,54 @@ src/
   This is the opposite bargain to a pattern's name, which *is* its tag and so leaves the old string
   behind when renamed. The difference is that a pattern is a document you wrote and a tag is a word
   in a list, and a word in a list is exactly the kind of thing you fix the spelling of.
+
+- **An exercise guide is a sheet of positions, and an exercise is a line played from
+  one.** The positions come from somewhere else — a PDF, a book, a photograph of a
+  handout — so one starts as a FEN you paste in. **Lichess has no endpoint that turns a
+  picture of a board into a FEN**, which was worth checking because it would have removed
+  the typing: its own forum only covers going the other way, and the service that does
+  scan diagrams sells a browser extension and a phone app rather than an API. So there is
+  nothing to call, and the position is a box you fill.
+
+  Everything below the position is the app's own machinery reused. An exercise's solution
+  is a `PatternLine`, because that is already exactly what it is: a position with moves on
+  top of it, branching where the answer depends on the reply, and a comment on any move.
+  The board, the PGN round trip, the variations and the comments all arrived working —
+  and it is the other half of what `startFen` was added for, a position with no game
+  behind it.
+
+  The board is the way in and the **Moves** box is the other one, because a solution often
+  arrives as a line you want to paste and dragging six moves to write one down is slower
+  than typing them. A bad FEN and a bad line are **two complaints, not one**: a single slot
+  put "check the move notation" under the position field, which sends you to the box you
+  did not touch.
+
+- **`useLineEditor` holds the cursor, and the second screen is why it exists.** Editing a
+  line on a board is the pattern form's job and now the exercise card's, and the part that
+  is easy to get wrong is subtle enough that two copies would be two copies to get wrong:
+  the cursor is held as the *moves* leading to it, never as the ids of the nodes along the
+  way, because every edit round-trips the line through its PGN and `fromPgn` mints fresh
+  ids each time. The pattern form was moved onto it rather than left alone, so there is
+  one of them; `patternline-checks` already covers the behaviour and passed unchanged.
+
+- **A guide saves by a button and keeps what is unsaved on the device**, the plans model,
+  because it is the same job: a sheet is filled in over days, on whichever device is to
+  hand, and a page that wrote every keystroke to Firestore would lose edits to an
+  out-of-order write or a suspended tab. `draft.ts` gained a third kind rather than a
+  second copy. A draft outranks the server only until the server moves past it — the same
+  `updatedAt` comparison a plan makes.
+
+  Exercises you added and never filled are **dropped on save**, which is why a fresh one
+  carries no title: the card shows `Exercise 3` as its placeholder and falls back to it
+  when drawing, so writing the number in would be text you did not type, and text you did
+  not type must not be what keeps an empty card alive. `exerciseHasContent` is also
+  deliberately not `lineHasContent`, which counts any `startFen` at all — and every
+  exercise has one, so it answered yes to a card nobody had touched.
+
+  **Solved is what you said, not what the app worked out.** Nothing here checks an answer:
+  a position you solved in your head and wrote one line for is as done as one annotated to
+  the last move. The figure beside it is the honest middle — `started`, something written
+  and not yet called finished — which is the pile worth coming back to.
 
 - **The drill asks where the pattern stops working, because that is the part looking
   cannot teach you.** Showing a write-up's own diagram and asking what the idea is tests

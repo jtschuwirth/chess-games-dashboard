@@ -32,6 +32,7 @@ import {
 } from './settings'
 import { applyTagGroups, normalizeTagGroups, type TagGroup } from './tags'
 import { normalizePlan } from './plan'
+import { normalizeGuide } from './exercise'
 import {
   closingRatings,
   joinYears,
@@ -44,7 +45,9 @@ import type {
   DrillStat,
   GameRecord,
   MoveVerdict,
+  ExerciseGuide,
   GameReview,
+  NewExerciseGuide,
   PatternDrillStat,
   StoredAnalysis,
   NewOpeningLine,
@@ -642,6 +645,9 @@ export async function deletePattern(userId: string, patternId: string): Promise<
 
 const PLANS = 'studyPlans'
 
+/** A coach's sheet of positions, beside the plans it is practised under. */
+const GUIDES = 'exerciseGuides'
+
 /**
  * Plans come from the server, not the cache, and they are the one collection that does.
  *
@@ -653,6 +659,52 @@ const PLANS = 'studyPlans'
  * from another device never reaches this one's cache. Two billed reads a visit is the
  * right price for a page that is wrong without them.
  */
+/* --------------------------------------------------------- exercise guides */
+
+/**
+ * A sheet of exercises, read from the server for the plans reason.
+ *
+ * It is the same kind of document and the same kind of use: there are a handful, and you
+ * work through one over days on whichever device is to hand — the diagram on a laptop,
+ * a line you thought of on a phone. A cache-first read would show each device only what
+ * that device last did.
+ */
+export async function getGuides(
+  userId: string,
+  options?: ReadOptions,
+): Promise<ExerciseGuide[]> {
+  const ref = collection(db, 'users', userId, GUIDES)
+  const snapshot = await readDocs(query(ref, orderBy('createdAt', 'desc')), {
+    fresh: true,
+    ...options,
+  })
+  return snapshot.docs.map(d => normalizeGuide({ ...d.data(), id: d.id } as ExerciseGuide))
+}
+
+export async function saveGuide(userId: string, guide: NewExerciseGuide): Promise<string> {
+  const ref = collection(db, 'users', userId, GUIDES)
+  const docRef = await addDoc(ref, { ...guide, updatedAt: Date.now() })
+  return docRef.id
+}
+
+/**
+ * The whole guide goes back on every change, like a plan: a sheet is a few kilobytes,
+ * a write is a write whatever its size, and rewriting it removes every question about
+ * two edits racing on one document.
+ */
+export async function updateGuide(
+  userId: string,
+  guideId: string,
+  guide: NewExerciseGuide,
+): Promise<void> {
+  // stamped here so a save can neither forget it nor round-trip a stale one
+  await setDoc(doc(db, 'users', userId, GUIDES, guideId), { ...guide, updatedAt: Date.now() })
+}
+
+export async function deleteGuide(userId: string, guideId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, GUIDES, guideId))
+}
+
 export async function getPlans(userId: string, options?: ReadOptions): Promise<StudyPlan[]> {
   const ref = collection(db, 'users', userId, PLANS)
   const snapshot = await readDocs(query(ref, orderBy('startDate', 'desc')), {

@@ -688,6 +688,45 @@ export interface StudyPlan {
 
 export type NewStudyPlan = Omit<StudyPlan, 'id'>
 
+/**
+ * One position to solve, and what you worked out.
+ *
+ * The solution is a `PatternLine` because that is already exactly what it is: a position
+ * with moves played on top of it, branching where the answer depends on the reply, and a
+ * comment on any move. Reusing it means the board, the PGN round trip, the variations and
+ * the move comments all arrive working rather than being built a second time — and an
+ * exercise is the other half of what `startFen` was added for, a position with no game
+ * behind it.
+ */
+export interface Exercise {
+  /** Stable, so reordering the sheet never moves a solution onto another position. */
+  id: string
+  /** Your answer, played from the diagram. `line.title` is what the sheet called it. */
+  line: PatternLine
+  /** Whether you consider it worked out. Yours to say; nothing checks it. */
+  solved: boolean
+}
+
+/**
+ * A sheet of exercises, usually one handout.
+ *
+ * The shape a study plan has — a named container of things you work through — for the
+ * same reason: it is written once and filled in over days, on whichever device is in
+ * front of you.
+ */
+export interface ExerciseGuide {
+  id: string
+  name: string
+  /** What the set is training: "simulated sacrifices", "rook endings". */
+  description: string
+  exercises: Exercise[]
+  createdAt: number
+  /** When any device last saved it, for the same draft comparison a plan makes. */
+  updatedAt?: number
+}
+
+export type NewExerciseGuide = Omit<ExerciseGuide, 'id'>
+
 export interface UserProfile {
   chesscomUsername: string | null
   lichessUsername: string | null
