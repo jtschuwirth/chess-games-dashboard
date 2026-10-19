@@ -303,6 +303,15 @@ src/
   turned — which is all the badge needs to know. Each axis flips on its own, so a square at
   the top keeps its horizontal overhang and one at the right keeps its vertical.
 
+  **Hanging over a neighbour also means winning against it, which takes a `z-index`.** Every
+  square is `relative` with none, so all sixty-four sit in one painting layer and the part
+  of the badge outside its own square lost to the square it hung over — the circle rendered
+  with a flat slice off the top, and `overflow: visible` had nothing to do with it. The
+  layout was always right: the overhang measured 7px outside the square while it was still
+  invisible. Hiding the neighbour brought the missing arc straight back, which is what
+  named the cause. `z-10` on the one square carrying a badge clears it over all of them in
+  every direction, and nothing else on the board sets a z-index for it to fight with.
+
   The colours sit beside `MARK_COLOR` in `lib/review.ts` rather than in the board, for
   the reason that map exists at all: the marks are a severity scale and a scale only
   works if it means the same thing everywhere. `markBadge` is a step stronger than the

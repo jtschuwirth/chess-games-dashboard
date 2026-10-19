@@ -296,7 +296,19 @@ export default function Board({
                 else, and a swipe over anything else still scrolls.
               */
               style={canLift ? { touchAction: 'none' } : undefined}
-              className={`relative ${square.light ? LIGHT : DARK} ${
+              /*
+                `z-10` only while this square carries the badge, and it is what makes the
+                badge's overhang visible at all.
+
+                Every square is `relative` with no z-index, so all sixty-four sit in one
+                painting layer and the part of the badge hanging outside its own square
+                loses to the neighbour it hangs over — the circle came out with a flat
+                slice off the top. Verified by hiding the square above, which brought the
+                missing arc straight back. Lifting the one square clears it over all of
+                them, in both directions, and nothing else on the board sets a z-index for
+                it to fight with.
+              */
+              className={`relative ${badgeHere ? 'z-10 ' : ''}${square.light ? LIGHT : DARK} ${
                 canLift ? 'cursor-grab active:cursor-grabbing' : target ? 'cursor-pointer' : ''
               }`}
             >
