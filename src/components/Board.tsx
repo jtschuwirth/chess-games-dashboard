@@ -263,13 +263,22 @@ export default function Board({
           const badgeHere = badge?.square === square.name
           const mark = badgeHere ? markBadge(badge.mark) : null
           /*
-            `rows` is already in the order it is drawn, so the first eight are the top
-            row and every eighth is the right-hand column — whichever way the board is
-            turned. That is what the badge needs: not which square it is, but whether
-            there is board left for it to hang over.
+            Which corner the badge hangs over.
+
+            `rows` is already in the order it is drawn, so the first eight are the top row
+            and every eighth is the right-hand column — whichever way the board is turned.
+            That is what the badge needs: not which square it is, but whether there is
+            board left for it to hang over on each side.
+
+            Where there is not, it moves to the opposite corner rather than tucking inside
+            the square. Tucking in keeps the circle whole and makes it look cramped against
+            the piece — a different shape of marker on the squares that happen to be at the
+            edge. Mirroring keeps the marker identical everywhere and only moves it, which
+            is the thing the eye forgives. Each axis flips on its own, so a square at the
+            top keeps its horizontal overhang and vice versa.
           */
-          const atTop = index < 8
-          const atRight = index % 8 === 7
+          const badgeX = index % 8 === 7 ? 6.5 : 38.5
+          const badgeY = index < 8 ? 38.5 : 6.5
 
           return (
             <div
@@ -339,11 +348,9 @@ export default function Board({
 
                 It straddles the corner, which is how a chess site draws one and reads
                 better than a circle tucked inside the square. The board clips its own
-                overflow, though, so a badge on the top row or the right-hand column
-                would come out as a circle with a slice missing — which is not rare, since
-                a mistake lands on an edge square often enough. So it is pulled flush on
-                exactly those squares and straddles everywhere else: the look is kept
-                where there is room for it and dropped only where it cannot be had.
+                overflow, so at the top row or the right-hand column it moves to the
+                opposite corner instead — see `badgeX` / `badgeY` above. It is the same
+                marker wherever it lands, which is what makes moving it unremarkable.
               */}
               {badgeHere && mark && (
                 <svg
@@ -353,16 +360,16 @@ export default function Board({
                   aria-label={`${badge!.mark} ${mark.label}`}
                 >
                   <circle
-                    cx={atRight ? 34.5 : 38.5}
-                    cy={atTop ? 10.5 : 6.5}
+                    cx={badgeX}
+                    cy={badgeY}
                     r="10.5"
                     fill={mark.fill}
                     stroke="rgba(0,0,0,0.35)"
                     strokeWidth="0.6"
                   />
                   <text
-                    x={atRight ? 34.5 : 38.5}
-                    y={atTop ? 10.5 : 6.5}
+                    x={badgeX}
+                    y={badgeY}
                     textAnchor="middle"
                     dominantBaseline="central"
                     fontSize={badge!.mark.length > 1 ? 11 : 14}

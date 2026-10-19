@@ -286,16 +286,22 @@ src/
   It is drawn in the square's own `viewBox`, like the piece sprites, so it scales exactly
   with the board at every width rather than needing a font size per breakpoint.
 
-  **It straddles the corner, and is pulled flush only where it would be cut.** Straddling
-  is how a chess site draws one and reads better than a circle tucked inside the square —
-  but the board clips its own overflow for its rounded corners, so a badge on the top row
-  or the right-hand column came out as a circle with a slice missing. Flush everywhere was
-  the first fix and it traded the look on fifty-odd squares to rescue fourteen. `rows` is
-  already in the order it is drawn, so the first eight entries are the top row and every
-  eighth is the right-hand column whichever way the board is turned — which is all the
-  badge needs to know: not which square it is on, but whether there is board left for it
-  to hang over. Each axis is clamped on its own, so a mistake on the top row still
-  straddles sideways.
+  **It straddles the corner, and at the board's edge it moves to the opposite one.**
+  Straddling is how a chess site draws one and reads better than a circle tucked inside the
+  square — but the board clips its own overflow for its rounded corners, so a badge on the
+  top row or the right-hand column came out with a slice missing.
+
+  Two wrong fixes came first, and the second is the instructive one. Flush everywhere
+  traded the look on fifty-odd squares to rescue fourteen. Flush on the edge squares alone
+  kept it where it mattered, and still left those fourteen looking *different* — a circle
+  jammed against the piece rather than hanging off the corner, which reads as a rendering
+  fault on exactly the squares where you most want to trust what you are seeing.
+
+  Moving it is the answer: the same marker, same size, just in whichever corner has board
+  left to hang over. `rows` is already in the order it is drawn, so the first eight entries
+  are the top row and every eighth is the right-hand column whichever way the board is
+  turned — which is all the badge needs to know. Each axis flips on its own, so a square at
+  the top keeps its horizontal overhang and one at the right keeps its vertical.
 
   The colours sit beside `MARK_COLOR` in `lib/review.ts` rather than in the board, for
   the reason that map exists at all: the marks are a severity scale and a scale only
