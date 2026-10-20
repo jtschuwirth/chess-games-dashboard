@@ -1061,6 +1061,56 @@ src/
   put "check the move notation" under the position field, which sends you to the box you
   did not touch.
 
+- **A comment keeps the space you just typed, and trimming it was a typing bug.** The PGN
+  tokenizer trimmed what it read out of `{ }`, which looks like tidying a pasted game and
+  is not, because the line editors write every keystroke back out as a PGN and read it
+  straight back. A comment ending in the space you had just pressed came back without it,
+  so the next word landed flush against the last: "wins the piece" could only ever be
+  typed as "winsthepiece". It was true in the exercise card and the pattern form alike,
+  for as long as both have existed.
+
+  The comment is now stored exactly as written. A comment that is *nothing but*
+  whitespace is still no comment, because `commentAt` refuses one and `fromPgn` goes
+  through it — so `{   }` in a pasted game still arrives as nothing. What is left is
+  padding on a real comment, and that is the **display's** to tidy: `commentedNodes` and
+  the move list trim where they draw. Storage keeps what you typed; the screen decides
+  what to show. The check that matters types a whole sentence one character at a time
+  through the editor's own write-and-read, which is the only way this shows up at all.
+
+- **A branch is a shape, not an indent.** The tree put each variation behind a one-pixel
+  rule at the same colour however deep it went, and a long variation wraps — so the
+  second line of one branch read as the next branch down, which is precisely the point at
+  which a sheet of five lines stops being readable. A block with a tint behind it has
+  edges you can see wherever it runs.
+
+  The rule and the tint fade with depth rather than changing hue. Every colour here
+  already means something — red a blunder, amber a mistake, violet the engine, sky a
+  selection — and a rainbow of nesting levels would be four more things to decode on a
+  panel you are reading moves off. Past the third level they stop fading: the indent
+  still grows, and a rule you cannot see is worse than one that repeats. The main line is
+  a step brighter than the branches, because it is read where they are scanned.
+
+- **An exercise saves on its own, and that needs a baseline.** A sheet is filled in over
+  days and one position at a time, so being made to commit all twelve to keep the one you
+  have just finished is the wrong unit: you either save work you were still in the middle
+  of, or leave the finished one at the mercy of the device.
+
+  A guide is one Firestore document and an exercise is an entry in its array, so the whole
+  document still goes over the wire — what makes this a *partial* save is what is in it.
+  `savedGuide` holds the server's own copy, and saving one exercise writes that with the
+  one entry replaced, so every other edit on the device stays a draft. The order is the
+  sheet's rather than the exercise's, so it is taken from the baseline and left alone;
+  reordering is a change to the sheet and belongs to **Save guide**. An exercise the
+  server has never seen is the one case with no place to go back to, and it is inserted
+  where it sits in the working copy.
+
+  `dirty` became **derived** in the same move, and had to. A flag can only say that
+  something was touched — typing a word and deleting it again left the sheet claiming
+  unsaved changes with nothing to save — and once one exercise can be saved by itself,
+  "is there anything left" is a question only a comparison can answer. The folded header
+  carries a dot rather than a word, because on a sheet of twelve this is something you
+  scan for and "unsaved" twelve times over is a column of noise.
+
 - **`useLineEditor` holds the cursor, and the second screen is why it exists.** Editing a
   line on a board is the pattern form's job and now the exercise card's, and the part that
   is easy to get wrong is subtle enough that two copies would be two copies to get wrong:

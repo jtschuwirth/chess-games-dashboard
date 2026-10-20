@@ -668,5 +668,7 @@ export function lineFromTree(
 export function commentedNodes(tree: MoveTree): { path: Path; san: string; text: string }[] {
   return walk(tree)
     .filter(entry => (entry.node.comment ?? '').trim().length > 0)
-    .map(entry => ({ path: entry.path, san: entry.node.san, text: entry.node.comment as string }))
+    // trimmed where it is read rather than where it is stored: the editor needs the
+    // space you just typed to survive the round trip, and nothing else wants to see it
+    .map(entry => ({ path: entry.path, san: entry.node.san, text: (entry.node.comment as string).trim() }))
 }

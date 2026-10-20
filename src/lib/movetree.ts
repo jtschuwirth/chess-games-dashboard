@@ -485,9 +485,21 @@ function tokenize(pgn: string): Token[] {
       tokens.push({ kind: 'close', text: ')' })
       at++
     } else if (char === '{') {
+      /*
+        Kept exactly as written, spaces and all. Trimming here read as tidying a pasted
+        PGN and was in fact a typing bug: the line editors write every keystroke back out
+        as a PGN and read it straight back, so a comment ending in the space you had just
+        pressed came back without it. "wins the piece" could only ever be typed as
+        "winsthepiece" — the space was deleted as fast as it was entered, in the exercise
+        card and the pattern form alike.
+
+        A comment that is nothing but whitespace is still dropped, because `commentAt`
+        refuses one, so `{   }` from a pasted game still arrives as no comment at all.
+        What is left is padding on a real comment, which is the display's to tidy.
+      */
       const end = body.indexOf('}', at)
       const stop = end === -1 ? body.length : end
-      tokens.push({ kind: 'comment', text: body.slice(at + 1, stop).trim() })
+      tokens.push({ kind: 'comment', text: body.slice(at + 1, stop) })
       at = stop + 1
     } else if (char === ';') {
       // a rest-of-line comment

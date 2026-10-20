@@ -32,6 +32,10 @@ export default function ExerciseCard({
   onChange,
   onRemove,
   onMove,
+  onSave,
+  saving,
+  unsaved,
+  justSaved,
 }: {
   exercise: Exercise
   index: number
@@ -49,6 +53,19 @@ export default function ExerciseCard({
    * to go.
    */
   onMove: (direction: -1 | 1) => void | null
+  /**
+   * Write this one exercise and leave the rest of the sheet unsaved.
+   *
+   * A sheet is filled in over days and one position at a time, so being made to commit
+   * all twelve to keep the one you have just finished is the wrong unit — you end up
+   * either saving work you were still in the middle of or leaving the finished one at
+   * the mercy of the device. Save guide is still there for the sheet as a whole.
+   */
+  onSave: () => void
+  saving: boolean
+  /** Whether this exercise differs from the copy the server holds. */
+  unsaved: boolean
+  justSaved: boolean
 }) {
   /*
    * Two complaints, not one. A bad FEN and a bad line are different mistakes about
@@ -138,6 +155,19 @@ export default function ExerciseCard({
           {moves > 0 ? `${moves} ${moves === 1 ? 'move' : 'moves'}` : 'nothing yet'}
         </span>
 
+        {/*
+          A dot rather than a word: on a folded sheet of twelve this is something you
+          scan for, and "unsaved" twelve times over is a column of noise. It is here and
+          not only inside the open card because what you want to know at a glance is
+          which positions are still only on this device.
+        */}
+        {unsaved && (
+          <span
+            title="This exercise has changes that are not saved"
+            className="w-1.5 h-1.5 rounded-full bg-amber-400/80 shrink-0"
+          />
+        )}
+
         <div className="ml-auto flex items-center gap-3 shrink-0">
           {/*
             Always here, not only while the card is open: reordering a sheet is something
@@ -173,6 +203,21 @@ export default function ExerciseCard({
             >
               {confirming ? 'Really remove?' : 'Remove'}
             </button>
+          )}
+
+          {open && (
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={saving || !unsaved}
+              title="Save this exercise, and leave the rest of the sheet as it is"
+              className="px-2.5 py-1 text-xs rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {saving ? 'Saving…' : 'Save'}
+            </button>
+          )}
+          {open && justSaved && !unsaved && (
+            <span className="text-xs text-emerald-400">Saved</span>
           )}
         </div>
       </div>

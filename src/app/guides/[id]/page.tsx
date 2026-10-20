@@ -9,6 +9,7 @@ import { clearDraft, readDraft, writeDraft } from '@/lib/draft'
 import {
   MAX_EXERCISES,
   emptyExercise,
+  exerciseChanged,
   exerciseHasContent,
   guideBody,
   guideProgress,
@@ -33,8 +34,18 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
   const [openId, setOpenId] = useState<string | null>(null)
   /** When this device last wrote a draft, so the page can say what it restored. */
   const [restored, setRestored] = useState<number | null>(null)
-  /** Whether anything has changed since the last save. */
-  const [dirty, setDirty] = useState(false)
+  /**
+    * The guide as the server last had it.
+    *
+    * A per-exercise save writes around it: everything the server holds, with the one
+    * exercise you pressed Save on replaced. Without a baseline there is nothing to write
+    * around — saving one exercise would mean writing the whole working copy under
+    * another name, which is just Save guide.
+    */
+  const [savedGuide, setSavedGuide] = useState<ExerciseGuide | null>(null)
+  /** Which exercise is being written right now, so only its own button says so. */
+  const [savingId, setSavingId] = useState<string | null>(null)
+  const [savedId, setSavedId] = useState<string | null>(null)
 
   const load = useCallback(
     () =>
@@ -57,15 +68,17 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
             body => Boolean(body) && Array.isArray((body as ExerciseGuide).exercises),
           )
 
+          // the baseline is always the server's copy, draft or no draft: it is what a
+          // per-exercise save writes around, and the draft is by definition not saved
+          setSavedGuide(found)
+
           if (draft && (!found.updatedAt || draft.editedAt >= found.updatedAt)) {
             setGuide({ ...draft.body, id: guideId })
             setRestored(draft.editedAt)
-            setDirty(true)
           } else {
             if (draft) clearDraft('guide', userId, guideId)
             setGuide(found)
             setRestored(null)
-            setDirty(false)
           }
           setLoadError(null)
         })
@@ -90,11 +103,32 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
         writeDraft('guide', userId, guideId, next)
         return next
       })
-      setDirty(true)
       setSaved(false)
+      setSavedId(null)
     },
     [userId, guideId],
   )
+
+  /*
+   * Derived rather than a flag. A flag can only say that something was touched, so a
+   * word typed and deleted again left the sheet claiming unsaved changes with nothing to
+   * save — and once one exercise can be saved on its own, "is there anything left" is a
+   * question only a comparison can answer.
+   */
+  const dirty = useMemo(
+    () => guide !== null && JSON.stringify(guideBody(guide)) !== JSON.stringify(savedGuide ? guideBody(savedGuide) : null),
+    [guide, savedGuide],
+  )
+
+  const changedIds = useMemo(() => {
+    if (!guide) return new Set<string>()
+    const base = new Map((savedGuide?.exercises ?? []).map(entry => [entry.id, entry]))
+    return new Set(
+      guide.exercises
+        .filter(entry => exerciseChanged(entry, base.get(entry.id)))
+        .map(entry => entry.id),
+    )
+  }, [guide, savedGuide])
 
   const progress = useMemo(() => (guide ? guideProgress(guide) : null), [guide])
 
@@ -108,13 +142,61 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
       await updateGuide(userId, guideId, guideBody(kept))
       clearDraft('guide', userId, guideId)
       setGuide(kept)
+      setSavedGuide(kept)
       setRestored(null)
-      setDirty(false)
       setSaved(true)
     } catch (caught) {
       setError(errorText(caught, 'Could not save that guide.'))
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * Write one exercise and leave the rest of the sheet unsaved.
+   *
+   * The whole document still goes to Firestore — a guide is one document and an exercise
+   * is an entry in its array, so there is nothing smaller to write. What makes this a
+   * partial save is *what* is written: the server's own copy with this one exercise
+   * replaced, so every other edit on the device stays a draft and nothing you were still
+   * in the middle of is committed by a press you made somewhere else.
+   *
+   * The order is the sheet's rather than the exercise's, so it is taken from the baseline
+   * and left alone. An exercise the server has never seen is the one case with no place
+   * to go back to, and it is inserted where it sits in the working copy.
+   */
+  async function saveExercise(id: string) {
+    if (!guide || !savedGuide || savingId) return
+
+    const current = guide.exercises.find(entry => entry.id === id)
+    if (!current || !exerciseHasContent(current)) return
+
+    setSavingId(id)
+    setError(null)
+    try {
+      const base = savedGuide.exercises
+      const at = base.findIndex(entry => entry.id === id)
+
+      let exercises: typeof base
+      if (at === -1) {
+        const into = Math.min(
+          Math.max(guide.exercises.findIndex(entry => entry.id === id), 0),
+          base.length,
+        )
+        exercises = [...base.slice(0, into), current, ...base.slice(into)]
+      } else {
+        exercises = base.map(entry => (entry.id === id ? current : entry))
+      }
+
+      const next = { ...savedGuide, exercises }
+      await updateGuide(userId, guideId, guideBody(next))
+      setSavedGuide(next)
+      setSavedId(id)
+      setSaved(false)
+    } catch (caught) {
+      setError(errorText(caught, 'Could not save that exercise.'))
+    } finally {
+      setSavingId(null)
     }
   }
 
@@ -236,6 +318,10 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
                 exercises: moveExercise(current.exercises, exercise.id, direction),
               }))
             }
+            onSave={() => saveExercise(exercise.id)}
+            saving={savingId === exercise.id}
+            unsaved={changedIds.has(exercise.id)}
+            justSaved={savedId === exercise.id}
           />
         ))}
 
@@ -264,7 +350,13 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
           {saving ? 'Saving…' : 'Save guide'}
         </button>
         {saved && <span className="text-xs text-emerald-400">Saved</span>}
-        {dirty && !saving && <span className="text-xs text-zinc-600">unsaved changes</span>}
+        {dirty && !saving && (
+          <span className="text-xs text-zinc-600">
+            {changedIds.size > 0
+              ? `${changedIds.size} exercise${changedIds.size === 1 ? '' : 's'} unsaved`
+              : 'unsaved changes'}
+          </span>
+        )}
         {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
     </div>

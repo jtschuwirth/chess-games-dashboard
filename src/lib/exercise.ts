@@ -180,6 +180,19 @@ export function guideProgress(guide: ExerciseGuide): GuideProgress {
  * A move off either end is no move: the list comes back as it was, so the caller never
  * has to range-check before asking.
  */
+/**
+ * Whether two exercises differ in anything that would be written.
+ *
+ * A structural compare rather than a flag, which is what lets a Save button know it has
+ * something to do. The flag it replaces could only ever say "something was touched":
+ * typing a word and deleting it again left the sheet reading `unsaved changes` with
+ * nothing to save, and after saving one exercise there would have been no way to work
+ * out whether the others still needed it.
+ */
+export function exerciseChanged(a: Exercise | undefined, b: Exercise | undefined): boolean {
+  return JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)
+}
+
 export function moveExercise(
   exercises: Exercise[],
   id: string,

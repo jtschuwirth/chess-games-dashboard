@@ -177,6 +177,29 @@ export default function MoveTreeBoard({
  * else is a variation you only see when you happen to be standing on it.
  */
 /**
+ * How a branch is set off from the line it leaves: an indent, a rule, and a tint.
+ *
+ * The tint is the part that matters and the part that was missing. A long variation
+ * wraps, and without a block behind it the second line of one branch reads as the next
+ * branch down — which is exactly what made a tree of five lines unreadable. With it, a
+ * branch is a shape you can see the edges of however far it runs.
+ *
+ * All three fade with depth rather than changing hue, because every colour here already
+ * means something — red a blunder, amber a mistake, violet the engine, sky a selection —
+ * and a rainbow of nesting levels would be four more things to decode on a panel you are
+ * reading moves off. Past the third level they stop fading: the indent still grows, and
+ * a rule you cannot see is worse than one that repeats.
+ */
+const BRANCH = [
+  'border-zinc-500 bg-zinc-800/50',
+  'border-zinc-600 bg-zinc-800/30',
+  'border-zinc-700 bg-zinc-800/20',
+] as const
+
+/** The main line is read and the side lines are scanned, so they are not the same ink. */
+const MOVE_INK = ['text-zinc-200', 'text-zinc-400', 'text-zinc-500'] as const
+
+/**
  * One run of moves: the first child each time, its siblings branching under it.
  *
  * The same shape as `toPgn`, deliberately — a variation is written straight after the
@@ -199,6 +222,7 @@ export function MoveRun({
   path,
   onPath,
   styleOf,
+  depth = 0,
 }: {
   tree: MoveTree
   /** The moves at this point: the first is the line, the rest branch off it. */
@@ -210,6 +234,8 @@ export function MoveRun({
   path: Path
   onPath: (path: Path) => void
   styleOf?: (node: MoveNode, path: Path) => BranchStyle | null
+  /** How many branches deep this run is, which is what it is drawn from. */
+  depth?: number
 }) {
   if (nodes.length === 0) return null
 
@@ -227,16 +253,20 @@ export function MoveRun({
         className={`px-1 rounded font-mono transition-colors ${
           active
             ? 'bg-zinc-200 text-zinc-900'
-            : `${style?.text ?? 'text-zinc-300'} hover:bg-zinc-800`
+            : `${style?.text ?? MOVE_INK[Math.min(depth, MOVE_INK.length - 1)]} hover:bg-zinc-800`
         }`}
       >
         {moveLabel(tree.startFen, ply, main.san, numberNext)}
       </button>
-      {main.comment && <span className="text-zinc-500 italic px-1">{main.comment}</span>}{' '}
+      {main.comment?.trim() && (
+        <span className="text-zinc-500 italic px-1">{main.comment.trim()}</span>
+      )}{' '}
       {variations.map(variation => (
         <span
           key={variation.id}
-          className="block pl-3 ml-1 border-l border-zinc-800 my-0.5 leading-relaxed"
+          className={`block pl-2.5 pr-1 my-1 rounded-r border-l-2 leading-relaxed ${
+            BRANCH[Math.min(depth, BRANCH.length - 1)]
+          }`}
         >
           <MoveRun
             tree={tree}
@@ -247,6 +277,7 @@ export function MoveRun({
             path={path}
             onPath={onPath}
             styleOf={styleOf}
+            depth={depth + 1}
           />
         </span>
       ))}
@@ -259,6 +290,7 @@ export function MoveRun({
         path={path}
         onPath={onPath}
         styleOf={styleOf}
+        depth={depth}
       />
     </>
   )
