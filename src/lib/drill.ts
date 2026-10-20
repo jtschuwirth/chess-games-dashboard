@@ -1,4 +1,4 @@
-import { replayGame } from './board'
+import { playMove, replayGame } from './board'
 import { betterMovesOf, firstMoveOf, isFault, trainableMistakes } from './review'
 import type { Color, DrillStat, GameRecord, ProposedMove, ReviewedMistake } from '@/types/chess'
 
@@ -119,6 +119,84 @@ export function buildDrillCards(games: GameRecord[], source: DrillSource): Drill
 }
 
 /**
+ * One position the drill asks about, along a line you wrote in review.
+ *
+ * The first step is the position the game was in; every later one is further down your
+ * own line, reached by playing your move and then the reply **you wrote for them**. That
+ * is the honest caveat and the reason only the first move was ever asked for before: the
+ * continuation depends on the opponent playing along, and here they play along because
+ * you said they would. It is still worth asking — the line is the plan you were counting
+ * on, and a plan you cannot produce past its first move is not a plan you had — so the
+ * card names whose move the reply was rather than letting it look like the engine's.
+ */
+export interface DrillStep {
+  /** The position to solve. */
+  fen: string
+  /** Their move that led here, from your own line. Null on the first step. */
+  reply: string | null
+  /** The move your line plays here. Empty on a card with no line to follow. */
+  expected: string
+  /** Where this sits in the game's own numbering, so the label reads `24… Qxe7`. */
+  ply: number
+  /** The reply's two squares, for the board to mark. Empty on the first step. */
+  highlight: string[]
+}
+
+/**
+ * The line an answer puts you on — the one whose first move you just played.
+ *
+ * The longest of them when several start the same way, since the question being asked is
+ * how much of it you know. Null when the move is not one you wrote down, and then there
+ * is nothing to follow: a move that holds is still a pass, it just has no continuation of
+ * yours to ask about.
+ */
+export function lineFor(card: DrillCard, san: string): string[] | null {
+  const matching = card.proposed
+    .filter(move => firstMoveOf(move) === san)
+    .map(move => move.line)
+
+  if (matching.length === 0) return null
+  return matching.reduce((longest, line) => (line.length > longest.length ? line : longest))
+}
+
+/**
+ * Your own moves along a line, each with the position it is played from.
+ *
+ * A line alternates — yours, theirs, yours — so your moves are the even indices and the
+ * step between two of them is a pair. A move that will not play from the position it
+ * reaches ends the walk there rather than throwing: a stored line is text somebody typed,
+ * and `MAX_LINE_PLIES` validation kept the legal prefix rather than the whole row.
+ */
+export function stepsAlong(fen: string, ply: number, line: string[]): DrillStep[] {
+  const steps: DrillStep[] = []
+  let position = fen
+  let reply: string | null = null
+  let highlight: string[] = []
+
+  for (let index = 0; index < line.length; index += 2) {
+    const expected = line[index]
+    if (!expected) break
+
+    steps.push({ fen: position, reply, expected, ply: ply + index, highlight })
+
+    const mine = playMove(position, expected)
+    if (!mine) break
+
+    const answer = line[index + 1]
+    if (!answer) break
+
+    const theirs = playMove(mine.fen, answer)
+    if (!theirs) break
+
+    position = theirs.fen
+    reply = answer
+    highlight = [theirs.from, theirs.to]
+  }
+
+  return steps
+}
+
+/**
  * How an answer turned out.
  *
  * `holds` is a pass on purpose. The point was never to recite the engine's first
@@ -134,6 +212,26 @@ export function judgeAttempt(
   tag: string,
 ): DrillVerdict {
   if (card.proposed.some(move => firstMoveOf(move) === san)) return 'yours'
+  if (engineBestSan && san === engineBestSan) return 'engine'
+  return isFault(tag) ? 'miss' : 'holds'
+}
+
+/**
+ * The same judgement one move further down your own line.
+ *
+ * `yours` means the move your line actually plays here, which is what the follow-up is
+ * asking for. Anything else that holds still passes, by the rule the first move already
+ * follows — finding something that keeps the game alive was never meant to mean reciting
+ * one — and it ends the sequence, because you have left the line there is nothing more of
+ * yours to ask for.
+ */
+export function judgeFollowUp(
+  expected: string,
+  san: string,
+  engineBestSan: string | null,
+  tag: string,
+): DrillVerdict {
+  if (san === expected) return 'yours'
   if (engineBestSan && san === engineBestSan) return 'engine'
   return isFault(tag) ? 'miss' : 'holds'
 }

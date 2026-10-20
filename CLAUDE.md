@@ -78,7 +78,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
    how far through you are.
 10. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
-   under the same dashboard filters, and read what is sticking by tag.
+   under the same dashboard filters, and read what is sticking by tag. Find the move you
+   wrote down and the drill plays their reply and asks what you do about it, down the
+   whole line you recorded.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
@@ -619,10 +621,43 @@ src/
   another is what made the old wording read oddly.
 - **An alternative is a line, not a move** — up to ten moves each side (`MAX_LINE_PLIES`), typed
   as "Nd5 Bxe7 Qxe7" with move numbers tolerated and stripped. Only the *first* move is judged by
-  the engine, and only the first is what a drill asks for, because the rest depends on the
-  opponent playing along; the continuation is still worth recording, since it is the plan you
+  the engine in the review form, because the rest depends on the opponent playing along; the
+  continuation is still worth recording, since it is the plan you
   were actually counting on. An illegal move ends the line there, and the legal prefix is kept
   rather than the whole row being thrown away.
+
+- **The drill asks for the whole line, not the move it starts with.** Producing the first
+  move of a four-ply plan is not the same as having the plan, and the drill used to stop
+  there and reveal everything — so a line you could not continue counted exactly like one
+  you knew. Now, when the move you answer with is one you wrote down and that line runs
+  on, the reply **you wrote for them** is played and the card asks what you do about it,
+  step by step to the end of the line.
+
+  The caveat is the one that kept this out before, and it is handled by saying it rather
+  than by refusing: the continuation depends on the opponent playing along, and here they
+  play along because you said they would. So the board writes *the move you wrote for
+  them* under the reply, instead of letting it pass as the engine's.
+
+  **Each step is judged by the rule that judged the first**, against a search on that
+  step's own position — one per step, fetched while you think. A move that is not the
+  one your line plays but still holds is a pass, because that rule has never been about
+  reciting; it simply ends the sequence, since you have left the line and there is no
+  continuation of yours left to ask for.
+
+  **The attempt is recorded once, and only if every step held.** That is stricter than it
+  was and is the point: a position where you find the move and then lose the thread is not
+  one you have learned. It does mean a line you wrote in detail is a harder card than a
+  bare move, which is the honest consequence of having claimed to know more.
+
+  `stepsAlong` walks a line into positions — your moves are its even indices, so a step
+  is a pair — and stops where a stored line stops being legal rather than throwing, since
+  a line is text somebody typed. Checked against every line in the account: 45 of them
+  walk to 72 steps, all legal, each one asked from the side actually to move.
+
+  The engine reading is **keyed by the position it was read for** and the one in force is
+  derived from that, rather than cleared when the step moves — clearing it would be a
+  synchronous `setState` in an effect, and it would also flash the previous step's number
+  onto the new position for a frame.
 - **Saved lines are nested in the move list**, under the move they replace, the way a board's
   analysis panel shows a variation — not under the board, where they were only visible while you
   happened to be standing on the branch ply, and easy to miss entirely. Every move of a line is
