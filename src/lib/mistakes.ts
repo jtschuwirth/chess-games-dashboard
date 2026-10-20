@@ -12,8 +12,9 @@
  * as you type and one that cannot. Checked against a real replay on all 1485 marked
  * moves in the data: the square agreed on every one and so did the piece.
  */
+import { gamePhases, type GamePhase } from './clocks'
 import { isFault, markBadge } from './review'
-import { SEVERITIES, settings } from './settings'
+import { SEVERITIES, settings, type AnalysisSettings } from './settings'
 import { SEVERITY_MARK } from './bands'
 import type { Color, GameRecord } from '@/types/chess'
 
@@ -78,6 +79,22 @@ export function fromYourSide(square: string, color: Color): string {
   return `${square[0]}${9 - rank}`
 }
 
+/**
+ * Which phase of the game a move was played in, by the label the phase table uses.
+ *
+ * `moveNumber` on an analysed move is already a count of *your* own moves — ply 4 and
+ * ply 5 are both move 3 — which is exactly the quantity the phase ranges are in, so
+ * there is nothing to convert. Your own phases, so "where do I go wrong in the opening"
+ * is asked in the move numbers you decided the opening runs to.
+ *
+ * It is the same vocabulary as the dashboard's `Ended in` and a different question:
+ * that one asks how long the game lasted, this one asks when the move was played. Null
+ * when the phases do not reach it, which only a hand-edited first boundary can produce.
+ */
+export function phaseOfMove(moveNumber: number, phases: GamePhase[]): string | null {
+  return phases.find(phase => moveNumber >= phase.from && moveNumber <= phase.to)?.label ?? null
+}
+
 export interface MistakeRow {
   game: GameRecord
   ply: number
@@ -90,6 +107,8 @@ export interface MistakeRow {
   /** The square it landed on, as played. */
   square: string
   piece: Piece
+  /** The phase of the game it was played in, by the phase table's own label. */
+  phase: string | null
 }
 
 /**
@@ -100,8 +119,13 @@ export interface MistakeRow {
  * list. A move whose notation names no square is dropped rather than guessed at; none
  * exist in the data, and one would be a hand-edited document rather than a real game.
  */
-export function mistakeRows(games: GameRecord[]): MistakeRow[] {
+export function mistakeRows(
+  games: GameRecord[],
+  config: AnalysisSettings = settings(),
+): MistakeRow[] {
   const rows: MistakeRow[] = []
+  // read once rather than per move: it is the same six ranges for every row
+  const phases = gamePhases(config)
 
   for (const game of games) {
     for (const move of game.analysis?.moves ?? []) {
@@ -120,6 +144,7 @@ export function mistakeRows(games: GameRecord[]): MistakeRow[] {
         cpAfter: move.cpAfter,
         square,
         piece: pieceMoved(move.san),
+        phase: phaseOfMove(move.moveNumber, phases),
       })
     }
   }
@@ -139,13 +164,18 @@ export interface MistakeFilter {
   marks: string[]
   /** Pieces to keep. Empty means every piece. */
   pieces: Piece[]
+  /** Phase labels to keep, as `gamePhases` writes them. Empty means anywhere. */
+  phases: string[]
 }
 
-export const NO_MISTAKE_FILTER: MistakeFilter = { marks: [], pieces: [] }
+export const NO_MISTAKE_FILTER: MistakeFilter = { marks: [], pieces: [], phases: [] }
 
 export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean {
   if (filter.marks.length > 0 && !filter.marks.includes(row.tag)) return false
   if (filter.pieces.length > 0 && !filter.pieces.includes(row.piece)) return false
+  if (filter.phases.length > 0 && (row.phase === null || !filter.phases.includes(row.phase))) {
+    return false
+  }
   return true
 }
 

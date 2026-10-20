@@ -34,7 +34,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    never seen carries a control to analyse it right there in the list; press it on several
    and they queue up rather than fighting each other for the one engine.
 5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
-   two of its own: which mark a move carried, and which piece moved. A heatmap shows
+   three of its own: which mark a move carried, which piece moved, and which phase of the
+   game it was played in. A heatmap shows
    where on the board they land, drawn from your own side so both colours read together;
    under it, the engine's readings, the second pass's verdicts, the Mistake database and
    then every marked move as a row, each linking to its game.
@@ -387,13 +388,37 @@ src/
   a board. Shaded against the **worst square** rather than the total, the think-time bars'
   rule — sixty-four squares split as shares would all be slivers.
 
+- **When a mistake happened is asked in your own phases, not in buckets of ten.** The
+  app already has a vocabulary for how far into a game something is — `GAME_PHASES`, the
+  user's own named segments in the user's own move numbers, which the eval graph's
+  dividers, the phase table and `decidedIn` all read. Inventing 1-10 / 11-20 / 21-30 here
+  would have been a second set of move-number buckets disagreeing with the first, and
+  "where do I go wrong in the opening" would have been asked about somebody else's idea
+  of the opening. So the chips are the phases, labelled by their ranges with the name on
+  hover, and moving a boundary in the settings re-files every row with nothing stored and
+  no engine run — the same bargain every derived figure here makes.
+
+  **Nothing had to be measured for it.** `moveNumber` on an analysed move is already a
+  count of *your* own moves — ply 4 and ply 5 are both move 3 — which is exactly the
+  quantity the phase ranges are in, so `phaseOfMove` is a lookup rather than a
+  conversion. `gamePhases` is read once per `mistakeRows` call rather than per row,
+  because it is the same six ranges for every one of sixteen hundred.
+
+  It is the dashboard's `Ended in` vocabulary asked a different question, so the row is
+  called **Played in**: that one asks how long the game lasted, this one asks when the
+  move was played, and a move marked on move 23 of a game that ran to 60 belongs to the
+  duel either way. They do not share a filter value — the phase chips are this page's own
+  state, not the query string — so the two compose rather than colliding.
+
 - **The mark filter offers what the account shows, and the piece filter is figurines.**
   `activeMarks` reads `marks` off the settings, so turning inaccuracies on puts `?!` in the
   row rather than leaving a filter that cannot match anything. Every chip carries the count
   it would give you, measured before this page's own filters are applied — otherwise every
   chip but the active one reads zero, which is the patterns finder's rule. The two compose,
   so "where do I blunder my queen" is two presses: 1641 marked moves became 694 blunders
-  became 94 queen blunders, and the heatmap followed each time.
+  became 94 queen blunders, and the heatmap followed each time. All three compose, which
+  is what makes the row worth having: 1641 marked moves, 58 of them played past move 50,
+  18 of those a king move — and the heatmap of those eighteen is a different board.
 
 - **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
   engine depth as a violet `⚙ d21`, and what the engine found when it found anything —

@@ -10,7 +10,7 @@ import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell
 import Panel from '@/components/Section'
 import ReviewPanel from '@/components/ReviewPanel'
 import VerdictPanel from '@/components/VerdictPanel'
-import { timeControlsIn } from '@/lib/clocks'
+import { gamePhases, timeControlsIn } from '@/lib/clocks'
 import {
   ALL_OPENINGS,
   UNCLASSIFIED_OPENING,
@@ -47,7 +47,7 @@ function MistakesBody({ userId }: { userId: string }) {
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
-  /** The two this page adds. They are not in the query string the game view reads. */
+  /** The three this page adds. They are not in the query string the game view reads. */
   const [mistakeFilter, setMistakeFilter] = useState<MistakeFilter>(NO_MISTAKE_FILTER)
   const [limit, setLimit] = useState(PAGE_SIZE)
   const [refreshing, setRefreshing] = useState(false)
@@ -125,6 +125,7 @@ function MistakesBody({ userId }: { userId: string }) {
   const marks = useMemo(() => activeMarks(), [])
   const byMark = useMemo(() => countBy(all, row => row.tag), [all])
   const byPiece = useMemo(() => countBy(all, row => row.piece), [all])
+  const byPhase = useMemo(() => countBy(all, row => row.phase ?? ''), [all])
 
   const search = useMemo(() => writeFilters(filters), [filters])
 
@@ -146,6 +147,19 @@ function MistakesBody({ userId }: { userId: string }) {
         ? current.pieces.filter(entry => entry !== piece)
         : [...current.pieces, piece],
     }))
+
+  const togglePhase = (label: string) =>
+    setMistakeFilter(current => ({
+      ...current,
+      phases: current.phases.includes(label)
+        ? current.phases.filter(entry => entry !== label)
+        : [...current.phases, label],
+    }))
+
+  const anyMistakeFilter =
+    mistakeFilter.marks.length > 0 ||
+    mistakeFilter.pieces.length > 0 ||
+    mistakeFilter.phases.length > 0
 
   return (
     <>
@@ -214,7 +228,39 @@ function MistakesBody({ userId }: { userId: string }) {
                     </button>
                   )
                 })}
-                {(mistakeFilter.marks.length > 0 || mistakeFilter.pieces.length > 0) && (
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-xs uppercase tracking-wide text-zinc-500"
+                title="When the move was played, in your own move numbers — not how long the game lasted"
+              >
+                Played in
+              </span>
+              <div className="flex gap-1.5 flex-wrap">
+                {gamePhases().map(phase => {
+                  const on = mistakeFilter.phases.includes(phase.label)
+                  const count = byPhase.get(phase.label) ?? 0
+                  return (
+                    <button
+                      key={phase.label}
+                      type="button"
+                      onClick={() => togglePhase(phase.label)}
+                      disabled={count === 0}
+                      title={`${phase.name} — moves ${phase.label}`}
+                      className={`px-3 py-1 text-xs rounded-full border transition-colors disabled:opacity-30 ${
+                        on
+                          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
+                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                      }`}
+                    >
+                      <span className="font-mono">{phase.label}</span>{' '}
+                      <span className={on ? 'text-zinc-500' : 'text-zinc-600'}>{count}</span>
+                    </button>
+                  )
+                })}
+                {anyMistakeFilter && (
                   <button
                     type="button"
                     onClick={() => setMistakeFilter(NO_MISTAKE_FILTER)}
