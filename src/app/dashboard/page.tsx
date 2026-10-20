@@ -4,25 +4,19 @@ import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import { useAnalysisQueue } from '@/components/AnalyseButton'
-import Chip from '@/components/Chip'
 import GameRow from '@/components/GameRow'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ClockPanel from '@/components/ClockPanel'
-import AccuracyPanel from '@/components/AccuracyPanel'
 import RatingPanel from '@/components/RatingPanel'
-import ReviewPanel from '@/components/ReviewPanel'
 import Panel from '@/components/Section'
+import FilterPanel from '@/components/FilterPanel'
 import StatBlockCard from '@/components/StatBlockCard'
 import ShapePanel from '@/components/ShapePanel'
 import SyncPanel from '@/components/SyncPanel'
-import VerdictPanel from '@/components/VerdictPanel'
 import ThinkPanel from '@/components/ThinkPanel'
 import VariationTable, { type VariationRow } from '@/components/VariationTable'
 import { onAnalysed, stopAll } from '@/lib/analysis-queue'
-import { ARC_LABEL, gameNames } from '@/lib/shape'
-import { getGames, getOpenings, getPatterns, getProfile, getRatingHistory } from '@/lib/firestore'
-import { patternTags } from '@/lib/pattern'
-import { tagName } from '@/lib/tags'
+import { getGames, getOpenings, getProfile, getRatingHistory } from '@/lib/firestore'
 import { sinceTimestamp } from '@/lib/game-filters'
 import type { RatingHistory } from '@/lib/rating-history'
 import {
@@ -37,58 +31,29 @@ import {
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import {
   ALL_OPENINGS,
-  DEFAULT_FILTERS,
   UNCLASSIFIED_OPENING,
   readFilters,
   writeFilters,
   type Filters,
 } from '@/lib/dashboard-filters'
-import { SINCE_OPTIONS } from '@/lib/game-filters'
-import { computeClockStats, computePhases, gamePhases, timeControlsIn } from '@/lib/clocks'
+import { computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
-import { SOURCE_LABEL } from '@/types/chess'
 import type {
-  Color,
   GameRecord,
   OpeningLine,
-  PatternRecord,
-  Source,
   UserProfile,
 } from '@/types/chess'
 
 /** Built once: the names are a table, not a reading of the games. */
-const SHAPE_OPTIONS = gameNames()
-
 const PAGE_SIZE = 50
 
 /**
  * `both` means both sites you play on. Uploaded games are a separate question — they are
  * games you brought in to study, not your record — so they only appear when asked for.
  */
-const SOURCE_OPTIONS: { value: Source | 'both'; label: string }[] = [
-  { value: 'both', label: 'both' },
-  { value: 'chesscom', label: SOURCE_LABEL.chesscom },
-  { value: 'lichess', label: SOURCE_LABEL.lichess },
-  { value: 'upload', label: SOURCE_LABEL.upload },
-]
 
-const REVIEW_OPTIONS: { value: Filters['reviewed']; label: string; title: string }[] = [
-  { value: null, label: 'any', title: 'Reviewed or not' },
-  { value: 'yes', label: 'reviewed', title: 'Games you have taken apart' },
-  { value: 'no', label: 'not reviewed', title: 'Games still waiting' },
-]
 
-const COLOR_OPTIONS: { value: Color | 'both'; label: string }[] = [
-  { value: 'both', label: 'both' },
-  { value: 'white', label: 'as White' },
-  { value: 'black', label: 'as Black' },
-]
 
-function FilterLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="text-xs uppercase tracking-wide text-zinc-500 sm:pt-2">{children}</span>
-  )
-}
 
 /** Blunders per analysed game, or null when none of them have been analysed. */
 function blunderRate(games: GameRecord[]): number | null {
@@ -99,14 +64,9 @@ function blunderRate(games: GameRecord[]): number | null {
   return Math.round((blunders / analysed.length) * 100) / 100
 }
 
-function toggle<T>(values: T[], value: T): T[] {
-  return values.includes(value) ? values.filter(item => item !== value) : [...values, value]
-}
-
 function DashboardBody({ userId }: { userId: string }) {
   const [games, setGames] = useState<GameRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
-  const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const [history, setHistory] = useState<RatingHistory>({})
   const [profile, setProfile] = useState<UserProfile | null>(null)
   const searchParams = useSearchParams()
@@ -115,20 +75,7 @@ function DashboardBody({ userId }: { userId: string }) {
   const [refreshing, setRefreshing] = useState(false)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  const {
-    opening,
-    timeControls,
-    since,
-    minRating,
-    maxRating,
-    color,
-    source,
-    endedIn,
-    mistakes,
-    shape,
-    reviewed,
-    tag,
-  } = filters
+  const { opening, endedIn, shape } = filters
 
   /** Mirror the filters into the address bar so a reload — or a shared link — restores the view. */
   useEffect(() => {
@@ -146,15 +93,13 @@ function DashboardBody({ userId }: { userId: string }) {
       Promise.all([
         getGames(userId, options),
         getOpenings(userId, options),
-        getPatterns(userId, options),
         getRatingHistory(userId, options),
         // the sync panel lives here now, and it needs to know which accounts are linked
         getProfile(userId, options),
       ])
-        .then(([loadedGames, loadedOpenings, loadedPatterns, loadedHistory, loadedProfile]) => {
+        .then(([loadedGames, loadedOpenings, loadedHistory, loadedProfile]) => {
           setGames(loadedGames)
           setOpenings(loadedOpenings)
-          setPatterns(loadedPatterns)
           setHistory(loadedHistory)
           setProfile(loadedProfile)
           setLoadError(null)
@@ -210,8 +155,6 @@ function DashboardBody({ userId }: { userId: string }) {
   const availableControls = useMemo(() => timeControlsIn(games ?? []), [games])
 
   const tree = useMemo(() => buildOpeningTree(openings), [openings])
-  /** Pattern names, so the mistake table can tell a pattern from a tag you invented. */
-  const patternTagList = useMemo(() => patternTags(patterns), [patterns])
   const allNodes = useMemo(() => flattenTree(tree), [tree])
   const unclassifiedView = opening === UNCLASSIFIED_OPENING
   const path = useMemo(
@@ -345,8 +288,6 @@ function DashboardBody({ userId }: { userId: string }) {
     )
   }
 
-  const isFiltered = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS)
-
   const up = current
     ? {
         label: parent ? openingLabel(parent.opening) : 'All games',
@@ -358,267 +299,35 @@ function DashboardBody({ userId }: { userId: string }) {
     <>
       {sync}
 
-      <Panel
-        id="filters"
-        title="Filters"
-        meta={`${scoped.length} of ${games.length} games`}
-        actions={
-          <>
-            {isFiltered && (
-              <button
-                onClick={() => setFilters(DEFAULT_FILTERS)}
-                className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
-              >
-                Reset
-              </button>
-            )}
-            <button
-              onClick={refresh}
-              disabled={refreshing}
-              title="Games load from a local cache — this re-reads them from Firestore"
-              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors disabled:opacity-40"
-            >
-              {refreshing ? 'Refreshing…' : 'Refresh'}
-            </button>
-          </>
-        }
+      <FilterPanel
+        filters={filters}
+        setFilters={setFilters}
+        patch={patch}
+        games={games ?? []}
+        scoped={scoped}
+        allNodes={allNodes}
+        openings={openings}
+        availableControls={availableControls}
+        path={path}
+        refresh={refresh}
+        refreshing={refreshing}
+      />
+
+      {/*
+        The slice travels with the link: "what went wrong in these games" is the same
+        question asked of the same set, so arriving there with the filters cleared would
+        mean setting them twice.
+      */}
+      <Link
+        href={`/mistakes${search}`}
+        className="flex items-center justify-between gap-3 px-5 py-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors"
       >
-        <div className="grid sm:grid-cols-[6rem_1fr] gap-x-4 gap-y-3 items-start">
-          <FilterLabel>Opening</FilterLabel>
-          <div className="flex flex-col gap-1.5 min-w-0">
-            <select
-              value={opening}
-              onChange={event => patch({ opening: event.target.value })}
-              className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600"
-            >
-              <option value={ALL_OPENINGS}>All games</option>
-              {allNodes.map(node => (
-                <option key={node.opening.id} value={node.opening.id}>
-                  {'— '.repeat(node.depth)}
-                  {openingLabel(node.opening)}
-                </option>
-              ))}
-              <option value={UNCLASSIFIED_OPENING}>Not in a saved opening</option>
-            </select>
-
-            {unclassifiedView && (
-              <div className="flex items-center gap-1.5 text-xs">
-                <button
-                  onClick={() => patch({ opening: ALL_OPENINGS })}
-                  className="text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  All games
-                </button>
-                <span className="text-zinc-700">›</span>
-                <span className="text-zinc-200">Not in a saved opening</span>
-              </div>
-            )}
-
-            {path.length > 0 && (
-              <div className="flex items-center gap-1.5 text-xs flex-wrap">
-                <button
-                  onClick={() => patch({ opening: ALL_OPENINGS })}
-                  className="text-zinc-400 hover:text-zinc-100 transition-colors"
-                >
-                  All games
-                </button>
-                {path.map((node, index) => (
-                  <span key={node.opening.id} className="flex items-center gap-1.5">
-                    <span className="text-zinc-700">›</span>
-                    <button
-                      onClick={() => patch({ opening: node.opening.id })}
-                      className={
-                        index === path.length - 1
-                          ? 'text-zinc-200'
-                          : 'text-zinc-400 hover:text-zinc-100 transition-colors'
-                      }
-                    >
-                      {openingLabel(node.opening)}
-                    </button>
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-
-          <FilterLabel>Site</FilterLabel>
-          <div className="flex gap-1.5 flex-wrap">
-            {SOURCE_OPTIONS.map(option => (
-              <Chip
-                key={option.value}
-                active={source === option.value}
-                onClick={() => patch({ source: option.value })}
-              >
-                {option.label}
-              </Chip>
-            ))}
-          </div>
-
-          <FilterLabel>Control</FilterLabel>
-          <div className="flex gap-1.5 flex-wrap">
-            <Chip active={timeControls.length === 0} onClick={() => patch({ timeControls: [] })}>
-              any
-            </Chip>
-            {availableControls.map(control => (
-              <Chip
-                key={control.key}
-                active={timeControls.includes(control.key)}
-                onClick={() => patch({ timeControls: toggle(timeControls, control.key) })}
-                title={`${control.games} game${control.games === 1 ? '' : 's'}`}
-              >
-                {control.label}
-              </Chip>
-            ))}
-          </div>
-
-          <FilterLabel>Ended in</FilterLabel>
-          <select
-            value={endedIn ?? ''}
-            onChange={event => patch({ endedIn: event.target.value || null })}
-            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600 sm:max-w-xs"
-          >
-            <option value="">Any phase</option>
-            {gamePhases().map(phase => (
-              <option key={phase.label} value={phase.label}>
-                {phase.name} (moves {phase.label})
-              </option>
-            ))}
-          </select>
-
-          <FilterLabel>Engine</FilterLabel>
-          <select
-            value={mistakes ?? ''}
-            onChange={event =>
-              patch({ mistakes: (event.target.value || null) as Filters['mistakes'] })
-            }
-            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600 sm:max-w-xs"
-          >
-            <option value="">Any game</option>
-            <option value="analysed">Analysed</option>
-            <option value="unanalysed">Not analysed yet</option>
-            <option value="stale">Analysed by an older build</option>
-            <option value="blunder">Contains a blunder</option>
-            <option value="mistake">Contains a mistake</option>
-            <option value="clean">No blunder or mistake</option>
-          </select>
-
-          <FilterLabel>Shape</FilterLabel>
-          <select
-            value={shape ?? ''}
-            onChange={event => patch({ shape: event.target.value || null })}
-            title="Only analysed games have a shape, so this hides the ones the engine has not seen"
-            className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-zinc-600 sm:max-w-xs"
-          >
-            <option value="">Any shape</option>
-            <optgroup label="What became of the lead">
-              {SHAPE_OPTIONS.grouped.map(group => (
-                <option key={group.arc} value={`arc:${group.arc}`}>
-                  {ARC_LABEL[group.arc]}
-                </option>
-              ))}
-            </optgroup>
-            {SHAPE_OPTIONS.grouped.map(group => (
-              <optgroup key={group.arc} label={ARC_LABEL[group.arc]}>
-                {group.names.map(name => (
-                  <option key={name} value={`name:${name}`}>
-                    {name}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-            <optgroup label="Decided off the board">
-              {SHAPE_OPTIONS.offBoard.map(name => (
-                <option key={name} value={`name:${name}`}>
-                  {name}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-
-          <FilterLabel>Review</FilterLabel>
-          <div className="flex gap-1.5 flex-wrap items-center">
-            {REVIEW_OPTIONS.map(option => (
-              <Chip
-                key={option.label}
-                active={reviewed === option.value}
-                onClick={() => patch({ reviewed: option.value })}
-                title={option.title}
-              >
-                {option.label}
-              </Chip>
-            ))}
-            {tag && (
-              <button
-                onClick={() => patch({ tag: null })}
-                title="Clear the tag filter"
-                className="px-3 py-1 text-xs rounded-full bg-sky-500/15 text-sky-300 border border-sky-500/30 hover:bg-sky-500/25 transition-colors"
-              >
-                {tagName(tag)} ✕
-              </button>
-            )}
-          </div>
-
-          <FilterLabel>Colour</FilterLabel>
-          <div className="flex gap-1.5 flex-wrap">
-            {COLOR_OPTIONS.map(option => (
-              <Chip
-                key={option.value}
-                active={color === option.value}
-                onClick={() => patch({ color: option.value })}
-              >
-                {option.label}
-              </Chip>
-            ))}
-          </div>
-
-          <FilterLabel>Period</FilterLabel>
-          <div className="flex gap-1.5 flex-wrap">
-            {SINCE_OPTIONS.map(option => (
-              <Chip
-                key={option.value}
-                active={since === option.value}
-                onClick={() => patch({ since: option.value })}
-              >
-                {option.label}
-              </Chip>
-            ))}
-          </div>
-
-          <FilterLabel>My rating</FilterLabel>
-          <div className="flex items-center gap-2 text-xs text-zinc-500">
-            <input
-              type="number"
-              inputMode="numeric"
-              value={minRating ?? ''}
-              onChange={event =>
-                patch({ minRating: event.target.value ? Number(event.target.value) : null })
-              }
-              placeholder="any"
-              className="w-20 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-600"
-            />
-            <span>to</span>
-            <input
-              type="number"
-              inputMode="numeric"
-              value={maxRating ?? ''}
-              onChange={event =>
-                patch({ maxRating: event.target.value ? Number(event.target.value) : null })
-              }
-              placeholder="any"
-              className="w-20 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-600"
-            />
-          </div>
-        </div>
-
-        {openings.length === 0 && (
-          <p className="text-xs text-zinc-500">
-            <Link href="/openings" className="underline text-zinc-300">
-              Save an opening
-            </Link>{' '}
-            to break these numbers down by line.
-          </p>
-        )}
-      </Panel>
+        <span className="text-sm text-zinc-200">
+          What went wrong
+          <span className="text-zinc-600"> · the engine&rsquo;s marks, your tags, and where they land</span>
+        </span>
+        <span className="text-xs text-zinc-500 shrink-0">Mistakes →</span>
+      </Link>
 
       <Panel id="results" title="Results">
         <div className="grid gap-3 md:grid-cols-3">
@@ -636,31 +345,10 @@ function DashboardBody({ userId }: { userId: string }) {
         source={filters.source}
       />
 
-      <AccuracyPanel games={scoped} />
-
       <ShapePanel
         games={scoped}
         active={shape}
         onPick={value => patch({ shape: value })}
-      />
-
-      <VerdictPanel
-        userId={userId}
-        games={scoped}
-        onJudged={judged =>
-          setGames(prev =>
-            (prev ?? []).map(game => (game.id === judged.id ? judged : game)),
-          )
-        }
-      />
-
-      <ReviewPanel
-        patternTags={patternTagList}
-        games={scoped}
-        activeTag={tag}
-        onPickTag={value => patch({ tag: value })}
-        hrefFor={hrefFor}
-        drillHref={`/learn${search}`}
       />
 
       <ThinkPanel

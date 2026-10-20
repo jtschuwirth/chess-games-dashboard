@@ -21,7 +21,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    lichess studies where the lines are worked out, each playable on a board in the page,
    and the references it came from. Writing is behind an Edit switch, saved by a button,
    and what is unsaved is kept on the device.
-4. `/dashboard` — Sync games sits at the top, folded, so bringing in new games does not
+4. `/dashboard` — results, openings, clock and rating; what went wrong moved to
+   `/mistakes`, which the page links to carrying the slice. Sync games sits at the top, folded, so bringing in new games does not
    mean leaving the page. The Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
    own rating band — the Control chips list the clocks you have actually played. Read overall / as White / as Black stats, the clock KPI, and the game phase
@@ -32,7 +33,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    same filter, the way clicking a variation row sets the opening. A game the engine has
    never seen carries a control to analyse it right there in the list; press it on several
    and they queue up rather than fighting each other for the one engine.
-5. `/games/{id}` — one game: the eval graph and what kind of game it was, folded away at the
+5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
+   two of its own: which mark a move carried, and which piece moved. A heatmap shows
+   where on the board they land, drawn from your own side so both colours read together;
+   under it, the engine's readings, the second pass's verdicts, the Mistake database and
+   then every marked move as a row, each linking to its game.
+6. `/games/{id}` — one game: the eval graph and what kind of game it was, folded away at the
    top; a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
    pass over the marked moves says what *kind* of mistake each was — a line missed, a
@@ -40,7 +46,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
-6. `/patterns` — write up the ideas themselves, found rather than scrolled: a search box
+7. `/patterns` — write up the ideas themselves, found rather than scrolled: a search box
    over names, motifs and conditions, and chips for the kind, whether the essentials are
    answered, and the motif. One write-up is a name, a kind (tactics, mate, strategy,
    development, endgame), the conditions that bring it about and the examples showing it
@@ -55,7 +61,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    where you wanted it. The boundaries you write under 3a and 3b become a **drill**
    at `/patterns/drill`: a change is put in front of you and you say whether the pattern
    still works, scheduled so the ones you get wrong come back soonest.
-7. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
+8. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it.
    The plan says what it has been worth — your rating going in against where it stands
@@ -63,12 +69,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    history with nothing to press. Weeks fold, and more can be added as the plan runs on.
    Editing is local until you press Save, and what you have not saved is kept on the
    device, so closing the tab or switching app does not cost you it.
-8. `/guides` — a coach's sheet of positions written up. A guide is a name, a line
+9. `/guides` — a coach's sheet of positions written up. A guide is a name, a line
    saying what the set trains, and the exercises themselves; an exercise is a diagram
    pasted in as a FEN and the board you solve it on, with variations, a comment on any
    move and a note on the whole thing. Tick one off when you have it, and the sheet says
    how far through you are.
-9. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
+10. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag.
 
@@ -90,6 +96,7 @@ src/
 │   ├── openings/page.tsx       # Saved opening lines
 │   ├── openings/[id]/page.tsx  # One opening as a study: ideas, variants, games, links
 │   ├── dashboard/page.tsx      # Stats + opening filter + game list
+│   ├── mistakes/page.tsx       # Every marked move, the heatmap, the tag table
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
 │   ├── patterns/drill/page.tsx # Does the pattern still work here?
@@ -109,7 +116,7 @@ src/
 │                               # VariationTable, GameRow, Chip, Board, PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # MoveTreeBoard, MoveNoteCard, ProposedMoves, TagPicker,
-│                               # PatternStudy, ExerciseCard,
+│                               # PatternStudy, ExerciseCard, FilterPanel, MistakeHeatmap,
 │                               # EnginePanel, EngineMode, PatternForm, TagGroupsPanel,
 │                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
@@ -150,6 +157,7 @@ src/
 │   ├── draft.ts                # anything edited and not yet saved, kept on the device
 │   ├── pattern.ts              # thematic patterns: kinds, PGN parsing, tag plumbing
 │   ├── pattern-drill.ts        # the boundary drill: cards off 3a/3b, and when they come back
+│   ├── mistakes.ts             # marked moves as rows: the square, the piece, the heatmap
 │   ├── exercise.ts             # a coach's sheet: guides, exercises, how far through
 │   ├── use-line-editor.ts      # editing a line on a board, cursor held as moves
 │   ├── tags.ts                 # your own tag vocabulary: groups, stable ids, display names
@@ -337,6 +345,55 @@ src/
   you played out in a variation carries nothing — which is right, because it was never
   analysed. Checked on the real thing: standing on the variation that *replaces* a
   blunder, at the same ply, draws no badge.
+
+- **What went wrong is its own dashboard.** The games dashboard answers "how did these
+  go" — results, openings, clock, rating — and had three panels answering a different
+  question bolted underneath it: the engine's readings, the second pass's verdicts and the
+  Mistake database. Those moved to `/mistakes`, which asks only that question and can
+  therefore ask it properly: every marked move as a row, with the game it happened in, and
+  two filters the games dashboard has no use for.
+
+  It **shares the filter panel rather than copying it**. `FilterPanel` was two hundred and
+  sixty lines inside the dashboard, which was fine while there was one; a second copy would
+  be a second place for "1 week" to stop meaning seven days. Both pages read and write the
+  same query string, so the link between them carries the slice — arriving with the filters
+  cleared would mean setting them twice. The panel takes an `extra` slot for the rows one
+  page adds, because "narrow what I am looking at" should be one box wherever you are.
+
+- **The square a mistake landed on and the piece that moved are read off the notation.**
+  A SAN already carries both — `Nxd4` is a knight to d4 — and castling is the only case
+  needing the colour to say which square the king reached. Replaying every analysed game
+  to learn the same two things took **1.9 seconds against 2 milliseconds** for the parse,
+  which is the difference between a page that re-filters as you press a chip and one that
+  does not. It is checked against a real `chess.js` replay on all 1485 marked moves in the
+  data: the square agreed on every one, and so did the piece.
+
+  Nothing new is stored. This is the same habit as `materialByPly` — the answer was
+  already in `game.moves` and `analysis.moves`, and the only question was how cheaply it
+  could be got out.
+
+- **The heatmap is drawn from your own side, and only the rank is mirrored.** As White
+  your king starts on e1 and as Black on e8, so mapping rank `r` to `9 - r` puts both on
+  e1 and leaves every file meaning what it meant. Rotating the board 180° instead would
+  send e8 to d1 and quietly swap your king's file for your queen's. Without the mirror the
+  two halves of your games cannot be read together at all: a weakness you keep creating in
+  front of your own king is on rank 2 as White and rank 7 as Black, and split across those
+  it shows as nothing on either. **As played** is still a press away, because a square can
+  matter in its own right.
+
+  It is a board-shaped chart rather than the `Board` component: there are no pieces to
+  place and no moves to make, and teaching the real board about arbitrary square tinting
+  would complicate the thing five screens depend on for the sake of one that is not really
+  a board. Shaded against the **worst square** rather than the total, the think-time bars'
+  rule — sixty-four squares split as shares would all be slivers.
+
+- **The mark filter offers what the account shows, and the piece filter is figurines.**
+  `activeMarks` reads `marks` off the settings, so turning inaccuracies on puts `?!` in the
+  row rather than leaving a filter that cannot match anything. Every chip carries the count
+  it would give you, measured before this page's own filters are applied — otherwise every
+  chip but the active one reads zero, which is the patterns finder's rule. The two compose,
+  so "where do I blunder my queen" is two presses: 1641 marked moves became 694 blunders
+  became 94 queen blunders, and the heatmap followed each time.
 
 - **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
   engine depth as a violet `⚙ d21`, and what the engine found when it found anything —
