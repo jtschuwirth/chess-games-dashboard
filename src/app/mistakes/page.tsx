@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import AccuracyPanel from '@/components/AccuracyPanel'
@@ -30,7 +30,7 @@ import {
   markTint,
   matchesMistake,
   mistakeRows,
-  timedCount,
+  moveTotals,
   type MistakeFilter,
   type Piece,
 } from '@/lib/mistakes'
@@ -42,6 +42,66 @@ import type { GameRecord, OpeningLine, PatternRecord } from '@/types/chess'
 
 /** How many rows before the list becomes a page you scroll rather than read. */
 const PAGE_SIZE = 60
+
+/**
+ * One chip of a filter row: what pressing it would give you, over what that is out of.
+ *
+ * The first number is marked moves and is measured before this page's own filters, so
+ * each chip says what it would give you rather than zero — the patterns finder's rule.
+ * The second is **every analysed move of yours in the same bucket**, and without it the
+ * first cannot be compared with its neighbour: 5 marked moves after a five-minute think
+ * against 506 after a think under five seconds reads as a damning fact about fast moves
+ * and is mostly a fact about how rarely anyone thinks for five minutes. The share is
+ * what carries, and it is on the chip itself rather than a panel away, because the chip
+ * is where the comparison is being made.
+ *
+ * A bucket with moves in it but nothing marked is the most useful chip on the row — it
+ * is a thing you do and never go wrong at — so it is still legible while being
+ * unpressable, rather than faded to the 30% an empty one used to get.
+ */
+function FilterChip({
+  label,
+  count,
+  total,
+  on,
+  onClick,
+  describe,
+}: {
+  label: ReactNode
+  count: number
+  /** Every analysed move in the same bucket. Left out where every chip shares one. */
+  total?: number
+  on: boolean
+  onClick: () => void
+  /** What the bucket is, for the title: "moves you spent over 5m on". */
+  describe: string
+}) {
+  const share = total ? Math.round((count / total) * 1000) / 10 : null
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={count === 0}
+      title={
+        share === null
+          ? describe
+          : `${count} of ${total} ${describe} are marked — ${share}%`
+      }
+      className={`px-3 py-1 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-default ${
+        on
+          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
+          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+      }`}
+    >
+      {label}{' '}
+      <span className={on ? 'text-zinc-600' : 'text-zinc-500'}>{count}</span>
+      {total !== undefined && (
+        <span className={on ? 'text-zinc-500' : 'text-zinc-700'}>/{total}</span>
+      )}
+    </button>
+  )
+}
 
 function MistakesBody({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
@@ -129,9 +189,12 @@ function MistakesBody({ userId }: { userId: string }) {
   const byPiece = useMemo(() => countBy(all, row => row.piece), [all])
   const byPhase = useMemo(() => countBy(all, row => row.phase ?? ''), [all])
   const byThink = useMemo(() => countBy(all, row => row.thinkBand ?? ''), [all])
-  /* a game synced before clocks were captured has no think to report, and saying so is
-     the only way the chips below can fail to add up to the total without reading as a bug */
-  const timed = useMemo(() => timedCount(all), [all])
+  /*
+   * The denominator, over the same games the rows come from. It is the moves where
+   * nothing went wrong, which is 93% of them, and it is what turns "5 marked" into
+   * "5 of 118".
+   */
+  const totals = useMemo(() => moveTotals(scoped), [scoped])
 
   const search = useMemo(() => writeFilters(filters), [filters])
 
@@ -193,56 +256,51 @@ function MistakesBody({ userId }: { userId: string }) {
         extra={
           <div className="flex flex-col gap-3 border-t border-zinc-800 pt-3">
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs uppercase tracking-wide text-zinc-500">Mark</span>
+              <span className="text-xs uppercase tracking-wide text-zinc-500">
+                Mark
+                <span className="normal-case tracking-normal text-zinc-600">
+                  {' '}
+                  — {all.length} of {totals.moves} of your moves
+                </span>
+                {totals.stale > 0 && (
+                  <span
+                    className="normal-case tracking-normal text-amber-500/80"
+                    title="A shallower engine finds fewer faults and scores them smaller, so every share below reads low. The Engine filter can take them out."
+                  >
+                    {' '}
+                    · {totals.stale} analysed by an older build
+                  </span>
+                )}
+              </span>
+              {/* no per-chip total: every mark shares the one denominator above */}
               <div className="flex gap-1.5 flex-wrap">
-                {marks.map(mark => {
-                  const on = mistakeFilter.marks.includes(mark)
-                  return (
-                    <button
-                      key={mark}
-                      type="button"
-                      onClick={() => toggleMark(mark)}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors font-mono ${
-                        on
-                          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                      }`}
-                    >
-                      {mark}
-                      <span className={on ? 'text-zinc-500' : 'text-zinc-600'}>
-                        {' '}
-                        {byMark.get(mark) ?? 0}
-                      </span>
-                    </button>
-                  )
-                })}
+                {marks.map(mark => (
+                  <FilterChip
+                    key={mark}
+                    label={<span className="font-mono">{mark}</span>}
+                    count={byMark.get(mark) ?? 0}
+                    on={mistakeFilter.marks.includes(mark)}
+                    onClick={() => toggleMark(mark)}
+                    describe={`moves marked ${mark}`}
+                  />
+                ))}
               </div>
             </div>
 
             <div className="flex flex-col gap-1.5">
               <span className="text-xs uppercase tracking-wide text-zinc-500">Piece moved</span>
               <div className="flex gap-1.5 flex-wrap">
-                {PIECES.map(piece => {
-                  const on = mistakeFilter.pieces.includes(piece)
-                  const count = byPiece.get(piece) ?? 0
-                  return (
-                    <button
-                      key={piece}
-                      type="button"
-                      onClick={() => togglePiece(piece)}
-                      disabled={count === 0}
-                      title={PIECE_LABEL[piece]}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors disabled:opacity-30 ${
-                        on
-                          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                      }`}
-                    >
-                      <span className="text-sm">{PIECE_FIGURINE[piece]}</span>{' '}
-                      <span className={on ? 'text-zinc-500' : 'text-zinc-600'}>{count}</span>
-                    </button>
-                  )
-                })}
+                {PIECES.map(piece => (
+                  <FilterChip
+                    key={piece}
+                    label={<span className="text-sm">{PIECE_FIGURINE[piece]}</span>}
+                    count={byPiece.get(piece) ?? 0}
+                    total={totals.byPiece.get(piece) ?? 0}
+                    on={mistakeFilter.pieces.includes(piece)}
+                    onClick={() => togglePiece(piece)}
+                    describe={`${PIECE_LABEL[piece].toLowerCase()} moves`}
+                  />
+                ))}
               </div>
             </div>
 
@@ -254,27 +312,17 @@ function MistakesBody({ userId }: { userId: string }) {
                 Played in
               </span>
               <div className="flex gap-1.5 flex-wrap">
-                {gamePhases().map(phase => {
-                  const on = mistakeFilter.phases.includes(phase.label)
-                  const count = byPhase.get(phase.label) ?? 0
-                  return (
-                    <button
-                      key={phase.label}
-                      type="button"
-                      onClick={() => togglePhase(phase.label)}
-                      disabled={count === 0}
-                      title={`${phase.name} — moves ${phase.label}`}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors disabled:opacity-30 ${
-                        on
-                          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                      }`}
-                    >
-                      <span className="font-mono">{phase.label}</span>{' '}
-                      <span className={on ? 'text-zinc-500' : 'text-zinc-600'}>{count}</span>
-                    </button>
-                  )
-                })}
+                {gamePhases().map(phase => (
+                  <FilterChip
+                    key={phase.label}
+                    label={<span className="font-mono">{phase.label}</span>}
+                    count={byPhase.get(phase.label) ?? 0}
+                    total={totals.byPhase.get(phase.label) ?? 0}
+                    on={mistakeFilter.phases.includes(phase.label)}
+                    onClick={() => togglePhase(phase.label)}
+                    describe={`${phase.name.toLowerCase()} moves`}
+                  />
+                ))}
               </div>
             </div>
 
@@ -283,34 +331,25 @@ function MistakesBody({ userId }: { userId: string }) {
                 <span title="Seconds you spent on the move itself, read off the game's own clock readings">
                   Thought for
                 </span>
-                {timed < all.length && (
+                {totals.timed < totals.moves && (
                   <span className="normal-case tracking-normal text-zinc-600">
                     {' '}
-                    — {timed} of {all.length} are timed
+                    — {totals.timed} of {totals.moves} moves are timed
                   </span>
                 )}
               </span>
               <div className="flex gap-1.5 flex-wrap">
-                {THINK_BANDS.map(band => {
-                  const on = mistakeFilter.think.includes(band.label)
-                  const count = byThink.get(band.label) ?? 0
-                  return (
-                    <button
-                      key={band.label}
-                      type="button"
-                      onClick={() => toggleThink(band.label)}
-                      disabled={count === 0}
-                      className={`px-3 py-1 text-xs rounded-full border transition-colors disabled:opacity-30 ${
-                        on
-                          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                      }`}
-                    >
-                      {band.label}{' '}
-                      <span className={on ? 'text-zinc-500' : 'text-zinc-600'}>{count}</span>
-                    </button>
-                  )
-                })}
+                {THINK_BANDS.map(band => (
+                  <FilterChip
+                    key={band.label}
+                    label={band.label}
+                    count={byThink.get(band.label) ?? 0}
+                    total={totals.byThink.get(band.label) ?? 0}
+                    on={mistakeFilter.think.includes(band.label)}
+                    onClick={() => toggleThink(band.label)}
+                    describe={`moves you spent ${band.label} on`}
+                  />
+                ))}
                 {anyMistakeFilter && (
                   <button
                     type="button"

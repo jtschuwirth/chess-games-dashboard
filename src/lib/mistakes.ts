@@ -12,7 +12,7 @@
  * as you type and one that cannot. Checked against a real replay on all 1485 marked
  * moves in the data: the square agreed on every one and so did the piece.
  */
-import { thinkBandOf } from './accuracy'
+import { isComparable, thinkBandOf } from './accuracy'
 import { gamePhases, thinkPerPly, type GamePhase } from './clocks'
 import { isFault, markBadge } from './review'
 import { SEVERITIES, settings, type AnalysisSettings } from './settings'
@@ -163,6 +163,82 @@ export function mistakeRows(
   }
 
   return rows.sort((a, b) => b.game.playedAt - a.game.playedAt || a.ply - b.ply)
+}
+
+/**
+ * Every analysed move of yours in these games, bucketed the way the chips are.
+ *
+ * **This is the denominator, and without it none of the chips mean anything.** Five
+ * marked moves after a five-minute think against two hundred and forty-four after a
+ * think under five seconds says only that you rarely think for five minutes. The
+ * question is what share of each went wrong, and that needs the moves where nothing
+ * did — which are 93% of them and were already on disk: the first pass evaluates
+ * *every* one of your moves, so `analysis.moves` is the whole denominator and not a
+ * sample of it. Checked on the real thing: it holds exactly your own move count on all
+ * 570 analysed games, no game short and none over.
+ *
+ * Counted over the same games the rows come from, by the same rules, so a chip's two
+ * numbers can never be drawn from different sets — which is the failure a second
+ * reader of this data would otherwise walk into, since `mistakesByThinkTime` counts
+ * only games the current build analysed and this counts all of them.
+ *
+ * `stale` is why that difference exists, and it is reported rather than filtered: a
+ * shallower engine finds fewer faults *and* scores them smaller, so a stale analysis
+ * pulls a share down in a direction nothing on screen would otherwise say. There are
+ * none in this account today, and there were 138 for months once.
+ */
+export interface MoveTotals {
+  /** Every move of yours the engine has been over. */
+  moves: number
+  byPiece: Map<Piece, number>
+  byPhase: Map<string, number>
+  byThink: Map<string, number>
+  /** How many of them carry a clock reading, which only `byThink` can be short of. */
+  timed: number
+  /** Games in the slice analysed by an older build, which read low. */
+  stale: number
+}
+
+export function moveTotals(
+  games: GameRecord[],
+  config: AnalysisSettings = settings(),
+): MoveTotals {
+  const totals: MoveTotals = {
+    moves: 0,
+    byPiece: new Map(),
+    byPhase: new Map(),
+    byThink: new Map(),
+    timed: 0,
+    stale: 0,
+  }
+
+  const phases = gamePhases(config)
+  const add = <T,>(into: Map<T, number>, key: T) => into.set(key, (into.get(key) ?? 0) + 1)
+
+  for (const game of games) {
+    const moves = game.analysis?.moves
+    if (!moves || moves.length === 0) continue
+    if (!isComparable(game)) totals.stale++
+
+    const spent = thinkPerPly(game)
+
+    for (const move of moves) {
+      totals.moves++
+      add(totals.byPiece, pieceMoved(move.san))
+
+      const phase = phaseOfMove(move.moveNumber, phases)
+      if (phase) add(totals.byPhase, phase)
+
+      const think = spent?.[move.ply]
+      if (think === undefined) continue
+      totals.timed++
+
+      const band = thinkBandOf(think)
+      if (band) add(totals.byThink, band)
+    }
+  }
+
+  return totals
 }
 
 /** Which marks the account actually shows, worst first, for the filter row. */

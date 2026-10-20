@@ -448,23 +448,56 @@ src/
   since the two are different quantities and the app writes them differently everywhere
   else.
 
-  What it shows is worth stating carefully, because the obvious reading is the wrong one.
-  Filtering to a band and reading the `??` share gives **how badly you went wrong given
-  that you went wrong** — of the moves already marked, how many were blunders. It is not
-  how often you go wrong, which needs the denominator of every move in the band and is the
-  think panel's own figure. And the panel's standing caveat still applies to both: a hard
-  position takes longer *and* goes wrong more often, so neither reading proves the clock
-  caused anything.
+  The think panel's standing caveat still governs how any of it is read: a hard position
+  takes longer *and* goes wrong more often, so a slow band reading worse is not the clock's
+  doing. What the rows below answer is the *size* of that, which is a different question
+  from what causes it.
 
 - **The mark filter offers what the account shows, and the piece filter is figurines.**
   `activeMarks` reads `marks` off the settings, so turning inaccuracies on puts `?!` in the
   row rather than leaving a filter that cannot match anything. Every chip carries the count
   it would give you, measured before this page's own filters are applied — otherwise every
-  chip but the active one reads zero, which is the patterns finder's rule. The two compose,
+  chip but the active one reads zero, which is the patterns finder's rule. They compose,
   so "where do I blunder my queen" is two presses: 1641 marked moves became 694 blunders
   became 94 queen blunders, and the heatmap followed each time. All four compose, which
   is what makes the rows worth having: 1641 marked moves, 58 of them played past move 50,
   18 of those a king move — and the heatmap of those eighteen is a different board.
+
+- **A chip also carries what its count is out of, and without that every one of them
+  misleads.** `506` marked moves played in under five seconds against `5` played after a
+  think over five minutes reads as a damning fact about moving fast. It is very nearly a
+  fact about how rarely anyone thinks for five minutes: those are 11,197 moves and 35
+  moves. With the denominator it inverts — **4.5% against 14.3%** — and the ranking of
+  every other row inverts with it. Pawns looked like the worst piece on the board at 391
+  marked moves and are the second safest at 6.3%, because you move pawns more than
+  anything; the bishop is the riskiest at 8.9%. The opening is not 10 mistakes' worth of
+  safe, it is 0.4%.
+
+  **It cost nothing to find, which is the point.** The first pass evaluates *every* one of
+  your moves, not only the ones it ends up marking, so `analysis.moves` already holds the
+  93% where nothing went wrong — the denominator was on disk the whole time. `moveTotals`
+  is one pass over the same games the rows come from, bucketing by the same three keys.
+  Same habit as `materialByPly` and the SAN parse: the answer was already there.
+
+  **It is counted over the same games as the rows, deliberately, and not by
+  `mistakesByThinkTime`.** That one guards on `isComparable`, because it is a *rate* and a
+  shallower engine would quietly lower a numerator. Here the numerator has to stay what
+  pressing the chip gives you — the rule every chip on this page follows — so the
+  denominator has to be drawn from the same set or the two numbers are from two different
+  slices and `5/3` becomes expressible. The depth problem is therefore *reported* instead:
+  the Mark row names how many analysed games in the slice came from an older build, in
+  amber, because those pull every share down in a direction nothing else on screen would
+  show. There are none today and there were 138 for months.
+
+  The Mark row keeps its denominator in the heading rather than on each chip — `?`, `??`
+  and `?!` all share the one total, so per-chip it would be the same large number printed
+  three times. Everywhere else it varies per chip, which is exactly what makes the row
+  comparable. The full fraction with its percentage is the chip's `title`: *5 of 35 moves
+  you spent over 5m on are marked — 14.3%*.
+
+  A bucket with moves in it and nothing marked is the most useful chip on a row — a thing
+  you do often and never get wrong — so an unpressable chip stays legible at 50% rather
+  than fading to the 30% that made it unreadable.
 
 - **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
   engine depth as a violet `⚙ d21`, and what the engine found when it found anything —
