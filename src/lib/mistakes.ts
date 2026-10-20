@@ -12,7 +12,8 @@
  * as you type and one that cannot. Checked against a real replay on all 1485 marked
  * moves in the data: the square agreed on every one and so did the piece.
  */
-import { gamePhases, type GamePhase } from './clocks'
+import { thinkBandOf } from './accuracy'
+import { gamePhases, thinkPerPly, type GamePhase } from './clocks'
 import { isFault, markBadge } from './review'
 import { SEVERITIES, settings, type AnalysisSettings } from './settings'
 import { SEVERITY_MARK } from './bands'
@@ -109,6 +110,10 @@ export interface MistakeRow {
   piece: Piece
   /** The phase of the game it was played in, by the phase table's own label. */
   phase: string | null
+  /** Seconds spent on the move, or null where the game carries no clock readings. */
+  think: number | null
+  /** Which think-time band that falls in, by the band's own label. */
+  thinkBand: string | null
 }
 
 /**
@@ -128,11 +133,17 @@ export function mistakeRows(
   const phases = gamePhases(config)
 
   for (const game of games) {
-    for (const move of game.analysis?.moves ?? []) {
-      if (!isFault(move.tag)) continue
+    const marked = (game.analysis?.moves ?? []).filter(move => isFault(move.tag))
+    if (marked.length === 0) continue
 
+    // read the clock once per game, and only for a game with something to say
+    const spent = thinkPerPly(game)
+
+    for (const move of marked) {
       const square = landedOn(move.san, game.color)
       if (!square) continue
+
+      const think = spent?.[move.ply] ?? null
 
       rows.push({
         game,
@@ -145,6 +156,8 @@ export function mistakeRows(
         square,
         piece: pieceMoved(move.san),
         phase: phaseOfMove(move.moveNumber, phases),
+        think,
+        thinkBand: think === null ? null : thinkBandOf(think),
       })
     }
   }
@@ -166,9 +179,16 @@ export interface MistakeFilter {
   pieces: Piece[]
   /** Phase labels to keep, as `gamePhases` writes them. Empty means anywhere. */
   phases: string[]
+  /** Think-time band labels to keep. Empty means however long you took. */
+  think: string[]
 }
 
-export const NO_MISTAKE_FILTER: MistakeFilter = { marks: [], pieces: [], phases: [] }
+export const NO_MISTAKE_FILTER: MistakeFilter = {
+  marks: [],
+  pieces: [],
+  phases: [],
+  think: [],
+}
 
 export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean {
   if (filter.marks.length > 0 && !filter.marks.includes(row.tag)) return false
@@ -176,7 +196,21 @@ export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean 
   if (filter.phases.length > 0 && (row.phase === null || !filter.phases.includes(row.phase))) {
     return false
   }
+  /*
+   * A move with no reading is dropped by a think filter rather than kept. The question
+   * being asked is how long you took, and a game the clock was never captured for has no
+   * answer — folding those in with the fast moves would be inventing one. How many that
+   * is, is on the screen beside the chips.
+   */
+  if (filter.think.length > 0 && (row.thinkBand === null || !filter.think.includes(row.thinkBand))) {
+    return false
+  }
   return true
+}
+
+/** How many rows carry a clock reading at all, which the think row has to say. */
+export function timedCount(rows: MistakeRow[]): number {
+  return rows.reduce((total, row) => total + (row.thinkBand === null ? 0 : 1), 0)
 }
 
 export interface HeatSquare {

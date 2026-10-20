@@ -1,5 +1,5 @@
 import { isStale } from './analysis'
-import { alignClocks, parseTimeControl, timeSpentPerPly } from './clocks'
+import { thinkPerPly } from './clocks'
 import { isFault } from './review'
 import type { GameRecord, GameResult } from '@/types/chess'
 
@@ -148,7 +148,7 @@ export interface TimeBucket {
  * Labels switch to minutes past a minute: "1–3m" is read at a glance where "60–180s"
  * has to be converted first.
  */
-const BUCKETS: { label: string; from: number; to: number | null }[] = [
+export const THINK_BANDS: { label: string; from: number; to: number | null }[] = [
   { label: 'under 5s', from: 0, to: 5 },
   { label: '5–15s', from: 5, to: 15 },
   { label: '15–30s', from: 15, to: 30 },
@@ -157,6 +157,20 @@ const BUCKETS: { label: string; from: number; to: number | null }[] = [
   { label: '3–5m', from: 180, to: 300 },
   { label: 'over 5m', from: 300, to: null },
 ]
+
+/**
+ * Which band a think time falls in, by its label.
+ *
+ * Each band owns its lower bound and not its upper, so there is no second where a move
+ * belongs to two. The label is the value anything filtering by this stores, the same
+ * bargain a phase label makes: move a boundary and the slice it named stops existing.
+ */
+export function thinkBandOf(seconds: number): string | null {
+  const band = THINK_BANDS.find(
+    entry => seconds >= entry.from && (entry.to === null || seconds < entry.to),
+  )
+  return band?.label ?? null
+}
 
 /**
  * Your analysed moves bucketed by how long you spent on them.
@@ -171,7 +185,7 @@ const BUCKETS: { label: string; from: number; to: number | null }[] = [
  * than contributing zeros.
  */
 export function mistakesByThinkTime(games: GameRecord[]): TimeBucket[] {
-  const buckets: TimeBucket[] = BUCKETS.map(bucket => ({
+  const buckets: TimeBucket[] = THINK_BANDS.map(bucket => ({
     ...bucket,
     moves: 0,
     faults: 0,
@@ -179,19 +193,19 @@ export function mistakesByThinkTime(games: GameRecord[]): TimeBucket[] {
   }))
 
   for (const game of games) {
-    if (!isComparable(game) || !game.clocks) continue
+    // the depth guard is this reading's own: it is a RATE, and a shallower engine finds
+    // fewer faults in the numerator. A think time is a clock measurement and needs none.
+    if (!isComparable(game)) continue
 
-    const control = parseTimeControl(game.timeControl)
-    const aligned = alignClocks(game.clocks, game.moves.length)
-    if (!control || !aligned) continue
-
-    const spent = timeSpentPerPly(aligned, control)
+    const spent = thinkPerPly(game)
+    if (!spent) continue
 
     for (const move of game.analysis?.moves ?? []) {
       const seconds = spent[move.ply]
       if (seconds === undefined) continue
 
-      const bucket = buckets.find(entry => seconds >= entry.from && (entry.to === null || seconds < entry.to))
+      const label = thinkBandOf(seconds)
+      const bucket = buckets.find(entry => entry.label === label)
       if (!bucket) continue
 
       bucket.moves++

@@ -181,6 +181,28 @@ export function clockUsage(game: GameRecord): ClockUsage | null {
   }
 }
 
+/**
+ * Seconds spent on every ply of a game, or null when there is nothing to read.
+ *
+ * Null covers the three real cases and they mean the same thing: a game synced before
+ * clocks were captured, a daily or unlimited game where per-move timing means nothing,
+ * and a readings array too short for the move list. All three are **no reading** rather
+ * than zero, because a move nobody timed is not a move played instantly.
+ *
+ * It is one function because two callers now want it — the think-time bands on the
+ * dashboard and the think filter on the mistakes page — and getting a think time off a
+ * game is four steps with a trap in each.
+ */
+export function thinkPerPly(game: GameRecord): number[] | null {
+  if (!game.clocks) return null
+
+  const control = parseTimeControl(game.timeControl)
+  const aligned = alignClocks(game.clocks, game.moves.length)
+  if (!control || !aligned) return null
+
+  return timeSpentPerPly(aligned, control)
+}
+
 export interface GamePhase {
   name: string
   label: string

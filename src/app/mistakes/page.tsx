@@ -10,7 +10,8 @@ import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell
 import Panel from '@/components/Section'
 import ReviewPanel from '@/components/ReviewPanel'
 import VerdictPanel from '@/components/VerdictPanel'
-import { gamePhases, timeControlsIn } from '@/lib/clocks'
+import { THINK_BANDS } from '@/lib/accuracy'
+import { formatDuration, gamePhases, timeControlsIn } from '@/lib/clocks'
 import {
   ALL_OPENINGS,
   UNCLASSIFIED_OPENING,
@@ -29,6 +30,7 @@ import {
   markTint,
   matchesMistake,
   mistakeRows,
+  timedCount,
   type MistakeFilter,
   type Piece,
 } from '@/lib/mistakes'
@@ -47,7 +49,7 @@ function MistakesBody({ userId }: { userId: string }) {
   const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [patterns, setPatterns] = useState<PatternRecord[]>([])
   const [filters, setFilters] = useState<Filters>(() => readFilters(searchParams))
-  /** The three this page adds. They are not in the query string the game view reads. */
+  /** The four this page adds. They are not in the query string the game view reads. */
   const [mistakeFilter, setMistakeFilter] = useState<MistakeFilter>(NO_MISTAKE_FILTER)
   const [limit, setLimit] = useState(PAGE_SIZE)
   const [refreshing, setRefreshing] = useState(false)
@@ -126,6 +128,10 @@ function MistakesBody({ userId }: { userId: string }) {
   const byMark = useMemo(() => countBy(all, row => row.tag), [all])
   const byPiece = useMemo(() => countBy(all, row => row.piece), [all])
   const byPhase = useMemo(() => countBy(all, row => row.phase ?? ''), [all])
+  const byThink = useMemo(() => countBy(all, row => row.thinkBand ?? ''), [all])
+  /* a game synced before clocks were captured has no think to report, and saying so is
+     the only way the chips below can fail to add up to the total without reading as a bug */
+  const timed = useMemo(() => timedCount(all), [all])
 
   const search = useMemo(() => writeFilters(filters), [filters])
 
@@ -156,10 +162,19 @@ function MistakesBody({ userId }: { userId: string }) {
         : [...current.phases, label],
     }))
 
+  const toggleThink = (label: string) =>
+    setMistakeFilter(current => ({
+      ...current,
+      think: current.think.includes(label)
+        ? current.think.filter(entry => entry !== label)
+        : [...current.think, label],
+    }))
+
   const anyMistakeFilter =
     mistakeFilter.marks.length > 0 ||
     mistakeFilter.pieces.length > 0 ||
-    mistakeFilter.phases.length > 0
+    mistakeFilter.phases.length > 0 ||
+    mistakeFilter.think.length > 0
 
   return (
     <>
@@ -260,6 +275,42 @@ function MistakesBody({ userId }: { userId: string }) {
                     </button>
                   )
                 })}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-xs uppercase tracking-wide text-zinc-500">
+                <span title="Seconds you spent on the move itself, read off the game's own clock readings">
+                  Thought for
+                </span>
+                {timed < all.length && (
+                  <span className="normal-case tracking-normal text-zinc-600">
+                    {' '}
+                    — {timed} of {all.length} are timed
+                  </span>
+                )}
+              </span>
+              <div className="flex gap-1.5 flex-wrap">
+                {THINK_BANDS.map(band => {
+                  const on = mistakeFilter.think.includes(band.label)
+                  const count = byThink.get(band.label) ?? 0
+                  return (
+                    <button
+                      key={band.label}
+                      type="button"
+                      onClick={() => toggleThink(band.label)}
+                      disabled={count === 0}
+                      className={`px-3 py-1 text-xs rounded-full border transition-colors disabled:opacity-30 ${
+                        on
+                          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
+                          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                      }`}
+                    >
+                      {band.label}{' '}
+                      <span className={on ? 'text-zinc-500' : 'text-zinc-600'}>{count}</span>
+                    </button>
+                  )
+                })}
                 {anyMistakeFilter && (
                   <button
                     type="button"
@@ -332,6 +383,12 @@ function MistakesBody({ userId }: { userId: string }) {
                   <span className="text-xs text-zinc-500 min-w-0 truncate">
                     <span className="text-zinc-600">{PIECE_FIGURINE[row.piece]}</span> vs{' '}
                     {row.game.opponent}
+                    {row.think !== null && (
+                      <span className="text-zinc-600" title="Time spent on this move">
+                        {' '}
+                        · {formatDuration(row.think)}
+                      </span>
+                    )}
                     <span className="text-zinc-600">
                       {' '}
                       · {new Date(row.game.playedAt).toLocaleDateString()}

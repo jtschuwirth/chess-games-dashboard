@@ -34,8 +34,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
    never seen carries a control to analyse it right there in the list; press it on several
    and they queue up rather than fighting each other for the one engine.
 5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
-   three of its own: which mark a move carried, which piece moved, and which phase of the
-   game it was played in. A heatmap shows
+   four of its own: which mark a move carried, which piece moved, which phase of the game
+   it was played in, and how long you thought before playing it. A heatmap shows
    where on the board they land, drawn from your own side so both colours read together;
    under it, the engine's readings, the second pass's verdicts, the Mistake database and
    then every marked move as a row, each linking to its game.
@@ -410,14 +410,60 @@ src/
   duel either way. They do not share a filter value — the phase chips are this page's own
   state, not the query string — so the two compose rather than colliding.
 
+- **How long you thought is asked in the bands the think panel already uses.** The same
+  argument as the phases one level up: `THINK_BANDS` in `lib/accuracy.ts` is the
+  vocabulary the dashboard's think-time panel is drawn in — under 5s, 5-15s, 15-30s,
+  30-60s, then 1-3m, 3-5m and over 5m, split three ways at the long end because in a slow
+  control a single "over 60s" bucket holds more of the game than everything else put
+  together. A second set of boundaries here would be a second answer to "was that a fast
+  move". So the constant is exported and `thinkBandOf` is the lookup, and the two screens
+  cannot drift.
+
+  The bands are **absolute seconds and not a share of the clock**, which is the opposite
+  of the choice `phaseEntry` makes. A phase entry has to be comparable across 3+2 and
+  15+10 because it is read in one column; this is a filter sitting directly under the
+  Control chips, so narrowing to one clock is a press away, and "under 5s" means the same
+  thing to a player in both formats where "4% of the base" means nothing to anyone.
+
+  **`thinkPerPly` is one function because getting a think time off a game is four steps
+  with a trap in each** — clocks that may be absent, a daily control where per-move timing
+  means nothing, a readings array that may be longer than the move list, and an increment
+  already included in the reading. It was inline in `mistakesByThinkTime` and is now in
+  `lib/clocks.ts`, read by both.
+
+  **The depth guard belongs to the rate, not to the clock.** `mistakesByThinkTime` counts
+  faults per move, so it drops games the current build has not analysed: a shallower
+  engine finds fewer faults and would quietly lower one band's numerator. A think time is
+  a clock measurement, and a shallow analysis does not make it wrong — so the rows here
+  keep every marked move, and the comment in `mistakesByThinkTime` says which of the two
+  it is.
+
+  **A move nobody timed is dropped by the filter rather than counted as fast.** The
+  question is how long you took and a game synced before clocks were captured has no
+  answer; folding those in with the instant moves would be inventing one. How many that is
+  is printed beside the chips, and the row says nothing when every marked move is timed —
+  which is the case on this account.
+
+  Every row also carries its own think, as a duration (`1m 28s`) rather than a clock,
+  since the two are different quantities and the app writes them differently everywhere
+  else.
+
+  What it shows is worth stating carefully, because the obvious reading is the wrong one.
+  Filtering to a band and reading the `??` share gives **how badly you went wrong given
+  that you went wrong** — of the moves already marked, how many were blunders. It is not
+  how often you go wrong, which needs the denominator of every move in the band and is the
+  think panel's own figure. And the panel's standing caveat still applies to both: a hard
+  position takes longer *and* goes wrong more often, so neither reading proves the clock
+  caused anything.
+
 - **The mark filter offers what the account shows, and the piece filter is figurines.**
   `activeMarks` reads `marks` off the settings, so turning inaccuracies on puts `?!` in the
   row rather than leaving a filter that cannot match anything. Every chip carries the count
   it would give you, measured before this page's own filters are applied — otherwise every
   chip but the active one reads zero, which is the patterns finder's rule. The two compose,
   so "where do I blunder my queen" is two presses: 1641 marked moves became 694 blunders
-  became 94 queen blunders, and the heatmap followed each time. All three compose, which
-  is what makes the row worth having: 1641 marked moves, 58 of them played past move 50,
+  became 94 queen blunders, and the heatmap followed each time. All four compose, which
+  is what makes the rows worth having: 1641 marked moves, 58 of them played past move 50,
   18 of those a king move — and the heatmap of those eighteen is a different board.
 
 - **Each row in the game list says what has been done to that game** — `◆ reviewed` in blue, the
