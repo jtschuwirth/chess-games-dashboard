@@ -36,9 +36,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
 5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
    four of its own: which mark a move carried, which piece moved, which phase of the game
    it was played in, and how long you thought before playing it. A heatmap shows
-   where on the board they land, drawn from your own side so both colours read together;
-   under it, the engine's readings, the second pass's verdicts, the Mistake database and
-   then every marked move as a row, each linking to its game.
+   where on the board they land; under it, the engine's readings, the second pass's
+   verdicts, the Mistake database and then every marked move as a row carrying what the
+   second pass made of it, each linking to its game.
 6. `/games/{id}` — one game: the eval graph and what kind of game it was, folded away at the
    top; a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
@@ -373,20 +373,65 @@ src/
   already in `game.moves` and `analysis.moves`, and the only question was how cheaply it
   could be got out.
 
-- **The heatmap is drawn from your own side, and only the rank is mirrored.** As White
-  your king starts on e1 and as Black on e8, so mapping rank `r` to `9 - r` puts both on
-  e1 and leaves every file meaning what it meant. Rotating the board 180° instead would
-  send e8 to d1 and quietly swap your king's file for your queen's. Without the mirror the
-  two halves of your games cannot be read together at all: a weakness you keep creating in
-  front of your own king is on rank 2 as White and rank 7 as Black, and split across those
-  it shows as nothing on either. **As played** is still a press away, because a square can
-  matter in its own right.
+- **The heatmap draws the squares the moves were played on, and e5 is e5.** It had a
+  `from my side` view that mirrored a Black game's ranks onto White's, so that a weakness
+  in front of your own king read on one rank instead of two: rank 2 as White and rank 7 as
+  Black are the same square relative to you.
+
+  The argument was about *relative* geometry and the board it was drawn on carried
+  *absolute* labels, and that contradiction made it lie. The square printed `e5` held
+  White's e5 mistakes **and** Black's e4 ones, and e4 and e5 are not the same square to
+  anybody — 1.e4 e5 puts two different pawns on them. The top of the ranking read `e5 —
+  77` about two squares at once, where the honest reading is e5 with 70 and e4 with 51.
+
+  A relative board can be built; it just cannot be labelled with square names. It would
+  need its own coordinates — "my second rank" — which is a second system to learn for a
+  question the **Colour** chips already answer: narrow to one colour and rank 7 is rank 7.
+  So the mirror is gone rather than relabelled.
 
   It is a board-shaped chart rather than the `Board` component: there are no pieces to
   place and no moves to make, and teaching the real board about arbitrary square tinting
   would complicate the thing five screens depend on for the sake of one that is not really
   a board. Shaded against the **worst square** rather than the total, the think-time bars'
   rule — sixty-four squares split as shares would all be slivers.
+
+  **Nothing in it is explained in a sentence.** It carried two paragraphs — what the
+  mirror did, and what the shading was measured against — on a panel whose whole content
+  is a picture. The counts are drawn on the squares, the ranking is beside them with the
+  worst square's bar running full, and the share of all mistakes is a column rather than a
+  clause. That is the rule the rest of the app already follows: if a control needs a
+  paragraph, the paragraph is a signal about the control.
+
+- **The row says what the second pass made of the move, in the game view's own words.**
+  The list was a move, a square, an opponent and a pair of evaluations — and `verdicts`
+  already held, for 79% of those moves, the thing actually worth scanning for: the name of
+  the fall, how many of the engine's candidates held, and what was on the board. Reading
+  it meant opening the game.
+
+  It is drawn from the same three inputs and with the same vocabulary as `EnginePanel`:
+  `VERDICT_LABEL` for the descriptor, `STANDING_BADGE[standingOf(cpBefore)]` for its
+  colour, and `holds/looked` beside it. A descriptor that read one way in a list and
+  another on the game it came from would be two vocabularies for one judgement.
+
+  `verdictsOf` is called once per game inside `mistakeRows` rather than per row — it maps
+  over the handful of verdicts a game has and replays nothing, so this costs nothing like
+  the material inventory would. A reading you have **dismissed** counts as no reading, so
+  a rejected verdict cannot come back through a different screen.
+
+  The coverage is in the panel's heading (`1641 · 1177 read`) for the reason the verdict
+  panel states its own: a column that is blank on a fifth of the rows must say it is
+  unread rather than letting that read as the second pass having found nothing.
+
+  Below `sm` the row drops back to the four columns it had, because a descriptor truncated
+  to two characters is noise where the move, the square and the evaluation are still the
+  point — and a hidden grid item still costs its gap, so the track goes with it.
+
+- **The list is most-recent-first, and that holds inside a game as well as between them.**
+  It sorted games newest first and the moves within a game ascending, which is two sorts
+  facing opposite ways: move 31 was played after move 12, so under one rule it comes
+  first. The alternative — reading a game's mistakes forwards — is a different ordering
+  principle, and a list that switches principle at a boundary you cannot see is a list you
+  have to stop and work out.
 
 - **When a mistake happened is asked in your own phases, not in buckets of ten.** The
   app already has a vocabulary for how far into a game something is — `GAME_PHASES`, the

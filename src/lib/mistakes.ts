@@ -14,10 +14,11 @@
  */
 import { isComparable, thinkBandOf } from './accuracy'
 import { gamePhases, thinkPerPly, type GamePhase } from './clocks'
+import { verdictsOf } from './verdict'
 import { isFault, markBadge } from './review'
 import { SEVERITIES, settings, type AnalysisSettings } from './settings'
 import { SEVERITY_MARK } from './bands'
-import type { Color, GameRecord } from '@/types/chess'
+import type { Color, GameRecord, MoveVerdict } from '@/types/chess'
 
 /** The pieces a move can be, in the order a board is worth reading them in. */
 export const PIECES = ['p', 'n', 'b', 'r', 'q', 'k'] as const
@@ -67,20 +68,6 @@ export function pieceMoved(san: string): Piece {
 }
 
 /**
- * The same square seen from your own side of the board.
- *
- * Only the rank is mirrored, never the file. As White your king starts on e1 and as Black
- * on e8, so mapping rank `r` to `9 - r` puts both on e1 and keeps every file meaning what
- * it meant — a kingside weakness stays on the kingside. Rotating the board 180° instead
- * would send e8 to d1 and quietly swap your king's file for your queen's.
- */
-export function fromYourSide(square: string, color: Color): string {
-  if (color === 'white') return square
-  const rank = Number(square[1])
-  return `${square[0]}${9 - rank}`
-}
-
-/**
  * Which phase of the game a move was played in, by the label the phase table uses.
  *
  * `moveNumber` on an analysed move is already a count of *your* own moves — ply 4 and
@@ -114,6 +101,19 @@ export interface MistakeRow {
   think: number | null
   /** Which think-time band that falls in, by the band's own label. */
   thinkBand: string | null
+  /**
+   * The second pass's reading of this move, where it has read it.
+   *
+   * Null covers two cases that look the same on a row and are not: a move nobody has
+   * read yet, and one whose reading you threw out. Both mean "no verdict to show", and
+   * the panel says how many of the first there are rather than letting a mostly-empty
+   * column read as the second pass having found nothing.
+   *
+   * Derived, not stored — `verdictsOf` re-makes the judgement from the measurements on
+   * every read, so a band moved in the settings renames these with no engine run. It is
+   * cheap: a map over the few verdicts a game has, with no replay of the game.
+   */
+  verdict: MoveVerdict | null
 }
 
 /**
@@ -136,8 +136,9 @@ export function mistakeRows(
     const marked = (game.analysis?.moves ?? []).filter(move => isFault(move.tag))
     if (marked.length === 0) continue
 
-    // read the clock once per game, and only for a game with something to say
+    // both read once per game, and only for a game with something to say
     const spent = thinkPerPly(game)
+    const verdicts = verdictsOf(game, config)
 
     for (const move of marked) {
       const square = landedOn(move.san, game.color)
@@ -158,11 +159,32 @@ export function mistakeRows(
         phase: phaseOfMove(move.moveNumber, phases),
         think,
         thinkBand: think === null ? null : thinkBandOf(think),
+        verdict: readingAt(verdicts, move.ply),
       })
     }
   }
 
-  return rows.sort((a, b) => b.game.playedAt - a.game.playedAt || a.ply - b.ply)
+  /*
+   * One ordering rule, most recent first, and it holds inside a game as well as between
+   * them. Newest game first with the moves ascending underneath read as two sorts facing
+   * opposite ways: move 31 was played after move 12, so under "most recent first" it
+   * comes first.
+   */
+  return rows.sort((a, b) => b.game.playedAt - a.game.playedAt || b.ply - a.ply)
+}
+
+/** The reading for one ply, with a rejected one counting as no reading. */
+function readingAt(
+  verdicts: Record<string, MoveVerdict>,
+  ply: number,
+): MoveVerdict | null {
+  const found = verdicts[String(ply)]
+  return found && !found.dismissed ? found : null
+}
+
+/** How many rows the second pass has actually read, which a panel showing them must say. */
+export function readCount(rows: MistakeRow[]): number {
+  return rows.reduce((total, row) => total + (row.verdict ? 1 : 0), 0)
 }
 
 /**
@@ -297,24 +319,27 @@ export interface HeatSquare {
 }
 
 /**
- * How often a mistake landed on each square.
+ * How often a mistake landed on each square, as played.
  *
- * `yourSide` mirrors a Black game's ranks onto White's, which is what makes the two
- * halves of your games comparable at all: without it a weakness you keep creating in
- * front of your own king is split across two boards and shows as nothing on either.
- * The raw view is still worth having — a square can matter in its own right — so it is
- * a switch rather than a decision.
+ * **The square is the square.** This mirrored a Black game's ranks onto White's for a
+ * while, so that your own side was always at the bottom and a weakness in front of your
+ * own king read on one rank instead of two. The argument was about *relative* geometry
+ * and the board it was drawn on was labelled with *absolute* names, which is a
+ * contradiction and it told a lie: the square printed `e5` held White's e5 mistakes and
+ * Black's e4 ones, and e4 and e5 are not the same square to anybody. A relative board
+ * would need relative labels — "my second rank" — and that is a second coordinate system
+ * for the sake of a question the Colour chips already answer honestly, by narrowing to
+ * one colour and letting rank 7 be rank 7.
  *
  * `share` is measured against the worst square rather than the total, because the
  * question is which squares stand out and a true share would make every one of
  * sixty-four a sliver. The same reasoning the think-time bars follow.
  */
-export function heatmapOf(rows: MistakeRow[], yourSide: boolean): HeatSquare[] {
+export function heatmapOf(rows: MistakeRow[]): HeatSquare[] {
   const counts = new Map<string, number>()
 
   for (const row of rows) {
-    const square = yourSide ? fromYourSide(row.square, row.game.color) : row.square
-    counts.set(square, (counts.get(square) ?? 0) + 1)
+    counts.set(row.square, (counts.get(row.square) ?? 0) + 1)
   }
 
   const worst = Math.max(0, ...counts.values())
@@ -326,8 +351,8 @@ export function heatmapOf(rows: MistakeRow[], yourSide: boolean): HeatSquare[] {
 }
 
 /** The count on each square, keyed for a board to look up as it draws. */
-export function heatBySquare(rows: MistakeRow[], yourSide: boolean): Map<string, HeatSquare> {
-  return new Map(heatmapOf(rows, yourSide).map(entry => [entry.square, entry]))
+export function heatBySquare(rows: MistakeRow[]): Map<string, HeatSquare> {
+  return new Map(heatmapOf(rows).map(entry => [entry.square, entry]))
 }
 
 /** How many of each mark are in a set of rows, for the chips to carry their counts. */

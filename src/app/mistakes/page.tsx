@@ -31,14 +31,28 @@ import {
   matchesMistake,
   mistakeRows,
   moveTotals,
+  readCount,
   type MistakeFilter,
   type Piece,
 } from '@/lib/mistakes'
 import { buildOpeningTree, findPath, flattenTree } from '@/lib/opening'
 import { patternTags } from '@/lib/pattern'
 import { formatEval, markColor } from '@/lib/review'
+import {
+  BREADTH_LABEL,
+  STANDING_BADGE,
+  STANDING_LABEL,
+  VERDICT_LABEL,
+  breadthOf,
+  imbalanceAt,
+  materialGlyphs,
+  materialLabel,
+  standingOf,
+  verdictHint,
+} from '@/lib/verdict'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import type { GameRecord, OpeningLine, PatternRecord } from '@/types/chess'
+import type { MistakeRow } from '@/lib/mistakes'
 
 /** How many rows before the list becomes a page you scroll rather than read. */
 const PAGE_SIZE = 60
@@ -100,6 +114,58 @@ function FilterChip({
         <span className={on ? 'text-zinc-500' : 'text-zinc-700'}>/{total}</span>
       )}
     </button>
+  )
+}
+
+/**
+ * What the second pass made of one marked move, on the row it belongs to.
+ *
+ * The same three things the game view shows and in the same words, because a descriptor
+ * that reads one way in a list and another on the game it came from is two vocabularies:
+ * the name of the fall, coloured by the band it fell FROM, then the fall itself and how
+ * many of the engine's candidates held — which is the part that says whether there was a
+ * line to find or whether anything reasonable would have done.
+ *
+ * Nothing is drawn for a move the pass has not read, rather than a placeholder: the
+ * panel's own heading says how many of those there are, which is the honest place for it.
+ */
+function Reading({ row }: { row: MistakeRow }) {
+  if (!row.verdict) return <span />
+
+  const from = standingOf(row.cpBefore)
+  const to = standingOf(row.cpAfter)
+  const breadth = breadthOf(row.verdict.holds, row.verdict.looked)
+  const imbalance = imbalanceAt(row.verdict)
+
+  return (
+    /* below sm the row keeps the move, the square and the evaluation: a descriptor
+       truncated to two characters is noise where those three are still the point */
+    <span className="hidden sm:flex items-center gap-2 min-w-0">
+      <span
+        title={verdictHint(from, to, breadth)}
+        className={`min-w-0 truncate text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${STANDING_BADGE[from]}`}
+      >
+        {VERDICT_LABEL[row.verdict.verdict]}
+      </span>
+
+      {/* the two axes the descriptor is the name of, so the badge can be checked */}
+      <span
+        className="hidden xl:inline text-[11px] text-zinc-600 whitespace-nowrap"
+        title={`${STANDING_LABEL[from]} → ${STANDING_LABEL[to]}, ${BREADTH_LABEL[breadth]}`}
+      >
+        {STANDING_LABEL[from]} → {STANDING_LABEL[to]} · {row.verdict.holds}/
+        {row.verdict.looked} held
+      </span>
+
+      {imbalance && (
+        <span
+          className="hidden lg:inline text-[11px] text-zinc-500 whitespace-nowrap"
+          title={materialLabel(imbalance)}
+        >
+          {materialGlyphs(imbalance)}
+        </span>
+      )}
+    </span>
   )
 }
 
@@ -195,6 +261,8 @@ function MistakesBody({ userId }: { userId: string }) {
    * "5 of 118".
    */
   const totals = useMemo(() => moveTotals(scoped), [scoped])
+  /* what the second pass has been over, which a column drawn from it has to say */
+  const read = useMemo(() => readCount(rows), [rows])
 
   const search = useMemo(() => writeFilters(filters), [filters])
 
@@ -389,7 +457,13 @@ function MistakesBody({ userId }: { userId: string }) {
       <Panel
         id="mistake-list"
         title="Every mistake"
-        meta={`${rows.length}${rows.length === all.length ? '' : ` of ${all.length}`}`}
+        meta={
+          <span title="The second pass reads the marked moves one at a time. What it has not read carries no descriptor — Read more on the panel above.">
+            {rows.length}
+            {rows.length === all.length ? '' : ` of ${all.length}`}
+            <span className="text-zinc-600"> · {read} read</span>
+          </span>
+        }
       >
         {rows.length === 0 ? (
           <p className="text-sm text-zinc-600">
@@ -403,7 +477,10 @@ function MistakesBody({ userId }: { userId: string }) {
                 <Link
                   key={`${row.game.id}:${row.ply}`}
                   href={`/games/${row.game.id}${search}`}
-                  className="grid grid-cols-[7.5rem_2.5rem_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2 hover:bg-zinc-800/50 transition-colors"
+                  /* the reading is display:none below sm, and a track it no longer
+                     occupies would still cost its gap — so the row drops to the four
+                     columns it had before the column existed */
+                  className="grid grid-cols-[7.5rem_2.5rem_minmax(0,1fr)_auto] sm:grid-cols-[7.5rem_2.5rem_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2 hover:bg-zinc-800/50 transition-colors"
                 >
                   <span className="font-mono text-sm text-zinc-200 whitespace-nowrap">
                     {row.moveNumber}
@@ -419,7 +496,9 @@ function MistakesBody({ userId }: { userId: string }) {
                     {row.square}
                   </span>
 
-                  <span className="text-xs text-zinc-500 min-w-0 truncate">
+                  <Reading row={row} />
+
+                  <span className="text-xs text-zinc-500 min-w-0 truncate text-right">
                     <span className="text-zinc-600">{PIECE_FIGURINE[row.piece]}</span> vs{' '}
                     {row.game.opponent}
                     {row.think !== null && (

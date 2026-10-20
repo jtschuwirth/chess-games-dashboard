@@ -1,14 +1,17 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import Panel from '@/components/Section'
-import { heatBySquare, type MistakeRow } from '@/lib/mistakes'
+import { heatBySquare, heatmapOf, type MistakeRow } from '@/lib/mistakes'
 
 /** The board's own colours, so the empty squares still read as a board. */
 const LIGHT = '#eceed4'
 const DARK = '#7b9a5e'
 
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
+
+/** How many squares the ranking lists. Eight fills the board's own height. */
+const RANKED = 8
 
 /**
  * Where the mistakes land, drawn on a board.
@@ -18,19 +21,25 @@ const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']
  * complicate the thing five other screens depend on for the sake of one that is not
  * really a board at all.
  *
- * It is drawn **from your own side by default**, which is the only way the two halves of
- * your games can be read together: a weakness you keep creating in front of your own king
- * is on rank 2 as White and rank 7 as Black, and split across those it shows as nothing
- * on either. Only the rank is mirrored, so every file keeps its meaning. The raw view is
- * a press away, because a square can also matter in its own right.
+ * **The squares are the squares.** A `from my side` view mirrored a Black game's ranks
+ * onto White's for a while, so that both colours could be read together — and it printed
+ * relative data under absolute labels, which meant the square marked `e5` was holding
+ * White's e5 mistakes and Black's e4 ones. Narrowing to one colour with the Colour chips
+ * answers the same question without renaming any square.
+ *
+ * Nothing here is explained in a sentence: the counts are on the squares, the ranking is
+ * beside them, and the shading runs from the worst square, which the full bar at the top
+ * of that ranking says on its own.
  */
 export default function MistakeHeatmap({ rows }: { rows: MistakeRow[] }) {
-  const [yourSide, setYourSide] = useState(true)
-  const heat = useMemo(() => heatBySquare(rows, yourSide), [rows, yourSide])
+  const heat = useMemo(() => heatBySquare(rows), [rows])
 
-  const worst = useMemo(
-    () => [...heat.values()].sort((a, b) => b.count - a.count).slice(0, 3),
-    [heat],
+  const ranked = useMemo(
+    () =>
+      heatmapOf(rows)
+        .sort((a, b) => b.count - a.count || a.square.localeCompare(b.square))
+        .slice(0, RANKED),
+    [rows],
   )
 
   return (
@@ -42,42 +51,14 @@ export default function MistakeHeatmap({ rows }: { rows: MistakeRow[] }) {
           ? 'nothing in this slice'
           : `${rows.length} ${rows.length === 1 ? 'move' : 'moves'} on ${heat.size} squares`
       }
-      actions={
-        <div className="flex gap-1.5">
-          <button
-            type="button"
-            onClick={() => setYourSide(true)}
-            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              yourSide
-                ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-                : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-            }`}
-            title="Black's ranks mirrored onto White's, so both colours read together"
-          >
-            from my side
-          </button>
-          <button
-            type="button"
-            onClick={() => setYourSide(false)}
-            className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-              !yourSide
-                ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-                : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-            }`}
-            title="The squares as they actually were"
-          >
-            as played
-          </button>
-        </div>
-      }
     >
       {rows.length === 0 ? (
         <p className="text-sm text-zinc-600">
           No marked moves in this slice — widen the filters, or analyse some games.
         </p>
       ) : (
-        <div className="flex flex-col lg:flex-row gap-5 items-start">
-          <div className="w-full max-w-[24rem] mx-auto lg:mx-0">
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          <div className="w-full max-w-[24rem] mx-auto lg:mx-0 shrink-0">
             <div className="relative w-full aspect-square rounded-md overflow-hidden ring-1 ring-black/50">
               <div className="grid grid-cols-8 grid-rows-8 w-full h-full">
                 {/* rank 8 at the top, the way a diagram is drawn */}
@@ -134,26 +115,34 @@ export default function MistakeHeatmap({ rows }: { rows: MistakeRow[] }) {
                 )}
               </div>
             </div>
-            <p className="text-xs text-zinc-600 mt-2">
-              {yourSide
-                ? 'Your own side at the bottom, whichever colour you had.'
-                : 'The squares exactly as they were on the board.'}
-            </p>
           </div>
 
-          <div className="min-w-0 flex flex-col gap-2">
+          <div className="min-w-0 w-full lg:max-w-xs flex flex-col gap-2">
             <span className="text-xs uppercase tracking-wide text-zinc-500">Worst squares</span>
-            {worst.map(entry => (
-              <div key={entry.square} className="flex items-center gap-2 text-sm">
-                <span className="font-mono text-zinc-200 w-7">{entry.square}</span>
-                <span className="h-2 rounded-full bg-red-500/70" style={{ width: `${entry.share * 7}rem` }} />
-                <span className="text-zinc-500 text-xs tabular-nums">{entry.count}</span>
-              </div>
-            ))}
-            <p className="text-xs text-zinc-600 max-w-[16rem] leading-relaxed">
-              Shaded against the worst square rather than the total — sixty-four squares
-              split as shares would all be slivers.
-            </p>
+
+            <div className="flex flex-col gap-1.5">
+              {ranked.map(entry => (
+                <div
+                  key={entry.square}
+                  className="grid grid-cols-[1.75rem_minmax(0,1fr)_2.5rem_2.75rem] items-center gap-2 text-sm"
+                  title={`${entry.count} of ${rows.length} marked moves landed on ${entry.square}`}
+                >
+                  <span className="font-mono text-zinc-200">{entry.square}</span>
+                  <span className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                    <span
+                      className="block h-full rounded-full bg-red-500/70"
+                      style={{ width: `${entry.share * 100}%` }}
+                    />
+                  </span>
+                  <span className="text-xs text-right text-zinc-300 tabular-nums">
+                    {entry.count}
+                  </span>
+                  <span className="text-xs text-right text-zinc-600 tabular-nums">
+                    {((entry.count / rows.length) * 100).toFixed(1)}%
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
