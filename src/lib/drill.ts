@@ -1,21 +1,67 @@
 import { playMove, replayGame } from './board'
+import { isDrillable, toPlay } from './exercise'
+import { mainLine } from './movetree'
+import { commentedNodes, lineTree } from './pattern'
 import { betterMovesOf, firstMoveOf, isFault, trainableMistakes } from './review'
-import type { Color, DrillStat, GameRecord, ProposedMove, ReviewedMistake } from '@/types/chess'
+import type {
+  Color,
+  DrillStat,
+  ExerciseGuide,
+  GameRecord,
+  ProposedMove,
+  ReviewedMistake,
+} from '@/types/chess'
 
 /**
  * Which positions to drill. `reviewed` is the set you have taken apart and written
  * alternatives for; `all` adds every position the engine flagged and you never got to,
  * where the engine's own move is the only answer available.
  */
-export type DrillSource = 'reviewed' | 'all'
+export type DrillSource = 'reviewed' | 'all' | 'exercises'
 
 export function isDrillSource(value: string): value is DrillSource {
-  return value === 'reviewed' || value === 'all'
+  return value === 'reviewed' || value === 'all' || value === 'exercises'
+}
+
+/** Whether a source draws on the guides rather than on the games. */
+export function fromGuides(source: DrillSource): boolean {
+  return source === 'exercises'
+}
+
+/**
+ * What an exercise card carries that a game card has no equivalent of.
+ *
+ * A game position comes with a move you actually played and a post-mortem of why it was
+ * wrong; an exercise comes with a sheet it belongs to and the write-up you made of the
+ * answer. The reveal is the difference, so this is what the reveal needs and nothing
+ * else — and a game card simply has none of it.
+ */
+export interface ExerciseOrigin {
+  guideId: string
+  guideName: string
+  exerciseId: string
+  title: string
+  /** What you wrote about the exercise as a whole, shown once you have answered. */
+  notes: string
+  /** What you wrote on each move of the solution, in the order they are played. */
+  comments: { san: string; text: string }[]
 }
 
 export interface DrillCard {
-  /** `gameId:ply`, the identity of one position across sessions. */
+  /** `gameId:ply` or `guideId:exerciseId`: the identity of one position across sessions. */
   key: string
+  /**
+   * Where the card came from, which decides how it is judged and what the reveal shows.
+   *
+   * A game position is judged by whether the move **holds**, because the method there is
+   * finding something that keeps the game alive rather than reciting a line. An exercise
+   * is a puzzle: holding is not the answer, the idea is, and most of these positions are
+   * winning already — so nearly anything would hold and the drill would pass you for
+   * declining the sacrifice the sheet is about.
+   */
+  from: 'game' | 'exercise'
+  /** Only on an exercise card. */
+  origin?: ExerciseOrigin
   gameId: string
   ply: number
   /** The position to solve — the one you faced, before the move that went wrong. */
@@ -111,6 +157,7 @@ export function buildDrillCards(games: GameRecord[], source: DrillSource): Drill
         opponent: game.opponent,
         playedAt: game.playedAt,
         url: game.url,
+        from: 'game',
       })
     }
   }
@@ -197,6 +244,71 @@ export function stepsAlong(fen: string, ply: number, line: string[]): DrillStep[
 }
 
 /**
+ * The exercises you have worked out, as positions to find again.
+ *
+ * **Solved only**, which is the point: an exercise you have not done yet is one this
+ * would spoil, and a sheet from a coach is something you go through in your own time.
+ * The line you wrote *is* the answer, so it is handed over as the one proposed move —
+ * which means the walk down a line, the cursor, the judging and the follow-up all work
+ * here with nothing new, because an exercise was always a position with moves on top of
+ * it and so was an alternative you wrote in a review.
+ *
+ * Ordered by the same rule as the games: never seen first, then the ones you keep
+ * missing, then the longest ago. The caller sorts, as it does for a game.
+ */
+export function buildExerciseCards(guides: ExerciseGuide[]): DrillCard[] {
+  const cards: DrillCard[] = []
+
+  for (const guide of guides) {
+    for (const exercise of guide.exercises) {
+      if (!isDrillable(exercise)) continue
+
+      const tree = lineTree(exercise.line)
+      const line = mainLine(tree)
+      if (line.length === 0) continue
+
+      const color = toPlay(exercise)
+      const index = guide.exercises.indexOf(exercise)
+
+      cards.push({
+        key: `${guide.id}:${exercise.id}`,
+        from: 'exercise',
+        origin: {
+          guideId: guide.id,
+          guideName: guide.name,
+          exerciseId: exercise.id,
+          title: exercise.line.title.trim() || `Exercise ${index + 1}`,
+          notes: exercise.line.note,
+          comments: commentedNodes(tree).map(entry => ({ san: entry.san, text: entry.text })),
+        },
+        // a game's identifiers have no meaning here, and nothing reads them on this side
+        gameId: guide.id,
+        ply: 0,
+        fen: tree.startFen,
+        color,
+        moveNumber: Number(tree.startFen.split(/\s+/)[5] ?? 1) || 1,
+        played: '',
+        playedTag: null,
+        /* the line you wrote is the answer, which is exactly a proposed move */
+        proposed: [{ line, why: '' }],
+        intent: '',
+        cause: '',
+        signal: '',
+        tags: [],
+        stat: guide.drills?.[exercise.id] ?? null,
+        opponent: guide.name,
+        playedAt: guide.updatedAt ?? guide.createdAt,
+        url: '',
+      })
+    }
+  }
+
+  return cards.sort(
+    (a, b) => drillRank(a) - drillRank(b) || (a.stat?.lastAt ?? 0) - (b.stat?.lastAt ?? 0),
+  )
+}
+
+/**
  * How an answer turned out.
  *
  * `holds` is a pass on purpose. The point was never to recite the engine's first
@@ -234,6 +346,26 @@ export function judgeFollowUp(
   if (san === expected) return 'yours'
   if (engineBestSan && san === engineBestSan) return 'engine'
   return isFault(tag) ? 'miss' : 'holds'
+}
+
+/**
+ * The same judgement on an exercise, where holding is not enough.
+ *
+ * A game position asks you to keep the game alive, so anything that gives nothing away
+ * counts. An exercise asks you to find the idea, and most of these positions are already
+ * winning — so under the holding rule you could decline the sacrifice the whole sheet is
+ * about, stay two pawns up and be told you were right. The move your solution plays is
+ * the answer; the engine's own first choice also passes, because a position can have two
+ * and your write-up only recorded one.
+ */
+export function judgeExercise(
+  expected: string,
+  san: string,
+  engineBestSan: string | null,
+): DrillVerdict {
+  if (san === expected) return 'yours'
+  if (engineBestSan && san === engineBestSan) return 'engine'
+  return 'miss'
 }
 
 export function isPass(verdict: DrillVerdict): boolean {

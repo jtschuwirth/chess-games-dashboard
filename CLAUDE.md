@@ -80,7 +80,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag. Find the move you
    wrote down and the drill plays their reply and asks what you do about it, down the
-   whole line you recorded.
+   whole line you recorded. A third source is `from my solved exercises`: the positions
+   off your coach's sheets, once you have ticked them Solved, with what you wrote about
+   each move shown only after you have answered.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
@@ -699,6 +701,43 @@ src/
   be marked as looked at, or it keeps coming back as unfinished business. `hasReview` therefore
   asks whether anything was written at all, entries *or* a note, and the form refuses to save a
   document that is empty of both.
+- **A solved exercise is a drill card, and nothing else is.** A sheet of positions is
+  written once and then sits there; the thing you actually want is to meet them again
+  later. `isDrillable` is `solved && the line has moves`, and both halves matter — an
+  exercise you have not worked out is one the drill would **spoil**, which is the whole
+  reason the filter is on `solved` rather than on having a line, and an exercise ticked
+  off in your head has nothing to answer against.
+
+  **The line you wrote is handed over as the one proposed move**, which is why this cost
+  so little: a `PatternLine` was always a position with moves on top of it and so is an
+  alternative written in a review, so `lineFor`, `stepsAlong` and the whole follow-up walk
+  arrive working. A four-ply solution is four questions, with the replies you wrote for
+  them played in between.
+
+  **It is judged against the solution, not against holding**, and that is the one rule
+  that had to differ. A game position asks you to keep the game alive, so anything giving
+  nothing away counts; an exercise asks you to find the idea, and these positions are
+  usually winning already — under the holding rule you could decline the sacrifice the
+  sheet is about, stay two pawns up and be told you were right. `judgeExercise` passes the
+  move your solution plays and the engine's own first choice, because a position can have
+  two answers and your write-up recorded one.
+
+  The record lives in `drills` on the **guide**, keyed by the exercise's own id — the
+  shape `drills` and `verdicts` already take on a game, where a `merge` write on a map
+  field merges keys, so answering one exercise never clears the rest and the sheet editor's
+  own writes never touch it.
+
+  The reveal is what differs on screen: no move you played and no post-mortem of one,
+  because there is neither. What there is instead is the write-up — the comment on each
+  move and the note on the whole thing — withheld until you have answered for exactly the
+  reason everything else is, because it *is* the answer.
+
+  **The dashboard filters do not apply, and the page says so by not offering them.** They
+  narrow a slice of games by site, colour, clock and date, and a position off a coach's
+  sheet has none of those; leaving them in force would empty the sheet the moment you
+  narrowed to blitz. So the count reads `3 positions from 1 sheet` and the link beside it
+  goes to the sheets rather than to the filters.
+
 - **The drill passes any move that holds, not the engine's first choice.** It would be easy to
   mark only the stored answer correct, and wrong: the whole method is about finding something
   that keeps the game alive rather than reciting a line, which is why the review form says the

@@ -450,6 +450,25 @@ export async function saveDrillResult(
 }
 
 /**
+ * Your record on one exercise, merged into the guide by the exercise's own id.
+ *
+ * The mirror of `saveDrillResult`: a map field, so two exercises answered in one session
+ * do not overwrite each other, and the guide editor's own writes never touch it.
+ */
+export async function saveExerciseDrill(
+  userId: string,
+  guideId: string,
+  exerciseId: string,
+  stat: DrillStat,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, GUIDES, guideId),
+    { drills: { [exerciseId]: stat } },
+    { merge: true },
+  )
+}
+
+/**
  * The second pass's reading of the marked moves, merged in by ply.
  *
  * `merge` on a map field merges keys, so judging two more moves never clears the ones

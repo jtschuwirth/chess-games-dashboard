@@ -9,11 +9,18 @@ import EngineModeToggle from '@/components/EngineMode'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { terminateEngine } from '@/lib/engine'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
-import { getGames, getOpenings } from '@/lib/firestore'
+import { getGames, getGuides, getOpenings } from '@/lib/firestore'
 import { buildOpeningTree } from '@/lib/opening'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
-import { buildDrillCards, drillProgress, isDrillSource, type DrillSource } from '@/lib/drill'
-import type { DrillStat, GameRecord, OpeningLine } from '@/types/chess'
+import {
+  buildDrillCards,
+  buildExerciseCards,
+  drillProgress,
+  fromGuides,
+  isDrillSource,
+  type DrillSource,
+} from '@/lib/drill'
+import type { DrillStat, ExerciseGuide, GameRecord, OpeningLine } from '@/types/chess'
 
 const SOURCES: { value: DrillSource; label: string; hint: string }[] = [
   {
@@ -26,6 +33,11 @@ const SOURCES: { value: DrillSource; label: string; hint: string }[] = [
     label: 'from every flagged mistake',
     hint: 'Adds the blunders and mistakes you never got round to reviewing',
   },
+  {
+    value: 'exercises',
+    label: 'from my solved exercises',
+    hint: 'The positions off your coach’s sheets, once you have ticked them Solved',
+  },
 ]
 
 function pct(part: number, whole: number): string {
@@ -36,6 +48,7 @@ function LearnBody({ userId }: { userId: string }) {
   const searchParams = useSearchParams()
   const [games, setGames] = useState<GameRecord[] | null>(null)
   const [openings, setOpenings] = useState<OpeningLine[]>([])
+  const [guides, setGuides] = useState<ExerciseGuide[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
 
   const [source, setSource] = useState<DrillSource>(() => {
@@ -65,10 +78,17 @@ function LearnBody({ userId }: { userId: string }) {
 
   const load = useCallback(
     (options?: { fresh: true }) =>
-      Promise.all([getGames(userId, options), getOpenings(userId, options)])
-        .then(([loadedGames, loadedOpenings]) => {
+      Promise.all([
+        getGames(userId, options),
+        getOpenings(userId, options),
+        // read from the server, like the guide page itself: a sheet is filled in on one
+        // device and drilled on another, and the cache would hand back yesterday's
+        getGuides(userId),
+      ])
+        .then(([loadedGames, loadedOpenings, loadedGuides]) => {
           setGames(loadedGames)
           setOpenings(loadedOpenings)
+          setGuides(loadedGuides)
           setLoadError(null)
         })
         .catch(caught => setLoadError(errorText(caught, 'Could not load your games.'))),
@@ -86,8 +106,18 @@ function LearnBody({ userId }: { userId: string }) {
     [games, tree, keys, filters],
   )
 
-  /** Built once per selection; this session's answers are layered on top, not re-sorted. */
-  const queue = useMemo(() => buildDrillCards(scoped, source), [scoped, source])
+  /*
+   * Built once per selection; this session's answers are layered on top, not re-sorted.
+   *
+   * The exercises ignore the dashboard filters, and have to: those narrow a slice of
+   * *games* by site, colour, clock and date, and a position off a coach's sheet has none
+   * of them. Leaving them applied would have the sheet empty itself the moment you
+   * narrowed to blitz.
+   */
+  const queue = useMemo(
+    () => (fromGuides(source) ? buildExerciseCards(guides) : buildDrillCards(scoped, source)),
+    [scoped, source, guides],
+  )
   const cards = useMemo(
     () => queue.map(card => ({ ...card, stat: results[card.key] ?? card.stat })),
     [queue, results],
@@ -148,19 +178,42 @@ function LearnBody({ userId }: { userId: string }) {
 
           <div className="flex items-center gap-3 flex-wrap">
             <EngineModeToggle />
-            <Link
-              href={`/dashboard${writeFilters(filters)}`}
-              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-            >
-              Change the filters →
-            </Link>
+            {/*
+              The filters narrow a slice of games by site, colour, clock and date, and a
+              position off a coach's sheet has none of those — so the way to them is not
+              offered on a source they cannot touch.
+            */}
+            {!fromGuides(source) ? (
+              <Link
+                href={`/dashboard${writeFilters(filters)}`}
+                className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+              >
+                Change the filters →
+              </Link>
+            ) : (
+              <Link
+                href="/guides"
+                className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+              >
+                The sheets →
+              </Link>
+            )}
           </div>
         </div>
 
         <p className="text-xs text-zinc-500">
           {progress.positions} position{progress.positions === 1 ? '' : 's'} from{' '}
-          {scoped.length} filtered game{scoped.length === 1 ? '' : 's'} · {progress.tried} tried ·{' '}
-          {progress.sticking} sticking
+          {/* the exercises are not drawn from the games, so they are not counted off them */}
+          {fromGuides(source) ? (
+            <>
+              {guides.length} sheet{guides.length === 1 ? '' : 's'}
+            </>
+          ) : (
+            <>
+              {scoped.length} filtered game{scoped.length === 1 ? '' : 's'}
+            </>
+          )}{' '}
+          · {progress.tried} tried · {progress.sticking} sticking
           {answered.length > 0 && (
             <>
               {' '}
@@ -186,12 +239,23 @@ function LearnBody({ userId }: { userId: string }) {
       ) : cards.length === 0 ? (
         <div className="py-16 text-center text-zinc-500 flex flex-col items-center gap-2">
           <p>
-            {source === 'reviewed'
-              ? 'No reviewed positions in this slice yet.'
-              : 'No flagged mistakes in this slice yet.'}
+            {source === 'exercises'
+              ? 'No solved exercises to drill yet.'
+              : source === 'reviewed'
+                ? 'No reviewed positions in this slice yet.'
+                : 'No flagged mistakes in this slice yet.'}
           </p>
           <p className="text-xs text-zinc-600">
-            {source === 'reviewed' ? (
+            {source === 'exercises' ? (
+              <>
+                Work one out on a{' '}
+                <Link href="/guides" className="underline">
+                  sheet
+                </Link>{' '}
+                and tick it Solved — an exercise you have not done yet would only be
+                spoiled by turning up here.
+              </>
+            ) : source === 'reviewed' ? (
               <>
                 Take a game apart on the{' '}
                 <Link href={`/dashboard${writeFilters(filters)}`} className="underline">

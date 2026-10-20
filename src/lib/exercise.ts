@@ -139,6 +139,18 @@ export function exerciseHasContent(exercise: Exercise): boolean {
   )
 }
 
+/**
+ * Whether an exercise can be put back in front of you.
+ *
+ * **Solved only**, which is the whole rule: an exercise you have not worked out yet is
+ * one the drill would spoil, and a sheet is something you go through once in your own
+ * time. It also has to carry a line — ticking Solved for a position you worked out in
+ * your head leaves nothing to answer against.
+ */
+export function isDrillable(exercise: Exercise): boolean {
+  return exercise.solved && exercise.line.moves.length > 0
+}
+
 /** Whether a solution has been written, which is what "worked out" is counted from. */
 export function hasSolution(exercise: Exercise): boolean {
   return exercise.line.moves.length > 0 || exercise.line.note.trim().length > 0

@@ -723,6 +723,15 @@ export interface ExerciseGuide {
   createdAt: number
   /** When any device last saved it, for the same draft comparison a plan makes. */
   updatedAt?: number
+  /**
+   * Your record on each exercise in the drill, keyed by the exercise's own id.
+   *
+   * On the guide rather than inside the exercise, which is the shape `drills` and
+   * `verdicts` already take on a game: a `merge` write on a map field merges keys, so
+   * answering one exercise never clears the rest — and a sheet saved from the editor
+   * writes `exercises` without touching this.
+   */
+  drills?: Record<string, DrillStat>
 }
 
 export type NewExerciseGuide = Omit<ExerciseGuide, 'id'>

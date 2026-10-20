@@ -12,6 +12,7 @@ import { formatEval, isFault, markColor } from '@/lib/review'
 import {
   isPass,
   judgeAttempt,
+  judgeExercise,
   judgeFollowUp,
   lineFor,
   recordAttempt,
@@ -20,7 +21,7 @@ import {
   type DrillStep,
   type DrillVerdict,
 } from '@/lib/drill'
-import { saveDrillResult } from '@/lib/firestore'
+import { saveDrillResult, saveExerciseDrill } from '@/lib/firestore'
 import type { DrillStat } from '@/types/chess'
 
 const VERDICT_TEXT: Record<DrillVerdict, { label: string; className: string }> = {
@@ -38,6 +39,28 @@ const VERDICT_TEXT: Record<DrillVerdict, { label: string; className: string }> =
   },
   miss: {
     label: 'That gives something away.',
+    className: 'text-red-400 border-red-500/40 bg-red-500/10',
+  },
+}
+
+/**
+ * The same four verdicts said about an exercise.
+ *
+ * A puzzle has an answer, so `holds` is not one of them — `judgeExercise` never returns
+ * it — and a miss is not "you gave something away" but "that is not the idea", which on
+ * a winning position is usually a move that gives away nothing at all.
+ */
+const EXERCISE_TEXT: Partial<Record<DrillVerdict, { label: string; className: string }>> = {
+  yours: {
+    label: 'That is your solution.',
+    className: 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10',
+  },
+  engine: {
+    label: "Not what you wrote, but it is the engine's first choice.",
+    className: 'text-emerald-400 border-emerald-500/40 bg-emerald-500/10',
+  },
+  miss: {
+    label: 'That is not the idea.',
     className: 'text-red-400 border-red-500/40 bg-red-500/10',
   },
 }
@@ -151,10 +174,21 @@ export default function DrillCardView({
       // scored for your opponent, who is to move after yours
       const cpAfter = -after.cp
       const tag = classifyMove(best.cp, cpAfter, false)
+      /*
+       * An exercise is judged against the solution at every step, including the first:
+       * the whole of it is the answer. A game position is judged by whether the move
+       * holds, which is the rule that has always marked these.
+       */
       const verdict =
-        stepIndex === 0
-          ? judgeAttempt(card, played.san, best.san, tag)
-          : judgeFollowUp(step.expected, played.san, best.san, tag)
+        card.from === 'exercise'
+          ? judgeExercise(
+              stepIndex === 0 ? (card.proposed[0]?.line[0] ?? '') : step.expected,
+              played.san,
+              best.san,
+            )
+          : stepIndex === 0
+            ? judgeAttempt(card, played.san, best.san, tag)
+            : judgeFollowUp(step.expected, played.san, best.san, tag)
 
       const result: Answer = { san: played.san, verdict, cpAfter }
       const attempts = [...sequence, result]
@@ -207,14 +241,22 @@ export default function DrillCardView({
     const stat = recordAttempt(card.stat, correct, Date.now())
     onAnswered(stat, correct)
     try {
-      await saveDrillResult(userId, card.gameId, card.ply, stat)
+      // a game keys its record by ply, a guide by the exercise's own id
+      if (card.from === 'exercise' && card.origin) {
+        await saveExerciseDrill(userId, card.origin.guideId, card.origin.exerciseId, stat)
+      } else {
+        await saveDrillResult(userId, card.gameId, card.ply, stat)
+      }
     } catch {
       // the attempt still counts on screen; it just will not survive a reload
       setError('Could not save that attempt.')
     }
   }
 
-  const verdict = answer ? VERDICT_TEXT[answer.verdict] : null
+  const verdict = answer
+    ? (card.from === 'exercise' ? EXERCISE_TEXT[answer.verdict] : null) ??
+      VERDICT_TEXT[answer.verdict]
+    : null
 
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
@@ -281,6 +323,10 @@ export default function DrillCardView({
                   {plyLabel(step.ply - 1, step.reply)}
                 </span>{' '}
                 — the move you wrote for them.
+              </>
+            ) : card.from === 'exercise' ? (
+              <>
+                {card.color === 'white' ? 'White' : 'Black'} to play — {card.origin?.title}
               </>
             ) : (
               <>
@@ -368,6 +414,35 @@ export default function DrillCardView({
               </div>
 
               <div className="flex flex-col gap-2 text-sm">
+                {/*
+                  An exercise has no move you played and no post-mortem of one — what it
+                  has is the write-up you made of the answer, which is withheld until now
+                  for the same reason everything else is: it IS the answer.
+                */}
+                {card.from === 'exercise' && card.origin && (
+                  <>
+                    {card.origin.comments.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs uppercase tracking-wide text-zinc-500">
+                          What you wrote
+                        </span>
+                        {card.origin.comments.map((note, index) => (
+                          <p key={index} className="text-sm">
+                            <span className="font-mono text-emerald-400">{note.san}</span>{' '}
+                            <span className="text-zinc-400">{note.text}</span>
+                          </p>
+                        ))}
+                      </div>
+                    )}
+
+                    {card.origin.notes.trim() && (
+                      <p className="text-sm text-zinc-400">
+                        <span className="text-zinc-600">Notes:</span> {card.origin.notes}
+                      </p>
+                    )}
+                  </>
+                )}
+
                 {sequence.length > 1 && (
                   <p className="text-sm">
                     <span className="text-xs uppercase tracking-wide text-zinc-500">
@@ -379,6 +454,7 @@ export default function DrillCardView({
                   </p>
                 )}
 
+                {card.from !== 'exercise' && (
                 <p className="text-zinc-400">
                   You played{' '}
                   <span className="font-mono text-zinc-200">
@@ -392,11 +468,12 @@ export default function DrillCardView({
                   )}
                   .
                 </p>
+                )}
 
                 {card.proposed.length > 0 ? (
                   <div className="flex flex-col gap-1">
                     <span className="text-xs uppercase tracking-wide text-zinc-500">
-                      What you found in review
+                      {card.from === 'exercise' ? 'Your solution' : 'What you found in review'}
                     </span>
                     {card.proposed.map((move, index) => (
                       <p key={index} className="text-sm">
@@ -456,15 +533,29 @@ export default function DrillCardView({
                 >
                   Next position
                 </button>
-                <Link
-                  href={`/games/${card.gameId}`}
-                  className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-                >
-                  Open the game
-                </Link>
-                <span className="text-xs text-zinc-600">
-                  vs {card.opponent} · {new Date(card.playedAt).toLocaleDateString()}
-                </span>
+                {card.from === 'exercise' && card.origin ? (
+                  <>
+                    <Link
+                      href={`/guides/${card.origin.guideId}`}
+                      className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+                    >
+                      Open the sheet
+                    </Link>
+                    <span className="text-xs text-zinc-600">{card.origin.guideName}</span>
+                  </>
+                ) : (
+                  <>
+                    <Link
+                      href={`/games/${card.gameId}`}
+                      className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+                    >
+                      Open the game
+                    </Link>
+                    <span className="text-xs text-zinc-600">
+                      vs {card.opponent} · {new Date(card.playedAt).toLocaleDateString()}
+                    </span>
+                  </>
+                )}
               </div>
             </>
           )}
