@@ -22,6 +22,7 @@ import {
 import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
 import {
   NO_MISTAKE_FILTER,
+  exceptSquares,
   PIECES,
   PIECE_FIGURINE,
   PIECE_LABEL,
@@ -249,12 +250,24 @@ function MistakesBody({ userId }: { userId: string }) {
     () => all.filter(row => matchesMistake(row, mistakeFilter)),
     [all, mistakeFilter],
   )
+  /*
+   * The board is the control that sets the square filter, so it is drawn with that one
+   * left off — picking e5 must not leave a board with e5 on it and nothing else to pick.
+   * Every other filter still narrows it, which is what makes "where do my queen blunders
+   * land" a board worth choosing from.
+   */
+  const heatRows = useMemo(
+    () => all.filter(row => matchesMistake(row, exceptSquares(mistakeFilter))),
+    [all, mistakeFilter],
+  )
 
   const marks = useMemo(() => activeMarks(), [])
   const byMark = useMemo(() => countBy(all, row => row.tag), [all])
   const byPiece = useMemo(() => countBy(all, row => row.piece), [all])
   const byPhase = useMemo(() => countBy(all, row => row.phase ?? ''), [all])
   const byThink = useMemo(() => countBy(all, row => row.thinkBand ?? ''), [all])
+  /* the chip counts what the board that picked it was showing, not what it left behind */
+  const bySquare = useMemo(() => countBy(heatRows, row => row.square), [heatRows])
   /*
    * The denominator, over the same games the rows come from. It is the moves where
    * nothing went wrong, which is 93% of them, and it is what turns "5 marked" into
@@ -301,11 +314,20 @@ function MistakesBody({ userId }: { userId: string }) {
         : [...current.think, label],
     }))
 
+  const toggleSquare = (square: string) =>
+    setMistakeFilter(current => ({
+      ...current,
+      squares: current.squares.includes(square)
+        ? current.squares.filter(entry => entry !== square)
+        : [...current.squares, square],
+    }))
+
   const anyMistakeFilter =
     mistakeFilter.marks.length > 0 ||
     mistakeFilter.pieces.length > 0 ||
     mistakeFilter.phases.length > 0 ||
-    mistakeFilter.think.length > 0
+    mistakeFilter.think.length > 0 ||
+    mistakeFilter.squares.length > 0
 
   return (
     <>
@@ -418,7 +440,7 @@ function MistakesBody({ userId }: { userId: string }) {
                     describe={`moves you spent ${band.label} on`}
                   />
                 ))}
-                {anyMistakeFilter && (
+                {anyMistakeFilter && mistakeFilter.squares.length === 0 && (
                   <button
                     type="button"
                     onClick={() => setMistakeFilter(NO_MISTAKE_FILTER)}
@@ -429,11 +451,54 @@ function MistakesBody({ userId }: { userId: string }) {
                 )}
               </div>
             </div>
+
+            {/*
+              Only once a square is picked. Sixty-four chips would be a board drawn badly,
+              and the board itself is upstairs doing that job — this row is the record of
+              what it chose, where everything else active is already listed.
+            */}
+            {mistakeFilter.squares.length > 0 && (
+              <div className="flex flex-col gap-1.5">
+                <span
+                  className="text-xs uppercase tracking-wide text-zinc-500"
+                  title="Picked off the board below"
+                >
+                  Square
+                </span>
+                <div className="flex gap-1.5 flex-wrap">
+                  {mistakeFilter.squares.map(square => (
+                    <button
+                      key={square}
+                      type="button"
+                      onClick={() => toggleSquare(square)}
+                      title={`Stop showing only ${square}`}
+                      className="px-3 py-1 text-xs rounded-full border bg-zinc-200 text-zinc-900 border-zinc-200 font-mono transition-colors"
+                    >
+                      {square}{' '}
+                      <span className="text-zinc-600">{bySquare.get(square) ?? 0}</span>
+                      <span className="text-zinc-500"> ✕</span>
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setMistakeFilter(NO_MISTAKE_FILTER)}
+                    className="px-3 py-1 text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         }
       />
 
-      <MistakeHeatmap rows={rows} />
+      <MistakeHeatmap
+        rows={heatRows}
+        selected={mistakeFilter.squares}
+        onToggle={toggleSquare}
+        onClear={() => setMistakeFilter(current => ({ ...current, squares: [] }))}
+      />
 
       <AccuracyPanel games={scoped} />
 

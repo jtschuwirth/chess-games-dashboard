@@ -279,6 +279,8 @@ export interface MistakeFilter {
   phases: string[]
   /** Think-time band labels to keep. Empty means however long you took. */
   think: string[]
+  /** Squares the move landed on, as played. Empty means anywhere on the board. */
+  squares: string[]
 }
 
 export const NO_MISTAKE_FILTER: MistakeFilter = {
@@ -286,6 +288,19 @@ export const NO_MISTAKE_FILTER: MistakeFilter = {
   pieces: [],
   phases: [],
   think: [],
+  squares: [],
+}
+
+/**
+ * The same filter with the square picked off.
+ *
+ * The heatmap is the control that sets `squares`, so it has to draw the board with that
+ * one not applied — otherwise choosing e5 leaves a board with one square on it and no way
+ * to choose another. It is the chips' rule, one filter narrower: a control shows you what
+ * it would give you, not what it has already given you.
+ */
+export function exceptSquares(filter: MistakeFilter): MistakeFilter {
+  return { ...filter, squares: [] }
 }
 
 export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean {
@@ -303,6 +318,7 @@ export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean 
   if (filter.think.length > 0 && (row.thinkBand === null || !filter.think.includes(row.thinkBand))) {
     return false
   }
+  if (filter.squares.length > 0 && !filter.squares.includes(row.square)) return false
   return true
 }
 

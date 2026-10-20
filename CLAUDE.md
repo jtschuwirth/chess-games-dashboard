@@ -36,7 +36,8 @@ win/draw/loss splits for all games or for the games that followed one of those l
 5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
    four of its own: which mark a move carried, which piece moved, which phase of the game
    it was played in, and how long you thought before playing it. A heatmap shows
-   where on the board they land; under it, the engine's readings, the second pass's
+   where on the board they land, and a square on it is a filter — press h4 to read only
+   the mistakes that landed there. Under it, the engine's readings, the second pass's
    verdicts, the Mistake database and then every marked move as a row carrying what the
    second pass made of it, each linking to its game.
 6. `/games/{id}` — one game: the eval graph and what kind of game it was, folded away at the
@@ -401,6 +402,27 @@ src/
   worst square's bar running full, and the share of all mistakes is a column rather than a
   clause. That is the rule the rest of the app already follows: if a control needs a
   paragraph, the paragraph is a signal about the control.
+
+- **Every square is the filter for itself, and the board therefore does not apply it.**
+  The habit a variation row and a phase count already follow — the figure you are reading
+  is the slice you want next — and here it is the whole reason the chart is a board rather
+  than a list: "all my mistakes on h4" is a question you ask by pointing.
+
+  The subtlety is that a picker cannot apply its own choice. `exceptSquares` strips the
+  square filter and nothing else, so the board draws every square it would have drawn
+  while the list below shows only the chosen ones. Without it, pressing e5 would leave a
+  board with e5 on it and no way to choose a second square or to see where else things
+  land. Every *other* filter still narrows it, which is what makes it worth pointing at:
+  the board becomes 226 queen moves over 55 squares, and picking from that is a different
+  and better question than picking from all sixty-four.
+
+  Squares are a list rather than one, because "h4 or e5" is a real question and the board
+  is a surface you can press twice. The filter panel grows a **Square** row only once
+  something is picked — sixty-four chips would be a board drawn badly, and the board is
+  already upstairs doing that job — so the row is the record of what was chosen, in the one
+  place everything else active is listed. Those chips count against what the *board* was
+  showing rather than against the whole slice, because that is the number the press
+  produced: with the queen filter on, h4 reads 9 and not 43.
 
 - **The row says what the second pass made of the move, in the game view's own words.**
   The list was a move, a square, an opponent and a pair of evaluations — and `verdicts`
