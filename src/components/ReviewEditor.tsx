@@ -105,6 +105,48 @@ const FIELD =
  * wrong, what was there to see, and what you would play instead. The tags are what
  * accumulate — one game's review is a note, two hundred of them are a training plan.
  */
+/**
+ * One half of the review, set off from the other.
+ *
+ * The form held both halves in one column under a single **Root cause analysis**
+ * heading, which named only half of what was in it. A post-mortem of the two or three
+ * moves that decided the game and a pile of notes about moves that merely wanted
+ * remembering are different kinds of writing — one answers four fixed questions and is
+ * capped at three, the other asks nothing and has no limit — and running them together
+ * in one list is what made the form hard to read and the heading a lie about its own
+ * contents.
+ *
+ * A rule and a count rather than a box: a bordered box inside a bordered box reads as a
+ * mistake, which is the panel rule the dashboard already follows. The count is in the
+ * heading because it is the thing you look up to check — two of three taken apart, four
+ * moves noted.
+ */
+function Group({
+  title,
+  line,
+  meta,
+  children,
+}: {
+  title: string
+  /** What this half is for, in the words that tell it from the other half. */
+  line: string
+  meta: string
+  children: React.ReactNode
+}) {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-baseline gap-3 border-b border-zinc-800 pb-1.5">
+        <h3 className="text-xs uppercase tracking-wide text-zinc-300 font-medium shrink-0">
+          {title}
+        </h3>
+        <span className="text-xs text-zinc-600 min-w-0 truncate">{line}</span>
+        <span className="text-xs text-zinc-500 ml-auto shrink-0 tabular-nums">{meta}</span>
+      </div>
+      {children}
+    </section>
+  )
+}
+
 export default function ReviewEditor({
   userId,
   game,
@@ -531,61 +573,294 @@ export default function ReviewEditor({
   return (
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
       <div>
-        <h2 className="font-semibold text-sm">Root cause analysis</h2>
+        <h2 className="font-semibold text-sm">Your review</h2>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label hint={game.analysis ? undefined : 'Run the engine above to get suggestions.'}>
-          Moves to take apart
-        </Label>
+      <Group
+        title="Root cause analysis"
+        line="the moves that decided it, four questions each"
+        meta={`${drafts.length} of ${MAX_REVIEW_MISTAKES}`}
+      >
+        <div className="flex flex-col gap-2">
+          <Label hint={game.analysis ? undefined : 'Run the engine above to get suggestions.'}>
+            Moves to take apart
+          </Label>
 
-        <div className="flex gap-1.5 flex-wrap items-center">
-          {candidates.map(move => (
-            <button
-              key={move.ply}
-              type="button"
+          <div className="flex gap-1.5 flex-wrap items-center">
+            {candidates.map(move => (
+              <button
+                key={move.ply}
+                type="button"
+                disabled={full}
+                onClick={() => add(move.ply, move.cpBefore, move.cpAfter)}
+                title={`Take this move apart${
+                  game.analysis ? ` — from the stored analysis at depth ${game.analysis.depth}` : ''
+                }`}
+                className="px-3 py-1 text-xs rounded-full border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-mono"
+              >
+                {plyLabel(move.ply, move.san)}
+                <span className={markColor(move.tag)}> {move.tag}</span>
+                {/* both ends: where the move left you is meaningless without where it started */}
+                <span className="text-zinc-500">
+                  {' '}
+                  {formatEval(move.cpBefore, game.color)} → {formatEval(move.cpAfter, game.color)}
+                </span>
+              </button>
+            ))}
+
+            <select
+              value=""
               disabled={full}
-              onClick={() => add(move.ply, move.cpBefore, move.cpAfter)}
-              title={`Take this move apart${
-                game.analysis ? ` — from the stored analysis at depth ${game.analysis.depth}` : ''
-              }`}
-              className="px-3 py-1 text-xs rounded-full border border-zinc-700 text-zinc-300 hover:border-zinc-500 transition-colors disabled:opacity-40 disabled:cursor-not-allowed font-mono"
+              onChange={event => {
+                if (event.target.value) add(Number(event.target.value))
+              }}
+              className="bg-zinc-950 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600 disabled:opacity-40"
             >
-              {plyLabel(move.ply, move.san)}
-              <span className={markColor(move.tag)}> {move.tag}</span>
-              {/* both ends: where the move left you is meaningless without where it started */}
-              <span className="text-zinc-500">
-                {' '}
-                {formatEval(move.cpBefore, game.color)} → {formatEval(move.cpAfter, game.color)}
+              <option value="">+ another line…</option>
+              {yourPlies
+                .filter(ply => !taken.has(ply.index))
+                .map(ply => (
+                  <option key={ply.index} value={ply.index}>
+                    {plyLabel(ply.index, ply.san)}
+                  </option>
+                ))}
+            </select>
+
+            {full && (
+              <span className="text-xs text-zinc-600">
+                {MAX_REVIEW_MISTAKES} is the limit — remove one to swap it out.
               </span>
-            </button>
-          ))}
-
-          <select
-            value=""
-            disabled={full}
-            onChange={event => {
-              if (event.target.value) add(Number(event.target.value))
-            }}
-            className="bg-zinc-950 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600 disabled:opacity-40"
-          >
-            <option value="">+ another line…</option>
-            {yourPlies
-              .filter(ply => !taken.has(ply.index))
-              .map(ply => (
-                <option key={ply.index} value={ply.index}>
-                  {plyLabel(ply.index, ply.san)}
-                </option>
-              ))}
-          </select>
-
-          {full && (
-            <span className="text-xs text-zinc-600">
-              {MAX_REVIEW_MISTAKES} is the limit — remove one to swap it out.
-            </span>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+
+        {drafts.map(draft => {
+          const move = plyByIndex.get(draft.ply)
+
+          // once the engine has looked at the move you played, show that rather than
+          // whatever the stored analysis said, so the card is internally comparable
+          const judged = verdicts[`${draft.ply}:${draft.san}`]
+          const live = judged && judged !== 'failed' ? judged : null
+          const shownBefore = live ? live.cpBefore : draft.cpBefore
+          const shownAfter = live ? live.cpAfter : draft.cpAfter
+          const isFolded = folded[draft.ply] ?? false
+
+          return (
+            <div
+              key={draft.ply}
+              className="border border-zinc-800 rounded-lg p-4 flex flex-col gap-3 bg-zinc-950/40"
+            >
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() => setFolded(prev => ({ ...prev, [draft.ply]: !isFolded }))}
+                  title={isFolded ? 'Open this move' : 'Fold this move away'}
+                  aria-label={isFolded ? 'Open this move' : 'Fold this move away'}
+                  aria-expanded={!isFolded}
+                  className="w-5 h-5 shrink-0 flex items-center justify-center rounded border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 transition-colors leading-none"
+                >
+                  {isFolded ? '+' : '−'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onShowPly(draft.ply)}
+                  className="font-mono text-sm text-zinc-100 hover:text-white underline decoration-zinc-700 hover:decoration-zinc-400 transition-colors"
+                  title="Show this position on the board"
+                >
+                  {plyLabel(draft.ply, draft.san)}
+                </button>
+                {shownBefore !== null && (
+                  <span
+                    className="text-xs text-zinc-500 font-mono"
+                    title={
+                      live
+                        ? `Depth ${ENGINE_DEPTH}, from White's side — the same depth as everything below`
+                        : "From White's side, the way a board shows it"
+                    }
+                  >
+                    {formatEval(shownBefore, game.color)} → {formatEval(shownAfter, game.color)}
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))}
+                  className="ml-auto text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                >
+                  Remove
+                </button>
+              </div>
+
+              {isFolded ? (
+                <p className="text-xs text-zinc-500">
+                  {draft.unreasonable
+                    ? 'Hard to find'
+                    : draft.tags.length > 0
+                      ? draft.tags.map(id => tagName(id, tagGroups)).join(' · ')
+                      : 'Nothing written down yet.'}
+                </p>
+              ) : (
+                <>
+              {!draft.unreasonable && (
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label>
+                      Why did I play it?
+                    </Label>
+                    <textarea
+                      value={draft.intent}
+                      onChange={event => patch(draft.ply, { intent: event.target.value })}
+                      rows={3}
+                      placeholder="I thought it won the b2 pawn and I could get back in time…"
+                      className={`${FIELD} resize-y`}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label>
+                      Why is it a mistake?
+                    </Label>
+                    <textarea
+                      value={draft.cause}
+                      onChange={event => patch(draft.ply, { cause: event.target.value })}
+                      rows={4}
+                      placeholder="It drops the h-pawn and opens a file at my king…"
+                      className={`${FIELD} resize-y`}
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <Label>
+                      What could I have seen or worked out?
+                    </Label>
+                    <textarea
+                      value={draft.signal}
+                      onChange={event => patch(draft.ply, { signal: event.target.value })}
+                      rows={4}
+                      placeholder="Their rook was already on the open file, so any pawn move there needed a check…"
+                      className={`${FIELD} resize-y`}
+                    />
+                  </div>
+                </>
+              )}
+
+              <ProposedMoves
+                label="What would I play instead?"
+                ply={draft.ply}
+                rows={draft.better}
+                fenBefore={move?.fenBefore ?? null}
+                color={game.color}
+                verdicts={verdicts}
+                onChange={better => patch(draft.ply, { better })}
+                linePlaceholder="Nd5 Bxe7 Qxe7"
+                whyPlaceholder="Holds f6 and keeps the h-file shut, so the queen has nothing to come to."
+                addLabel="+ another move"
+                asking={asking === draft.ply}
+                onAsk={() => ask(draft.ply)}
+                engineAnswer={engine[draft.ply]}
+                boardLine={lineOnBoard?.(draft.ply)}
+              />
+
+              <div className="flex flex-col gap-2">
+                <Label>Tags</Label>
+                <TagPicker
+                  tags={draft.tags}
+                  open={tagsOpen[draft.ply] ?? true}
+                  onToggleOpen={() =>
+                    setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? true) }))
+                  }
+                  onChange={newTags => patch(draft.ply, { tags: newTags })}
+                  patternTags={patternTags}
+                  groups={tagGroups}
+                />
+              </div>
+
+              {/*
+                The same idea missed for several moves running is one mistake, not four.
+                Attaching the later moves here keeps them out of the entry list, out of the
+                three-entry cap and out of the tag counts, while still recording that it
+                went on — which is the part worth seeing later.
+              */}
+              {!draft.unreasonable && (
+                <div className="flex flex-col gap-1.5 border-t border-zinc-800 pt-3">
+                  <Label
+                    hint={
+                      candidates.length === 0 && draft.repeats.length === 0
+                        ? 'Every other marked move is already spoken for.'
+                        : undefined
+                    }
+                  >
+                    Same mistake at
+                  </Label>
+
+                  <div className="flex gap-1.5 flex-wrap">
+                    {draft.repeats.map(repeat => (
+                      <button
+                        key={repeat.ply}
+                        type="button"
+                        onClick={() =>
+                          patch(draft.ply, {
+                            repeats: draft.repeats.filter(entry => entry.ply !== repeat.ply),
+                          })
+                        }
+                        title="This one is its own mistake after all"
+                        className="px-2.5 py-0.5 text-xs rounded-full border border-sky-500/40 bg-sky-500/10 text-sky-300 hover:border-sky-400 transition-colors font-mono"
+                      >
+                        {plyLabel(repeat.ply, repeat.san)} ×
+                      </button>
+                    ))}
+
+                    {candidates.map(move => (
+                      <button
+                        key={move.ply}
+                        type="button"
+                        onClick={() =>
+                          patch(draft.ply, {
+                            repeats: [
+                              ...draft.repeats,
+                              { ply: move.ply, san: move.san, moveNumber: move.moveNumber },
+                            ].sort((a, b) => a.ply - b.ply),
+                          })
+                        }
+                        title="The same mistake as this entry — covered by it, not written up again"
+                        className="px-2.5 py-0.5 text-xs rounded-full border border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300 transition-colors font-mono"
+                      >
+                        + {plyLabel(move.ply, move.san)}
+                        <span className={markColor(move.tag)}> {move.tag}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer border-t border-zinc-800 pt-3">
+                <input
+                  type="checkbox"
+                  checked={draft.unreasonable}
+                  onChange={event => patch(draft.ply, { unreasonable: event.target.checked })}
+                  className="mt-0.5 accent-zinc-400"
+                />
+                <span>
+                  Hard to find — no clear way I could have seen it
+                  <span className="block text-zinc-600">
+                    Still recorded, but left out of the tag counts: there is no pattern to train
+                    from a move you had no way of finding.
+                  </span>
+                </span>
+              </label>
+
+                </>
+              )}
+            </div>
+          )
+        })}
+
+        {drafts.length === 0 && (
+          <p className="text-sm text-zinc-500">
+            Nothing taken apart yet — the engine&apos;s own objections are offered first, worst
+            loss leading. A game that needed no post-mortem can go straight to the notes.
+          </p>
+        )}
+      </Group>
 
       {/*
         The other way to write about a move. Its own picker rather than a second button
@@ -593,325 +868,102 @@ export default function ReviewEditor({
         a note are ones it had nothing to say about. Any move of either side — what your
         opponent did is half the game, and the reason you played what you played.
       */}
-      <div className="flex flex-col gap-2">
-        <Label hint="Anything worth remembering — yours or theirs. No cap, no questions to answer.">
-          Moves worth noting
-        </Label>
+      <Group
+        title="Notes"
+        line="anything worth remembering, yours or theirs — no cap, no questions"
+        meta={`${noteDrafts.length} ${noteDrafts.length === 1 ? 'move' : 'moves'}`}
+      >
+        <div className="flex flex-col gap-2">
+          {/* the section line above already says whose moves and that nothing is asked */}
+          <Label>Moves worth noting</Label>
 
-        <div className="flex gap-1.5 flex-wrap items-center">
-          <select
-            value=""
-            onChange={event => {
-              if (event.target.value) addNote(Number(event.target.value))
-            }}
-            className="bg-zinc-950 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600"
-          >
-            <option value="">+ a move to note…</option>
-            {plies
-              .filter(ply => !taken.has(ply.index))
-              .map(ply => (
-                <option key={ply.index} value={ply.index}>
-                  {plyLabel(ply.index, ply.san)}
-                  {ply.color === game.color ? '' : ' — them'}
-                </option>
-              ))}
-          </select>
+          <div className="flex gap-1.5 flex-wrap items-center">
+            <select
+              value=""
+              onChange={event => {
+                if (event.target.value) addNote(Number(event.target.value))
+              }}
+              className="bg-zinc-950 border border-zinc-800 rounded-full px-3 py-1 text-xs text-zinc-400 outline-none focus:border-zinc-600"
+            >
+              <option value="">+ a move to note…</option>
+              {plies
+                .filter(ply => !taken.has(ply.index))
+                .map(ply => (
+                  <option key={ply.index} value={ply.index}>
+                    {plyLabel(ply.index, ply.san)}
+                    {ply.color === game.color ? '' : ' — them'}
+                  </option>
+                ))}
+            </select>
 
-          {noteDrafts.length === 0 && (
-            <span className="text-xs text-zinc-600">
-              Nothing noted yet.
-            </span>
-          )}
-        </div>
-      </div>
-
-      {noteDrafts.map(draft => {
-        const move = plyByIndex.get(draft.ply)
-        const judged = verdicts[verdictKey(draft.ply, draft.san)]
-        const live = judged && judged !== 'failed' ? judged : null
-
-        return (
-          <MoveNoteCard
-            key={draft.ply}
-            draft={draft}
-            yours={move ? move.color === game.color : true}
-            color={game.color}
-            fenBefore={move?.fenBefore ?? null}
-            folded={folded[draft.ply] ?? false}
-            onToggleFold={() =>
-              setFolded(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? false) }))
-            }
-            tagsOpen={tagsOpen[draft.ply] ?? false}
-            onToggleTags={() =>
-              setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? false) }))
-            }
-            onChange={changes => patchNote(draft.ply, changes)}
-            onRemove={() => {
-              setSaved(null)
-              setNoteDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))
-            }}
-            onShowPly={() => onShowPly(draft.ply)}
-            verdicts={verdicts}
-            patternTags={patternTags}
-            tagGroups={tagGroups}
-            asking={asking === draft.ply}
-            onAsk={() => ask(draft.ply)}
-            engineAnswer={engine[draft.ply]}
-            boardLine={lineOnBoard?.(draft.ply)}
-            live={live}
-          />
-        )
-      })}
-
-      {drafts.map(draft => {
-        const move = plyByIndex.get(draft.ply)
-
-        // once the engine has looked at the move you played, show that rather than
-        // whatever the stored analysis said, so the card is internally comparable
-        const judged = verdicts[`${draft.ply}:${draft.san}`]
-        const live = judged && judged !== 'failed' ? judged : null
-        const shownBefore = live ? live.cpBefore : draft.cpBefore
-        const shownAfter = live ? live.cpAfter : draft.cpAfter
-        const isFolded = folded[draft.ply] ?? false
-
-        return (
-          <div
-            key={draft.ply}
-            className="border border-zinc-800 rounded-lg p-4 flex flex-col gap-3 bg-zinc-950/40"
-          >
-            <div className="flex items-center gap-3 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setFolded(prev => ({ ...prev, [draft.ply]: !isFolded }))}
-                title={isFolded ? 'Open this move' : 'Fold this move away'}
-                aria-label={isFolded ? 'Open this move' : 'Fold this move away'}
-                aria-expanded={!isFolded}
-                className="w-5 h-5 shrink-0 flex items-center justify-center rounded border border-zinc-700 text-zinc-400 hover:border-zinc-500 hover:text-zinc-100 transition-colors leading-none"
-              >
-                {isFolded ? '+' : '−'}
-              </button>
-              <button
-                type="button"
-                onClick={() => onShowPly(draft.ply)}
-                className="font-mono text-sm text-zinc-100 hover:text-white underline decoration-zinc-700 hover:decoration-zinc-400 transition-colors"
-                title="Show this position on the board"
-              >
-                {plyLabel(draft.ply, draft.san)}
-              </button>
-              {shownBefore !== null && (
-                <span
-                  className="text-xs text-zinc-500 font-mono"
-                  title={
-                    live
-                      ? `Depth ${ENGINE_DEPTH}, from White's side — the same depth as everything below`
-                      : "From White's side, the way a board shows it"
-                  }
-                >
-                  {formatEval(shownBefore, game.color)} → {formatEval(shownAfter, game.color)}
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))}
-                className="ml-auto text-xs text-zinc-500 hover:text-red-400 transition-colors"
-              >
-                Remove
-              </button>
-            </div>
-
-            {isFolded ? (
-              <p className="text-xs text-zinc-500">
-                {draft.unreasonable
-                  ? 'Hard to find'
-                  : draft.tags.length > 0
-                    ? draft.tags.map(id => tagName(id, tagGroups)).join(' · ')
-                    : 'Nothing written down yet.'}
-              </p>
-            ) : (
-              <>
-            {!draft.unreasonable && (
-              <>
-                <div className="flex flex-col gap-1.5">
-                  <Label>
-                    Why did I play it?
-                  </Label>
-                  <textarea
-                    value={draft.intent}
-                    onChange={event => patch(draft.ply, { intent: event.target.value })}
-                    rows={3}
-                    placeholder="I thought it won the b2 pawn and I could get back in time…"
-                    className={`${FIELD} resize-y`}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label>
-                    Why is it a mistake?
-                  </Label>
-                  <textarea
-                    value={draft.cause}
-                    onChange={event => patch(draft.ply, { cause: event.target.value })}
-                    rows={4}
-                    placeholder="It drops the h-pawn and opens a file at my king…"
-                    className={`${FIELD} resize-y`}
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <Label>
-                    What could I have seen or worked out?
-                  </Label>
-                  <textarea
-                    value={draft.signal}
-                    onChange={event => patch(draft.ply, { signal: event.target.value })}
-                    rows={4}
-                    placeholder="Their rook was already on the open file, so any pawn move there needed a check…"
-                    className={`${FIELD} resize-y`}
-                  />
-                </div>
-              </>
+            {noteDrafts.length === 0 && (
+              <span className="text-xs text-zinc-600">
+                Nothing noted yet.
+              </span>
             )}
+          </div>
+        </div>
 
-            <ProposedMoves
-              label="What would I play instead?"
-              ply={draft.ply}
-              rows={draft.better}
-              fenBefore={move?.fenBefore ?? null}
+        {noteDrafts.map(draft => {
+          const move = plyByIndex.get(draft.ply)
+          const judged = verdicts[verdictKey(draft.ply, draft.san)]
+          const live = judged && judged !== 'failed' ? judged : null
+
+          return (
+            <MoveNoteCard
+              key={draft.ply}
+              draft={draft}
+              yours={move ? move.color === game.color : true}
               color={game.color}
+              fenBefore={move?.fenBefore ?? null}
+              folded={folded[draft.ply] ?? false}
+              onToggleFold={() =>
+                setFolded(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? false) }))
+              }
+              tagsOpen={tagsOpen[draft.ply] ?? false}
+              onToggleTags={() =>
+                setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? false) }))
+              }
+              onChange={changes => patchNote(draft.ply, changes)}
+              onRemove={() => {
+                setSaved(null)
+                setNoteDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))
+              }}
+              onShowPly={() => onShowPly(draft.ply)}
               verdicts={verdicts}
-              onChange={better => patch(draft.ply, { better })}
-              linePlaceholder="Nd5 Bxe7 Qxe7"
-              whyPlaceholder="Holds f6 and keeps the h-file shut, so the queen has nothing to come to."
-              addLabel="+ another move"
+              patternTags={patternTags}
+              tagGroups={tagGroups}
               asking={asking === draft.ply}
               onAsk={() => ask(draft.ply)}
               engineAnswer={engine[draft.ply]}
               boardLine={lineOnBoard?.(draft.ply)}
+              live={live}
             />
+          )
+        })}
 
-            <div className="flex flex-col gap-2">
-              <Label>Tags</Label>
-              <TagPicker
-                tags={draft.tags}
-                open={tagsOpen[draft.ply] ?? true}
-                onToggleOpen={() =>
-                  setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? true) }))
-                }
-                onChange={newTags => patch(draft.ply, { tags: newTags })}
-                patternTags={patternTags}
-                groups={tagGroups}
-              />
-            </div>
-
-            {/*
-              The same idea missed for several moves running is one mistake, not four.
-              Attaching the later moves here keeps them out of the entry list, out of the
-              three-entry cap and out of the tag counts, while still recording that it
-              went on — which is the part worth seeing later.
-            */}
-            {!draft.unreasonable && (
-              <div className="flex flex-col gap-1.5 border-t border-zinc-800 pt-3">
-                <Label
-                  hint={
-                    candidates.length === 0 && draft.repeats.length === 0
-                      ? 'Every other marked move is already spoken for.'
-                      : undefined
-                  }
-                >
-                  Same mistake at
-                </Label>
-
-                <div className="flex gap-1.5 flex-wrap">
-                  {draft.repeats.map(repeat => (
-                    <button
-                      key={repeat.ply}
-                      type="button"
-                      onClick={() =>
-                        patch(draft.ply, {
-                          repeats: draft.repeats.filter(entry => entry.ply !== repeat.ply),
-                        })
-                      }
-                      title="This one is its own mistake after all"
-                      className="px-2.5 py-0.5 text-xs rounded-full border border-sky-500/40 bg-sky-500/10 text-sky-300 hover:border-sky-400 transition-colors font-mono"
-                    >
-                      {plyLabel(repeat.ply, repeat.san)} ×
-                    </button>
-                  ))}
-
-                  {candidates.map(move => (
-                    <button
-                      key={move.ply}
-                      type="button"
-                      onClick={() =>
-                        patch(draft.ply, {
-                          repeats: [
-                            ...draft.repeats,
-                            { ply: move.ply, san: move.san, moveNumber: move.moveNumber },
-                          ].sort((a, b) => a.ply - b.ply),
-                        })
-                      }
-                      title="The same mistake as this entry — covered by it, not written up again"
-                      className="px-2.5 py-0.5 text-xs rounded-full border border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-300 transition-colors font-mono"
-                    >
-                      + {plyLabel(move.ply, move.san)}
-                      <span className={markColor(move.tag)}> {move.tag}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <label className="flex items-start gap-2 text-xs text-zinc-300 cursor-pointer border-t border-zinc-800 pt-3">
-              <input
-                type="checkbox"
-                checked={draft.unreasonable}
-                onChange={event => patch(draft.ply, { unreasonable: event.target.checked })}
-                className="mt-0.5 accent-zinc-400"
-              />
-              <span>
-                Hard to find — no clear way I could have seen it
-                <span className="block text-zinc-600">
-                  Still recorded, but left out of the tag counts: there is no pattern to train
-                  from a move you had no way of finding.
-                </span>
-              </span>
-            </label>
-
-              </>
-            )}
-          </div>
-        )
-      })}
-
-      {drafts.length === 0 && noteDrafts.length === 0 && (
-        <p className="text-sm text-zinc-500">
-          Pick a move above to start — the engine&apos;s own objections are offered first, worst
-          loss leading. Nothing to pick apart? Note a move you want to remember, or leave a
-          line below and save; the game counts as reviewed either way.
-        </p>
-      )}
-
-      <div className="flex flex-col gap-1.5">
-        <Label
-          hint={
-            drafts.length === 0
-              ? 'On its own this marks the game reviewed, for one that needed no post-mortem.'
-              : 'Optional — the thread running through the whole game.'
-          }
-        >
-          Game notes
-        </Label>
-        <textarea
-          value={notes}
-          onChange={event => {
-            setSaved(null)
-            setNotes(event.target.value)
-          }}
-          rows={3}
-          placeholder="Comfortable until the time scramble, then I stopped looking at their threats."
-          className={`${FIELD} resize-y`}
-        />
-      </div>
+        <div className="flex flex-col gap-1.5">
+          <Label
+            hint={
+              drafts.length === 0
+                ? 'On its own this marks the game reviewed, for one that needed no post-mortem.'
+                : 'Optional — the thread running through the whole game.'
+            }
+          >
+            Game notes
+          </Label>
+          <textarea
+            value={notes}
+            onChange={event => {
+              setSaved(null)
+              setNotes(event.target.value)
+            }}
+            rows={3}
+            placeholder="Comfortable until the time scramble, then I stopped looking at their threats."
+            className={`${FIELD} resize-y`}
+          />
+        </div>
+      </Group>
 
       {problems.length > 0 && (
         <ul className="text-xs text-amber-400 flex flex-col gap-0.5">

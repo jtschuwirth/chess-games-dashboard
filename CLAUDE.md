@@ -586,6 +586,26 @@ src/
   other in a game row read as one thing in two shades. Violet is clear of the amber, of the red a
   blunder uses and of the blue of a review. `no engine` stays plain muted text rather than a
   pill — it is the absence of a status, not one.
+- **A review is two kinds of writing, and the form says which is which.** It was one
+  column under a single heading, **Root cause analysis**, which named only half of what
+  was in it: the capped post-mortem of the moves that decided the game, and an uncapped
+  pile of notes about moves that merely wanted remembering. The note cards even rendered
+  *above* the entries, so the first thing under a heading about root causes was something
+  that is not one.
+
+  They are different kinds of writing and the difference is the whole point of having
+  both. One answers four fixed questions, is capped at three and is about what went
+  wrong; the other asks nothing, has no limit and covers either side's moves. So the
+  panel is **Your review**, and inside it two groups, each with its own heading, its own
+  picker, its own cards and its own empty state. The whole-game note sits in the second
+  one, where it belongs.
+
+  A rule and a count rather than a bordered box, because a box inside a box reads as a
+  mistake — the `Panel` rule. The count is in the heading since it is what you look up to
+  check: `1 of 3` taken apart, `2 moves` noted. Each group carries one line saying what
+  it is for, in the words that tell it from the other — that line is the only new prose,
+  and it earns its place by being the thing that was missing.
+
 - **A review is four questions about at most three moves.** The method is borrowed from
   incident root-cause analysis: what you were doing, what failed, what would have caught it, and
   what to do instead. `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every
