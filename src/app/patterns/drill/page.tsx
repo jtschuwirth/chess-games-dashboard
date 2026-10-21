@@ -259,6 +259,6 @@ function DrillBody({ userId }: { userId: string }) {
 
 export default function PatternDrillPage() {
   return (
-    <PageShell title="Drill patterns">{user => <DrillBody userId={user.uid} />}</PageShell>
+    <PageShell title="Drill patterns" tab="Pattern drill">{user => <DrillBody userId={user.uid} />}</PageShell>
   )
 }

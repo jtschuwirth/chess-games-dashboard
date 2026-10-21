@@ -17,6 +17,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-zinc-950">
+        <title>Chess</title>
         <Spinner />
       </div>
     )
@@ -25,6 +26,8 @@ export default function Home() {
   if (!user) {
     return (
       <main className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col items-center justify-center gap-8 px-4">
+        {/* no PageShell here, so this page names its own tab */}
+        <title>Chess</title>
         <div className="text-center">
           <h1 className="text-4xl font-bold tracking-tight mb-2">Chess Games Dashboard</h1>
           <p className="text-zinc-400 text-lg">Sign in to get started</p>

@@ -338,7 +338,7 @@ function LearnBody({ userId }: { userId: string }) {
 
 export default function LearnPage() {
   return (
-    <PageShell title="Learn from your mistakes" wide>
+    <PageShell title="Learn from your mistakes" tab="Learn" wide>
       {user => (
         <Suspense
           fallback={

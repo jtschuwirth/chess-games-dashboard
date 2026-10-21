@@ -367,7 +367,7 @@ export default function GuidePage() {
   const params = useParams<{ id: string }>()
 
   return (
-    <PageShell title="Exercise guide" wide>
+    <PageShell title="Exercise guide" tab="Guide" wide>
       {user => <GuideBody key={params.id} userId={user.uid} guideId={params.id} />}
     </PageShell>
   )

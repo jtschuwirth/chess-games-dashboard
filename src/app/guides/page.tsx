@@ -163,6 +163,6 @@ function GuidesBody({ userId }: { userId: string }) {
 
 export default function GuidesPage() {
   return (
-    <PageShell title="Exercise guides">{user => <GuidesBody userId={user.uid} />}</PageShell>
+    <PageShell title="Exercise guides" tab="Guides">{user => <GuidesBody userId={user.uid} />}</PageShell>
   )
 }

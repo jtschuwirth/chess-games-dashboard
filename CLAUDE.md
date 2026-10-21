@@ -2198,6 +2198,32 @@ src/
   first into the second on the way out of Firestore — one week holding the old days, `done: true`
   becoming one of one — and since `updatePlan` replaces the document, a plan rewrites itself the
   first time you touch it. Same habit as `betterMovesOf` and the pre-game ratings.
+- **The tab says which section you are in, and says it first.** Every page was titled
+  `Chess Games Dashboard`, so eight open tabs were eight identical labels and the only way
+  to find the one with the plan in it was to open them. A browser gives a tab about a dozen
+  characters before it truncates, which means the words that tell one from another have to
+  be the *first* ones: the section leads and the app's own name trails, where losing it to
+  the ellipsis costs nothing.
+
+  `PageShell` is where it goes, because every page already hands it the section name for
+  the heading — one component rather than fourteen. The heading and the tab are not always
+  the same words, though, which is what the optional `tab` prop is for: a heading has the
+  width of a page and a tab has a dozen characters, so `Learn from your mistakes` becomes
+  `Learn`, and `Exercise guides` and `Exercise guide` become `Guides` and `Guide` rather
+  than two labels that truncate to the same thing.
+
+  **It is a rendered `<title>`, not `document.title` in an effect**, and the difference is
+  a race you cannot see. Next **streams the metadata at the end of the document**, so the
+  title element arrives *after* hydration has already run the effect and the page settles
+  back to the layout's default — with nothing overwriting it afterwards, which is exactly
+  what makes it look as though the effect never ran. React 19 hoists a `<title>` into the
+  head from wherever it is rendered, so letting React own it removes the race and puts the
+  right name in the server-rendered HTML, where there is no correction to see at all.
+
+  The root layout therefore sets **no** title: a metadata one would be a second `<title>`,
+  with which of the two the browser shows left to the order the document streamed in. The
+  sign-in page has no `PageShell`, so it renders its own.
+
 - **The deployed commit is on screen, signed in or not.** `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA` is
   inlined into the browser bundle at build time, so `lib/version.ts` is a literal in the shipped
   JavaScript rather than a lookup and cannot drift from the code around it. It reads

@@ -850,7 +850,7 @@ export default function GamePage() {
   const params = useParams<{ id: string }>()
 
   return (
-    <PageShell title="Game review" wide>
+    <PageShell title="Game review" tab="Game" wide>
       {user => (
         <Suspense
           fallback={

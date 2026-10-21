@@ -130,5 +130,5 @@ function PlansBody({ userId }: { userId: string }) {
 }
 
 export default function PlansPage() {
-  return <PageShell title="Study plans">{user => <PlansBody userId={user.uid} />}</PageShell>
+  return <PageShell title="Study plans" tab="Plans">{user => <PlansBody userId={user.uid} />}</PageShell>
 }

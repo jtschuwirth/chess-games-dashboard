@@ -334,7 +334,7 @@ export default function PlanPage() {
   const params = useParams<{ id: string }>()
 
   return (
-    <PageShell title="Study plan" wide>
+    <PageShell title="Study plan" tab="Plan" wide>
       {user => <PlanBody key={params.id} userId={user.uid} planId={params.id} />}
     </PageShell>
   )

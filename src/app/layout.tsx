@@ -13,8 +13,13 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+/*
+  No `title` here on purpose. Every page is a client component behind an auth guard, so
+  the title is a `<title>` each one renders and React hoists — and a metadata title would
+  be a second one, with which of them the browser shows left to the order the document
+  streamed in. The sign-in page renders its own.
+*/
 export const metadata: Metadata = {
-  title: "Chess Games Dashboard",
   description: "Sync your chess.com and lichess games and track how your openings score",
 };
 
