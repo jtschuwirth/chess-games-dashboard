@@ -36,7 +36,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
 5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
    six of its own: which mark a move carried, which piece moved, which phase of the game
    it was played in, how long you thought before playing it, which band you were standing
-   in when you did, and how many of the engine's moves would have held. A heatmap shows
+   in when you did, and what the position asked for. A heatmap shows
    where on the board they land, and a square on it is a filter — press h4 to read only
    the mistakes that landed there. Under it, the engine's readings, the second pass's
    verdicts, the Mistake database and then every marked move as a row carrying what the
@@ -476,32 +476,62 @@ src/
   stood is its own column now and printing `winning → level` there would be the same word
   twice on one row.
 
-- **How many held is a filter, and it is counts rather than names.** The breadth is the
-  axis that separates a line you had to find from a position that forgave anything, and it
-  decides which column of the transition table a verdict is named from — so it is the other
-  half of **Where you stood**, and the pair is what makes "I was winning and *anything*
-  would have done" a slice rather than an anecdote. It is 91 moves.
+- **What the position asked for is a filter, in the app's own word for it.** The breadth
+  separates a line you had to find from a position that forgave anything, and it decides
+  which column of the transition table a verdict is named from — so it is the other half of
+  **Where you stood**, and the pair is what makes "I was winning and *anything* would have
+  done" a slice rather than an anecdote. It is 132 moves.
 
-  The chips are `1–2`, `3–4`, `5+` and not `sharp` / `tight` / `stable`. Those names are a
-  judgement with a setting behind them, and on a filter row what you want is the thing
-  itself: was there one move, a few, or did anything do. `looked` is 5 on 98% of the
-  readings, so `5+` *is* `stable` in all but a handful and says so without a word. `holds`
-  is never 0 and cannot be — the search keeps five lines and the move you played is one of
-  them — so the three bands partition every count that occurs.
+  `sharp` / `tight` / `stable`, from `breadthOf`, and not the raw count of holds. Counts
+  were tried and are worse: they look precise and are not, because what counts as few is a
+  setting (`narrow`), and `5 of 5` and `3 of 3` are the same thing said twice. The names
+  are what every other screen already calls it.
 
   It is the one row with **no denominator**, and that is not an oversight: a move nobody
-  marked has no candidate count, so there is nothing to be a share *of*. The coverage goes
-  in the heading instead, the way the Mark row carries its own total — `1177 of 1641 read`
-  — and a move the second pass has not reached is dropped by the filter rather than
-  guessed at, the rule a think filter follows for a game with no clocks.
+  marked has no candidate count, so there is nothing to be a share *of*. The coverage sits
+  beside the chips instead — `1177 of 1641 read` — and a move the second pass has not
+  reached is dropped by the filter rather than guessed at, the rule a think filter follows
+  for a game with no clocks.
+
+- **The filter is one table, not a pile of buttons.** Ten tidy label-and-control rows in a
+  grid, then seven more underneath in their own `flex` stack with their own labels lining
+  up with nothing: that is how a panel ends up reading as a heap. `FilterRow` and
+  `FilterGroup` are exported from `FilterPanel` so a page's own rows are rows of the *same*
+  grid, and the `extra` slot renders inside it rather than after it. Every row is a name on
+  the left and a control on the right, every chip is the one `Chip`, and the label column is
+  right-aligned so the names end where the controls begin.
+
+  Two groups rather than seventeen rows: **which games** are in the slice, then **which
+  moves** of those games you are reading. The split is real rather than decorative, and the
+  heading is hidden when a page has only the first — a heading over the only group is a line
+  that separates nothing.
+
+  **One Reset.** The panel knew about its own filters and nothing about a page's extra ones,
+  so the mistakes page had grown a second `Clear` beside it: two controls that both mean
+  "stop narrowing". The page hands over how many of its own rows are active and what to do
+  about them, and there is one button, which appears only once something is narrowed.
+
+- **The fractions came off the chips, and were fixed on the way.** Every chip read
+  `164/2946`, which is seven rows of digits to look past — and worse, it was measured
+  against the whole slice, so with two filters on a chip went on claiming 506 after the
+  list had narrowed to 122. Numbers describing a slice nobody is looking at are not a
+  denominator, they are furniture.
+
+  `except(filter, row)` generalises what `exceptSquares` did for one row, so a count is
+  taken with the **other** rows in force and not its own — the patterns finder's rule, which
+  this page had been breaking. The counts are still computed, because they decide which
+  chips have nothing behind them and what the tooltip says, and a check asserts the promise
+  is kept: with the queen filter on, the `??` chip counts 103 and pressing it delivers 103.
+  They are simply not drawn. `moveTotals` stays as well — it is what the analysis scripts
+  read, and it is where the 4.5%-against-14.3% reading came from.
 
 - **A chip is already a pill, so the thing inside it must not be.** The **Where you stood**
-  chips put `STANDING_BADGE` inside a `FilterChip`: two borders around one word of 10px
-  uppercase, and on an *active* chip — which is light — a translucent `bg-red-500/15` with
-  `text-red-300` on top of it is very nearly invisible. `STANDING_INK` is the same scale as
-  plain ink for exactly this, so the hue still matches the badge on the rows it filters to
-  and there is one border instead of two. The badge itself is unchanged where it belongs,
-  which is on a dark row.
+  chips put `STANDING_BADGE` inside one: two borders around a word of 10px uppercase, and on
+  an *active* chip — which is light — a translucent `bg-red-500/15` with `text-red-300` on
+  top of it is very nearly invisible. `STANDING_INK` is the same scale as plain ink for
+  exactly this, so the hue still matches the badge on the rows it filters to and there is one
+  border instead of two. The badge itself is unchanged where it belongs, which is on a dark
+  row.
 
 - **The row says what the second pass made of the move, in the game view's own words.**
   The list was a move, a square, an opponent and a pair of evaluations — and `verdicts`

@@ -1,10 +1,11 @@
 'use client'
 
-import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import AccuracyPanel from '@/components/AccuracyPanel'
-import FilterPanel from '@/components/FilterPanel'
+import FilterPanel, { FilterGroup, FilterRow } from '@/components/FilterPanel'
+import Chip from '@/components/Chip'
 import MistakeHeatmap from '@/components/MistakeHeatmap'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import Panel from '@/components/Section'
@@ -13,6 +14,7 @@ import VerdictPanel from '@/components/VerdictPanel'
 import { THINK_BANDS } from '@/lib/accuracy'
 import { formatDuration, gamePhases, timeControlsIn } from '@/lib/clocks'
 import {
+  DEFAULT_FILTERS,
   ALL_OPENINGS,
   UNCLASSIFIED_OPENING,
   readFilters,
@@ -21,10 +23,11 @@ import {
 } from '@/lib/dashboard-filters'
 import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
 import {
-  HELD_BANDS,
+  BREADTHS_IN,
   NO_MISTAKE_FILTER,
   STOOD_IN,
-  heldBandOf,
+  breadthOfRow,
+  except,
   exceptSquares,
   PIECES,
   PIECE_LABEL,
@@ -33,7 +36,6 @@ import {
   markTint,
   matchesMistake,
   mistakeRows,
-  moveTotals,
   readCount,
   type MistakeFilter,
   type Piece,
@@ -55,7 +57,7 @@ import {
   verdictHint,
 } from '@/lib/verdict'
 import PieceSprites, { spriteId } from '@/components/PieceSprites'
-import type { Standing } from '@/lib/bands'
+import type { Breadth, Standing } from '@/lib/bands'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import type { Color, GameRecord, OpeningLine, PatternRecord } from '@/types/chess'
 import type { MistakeRow } from '@/lib/mistakes'
@@ -63,65 +65,6 @@ import type { MistakeRow } from '@/lib/mistakes'
 /** How many rows before the list becomes a page you scroll rather than read. */
 const PAGE_SIZE = 60
 
-/**
- * One chip of a filter row: what pressing it would give you, over what that is out of.
- *
- * The first number is marked moves and is measured before this page's own filters, so
- * each chip says what it would give you rather than zero — the patterns finder's rule.
- * The second is **every analysed move of yours in the same bucket**, and without it the
- * first cannot be compared with its neighbour: 5 marked moves after a five-minute think
- * against 506 after a think under five seconds reads as a damning fact about fast moves
- * and is mostly a fact about how rarely anyone thinks for five minutes. The share is
- * what carries, and it is on the chip itself rather than a panel away, because the chip
- * is where the comparison is being made.
- *
- * A bucket with moves in it but nothing marked is the most useful chip on the row — it
- * is a thing you do and never go wrong at — so it is still legible while being
- * unpressable, rather than faded to the 30% an empty one used to get.
- */
-function FilterChip({
-  label,
-  count,
-  total,
-  on,
-  onClick,
-  describe,
-}: {
-  label: ReactNode
-  count: number
-  /** Every analysed move in the same bucket. Left out where every chip shares one. */
-  total?: number
-  on: boolean
-  onClick: () => void
-  /** What the bucket is, for the title: "moves you spent over 5m on". */
-  describe: string
-}) {
-  const share = total ? Math.round((count / total) * 1000) / 10 : null
-
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={count === 0}
-      title={
-        share === null
-          ? describe
-          : `${count} of ${total} ${describe} are marked — ${share}%`
-      }
-      className={`px-3 py-1 text-xs rounded-full border transition-colors disabled:opacity-50 disabled:cursor-default ${
-        on
-          ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-          : 'border-zinc-700 text-zinc-400 hover:border-zinc-500'
-      }`}
-    >
-      {label}{' '}
-      <span className={on ? 'text-zinc-600' : 'text-zinc-500'}>{count}</span>
-      {total !== undefined && (
-        <span className={on ? 'text-zinc-500' : 'text-zinc-700'}>/{total}</span>
-      )}
-    </button>
-  )
-}
 
 /**
  * The piece that moved, drawn the way the board draws it.
@@ -294,23 +237,32 @@ function MistakesBody({ userId }: { userId: string }) {
   )
 
   const marks = useMemo(() => activeMarks(), [])
-  const byMark = useMemo(() => countBy(all, row => row.tag), [all])
-  const byPiece = useMemo(() => countBy(all, row => row.piece), [all])
-  const byPhase = useMemo(() => countBy(all, row => row.phase ?? ''), [all])
-  const byThink = useMemo(() => countBy(all, row => row.thinkBand ?? ''), [all])
-  /* the chip counts what the board that picked it was showing, not what it left behind */
-  const bySquare = useMemo(() => countBy(heatRows, row => row.square), [heatRows])
-  const byStood = useMemo(() => countBy(all, row => row.stood), [all])
-  const byHeld = useMemo(
-    () => countBy(all, row => heldBandOf(row.verdict?.holds ?? null) ?? ''),
-    [all],
-  )
+
   /*
-   * The denominator, over the same games the rows come from. It is the moves where
-   * nothing went wrong, which is 93% of them, and it is what turns "5 marked" into
-   * "5 of 118".
+   * Each row is counted with the OTHER rows in force but not its own, which is the rule
+   * the patterns finder follows and the one this page was breaking: counting against the
+   * whole slice meant a chip went on claiming 506 after you had narrowed to 122, so the
+   * moment two filters were on every number on screen was about a slice nobody was
+   * looking at. They are not drawn any more — seven rows of fractions was the noise — but
+   * they still decide which chips have nothing behind them, and they have to be right to
+   * do that.
    */
-  const totals = useMemo(() => moveTotals(scoped), [scoped])
+  const countsFor = useCallback(
+    (key: keyof MistakeFilter) => all.filter(row => matchesMistake(row, except(mistakeFilter, key))),
+    [all, mistakeFilter],
+  )
+  const byMark = useMemo(() => countBy(countsFor('marks'), row => row.tag), [countsFor])
+  const byPiece = useMemo(() => countBy(countsFor('pieces'), row => row.piece), [countsFor])
+  const byPhase = useMemo(() => countBy(countsFor('phases'), row => row.phase ?? ''), [countsFor])
+  const byThink = useMemo(
+    () => countBy(countsFor('think'), row => row.thinkBand ?? ''),
+    [countsFor],
+  )
+  const byStood = useMemo(() => countBy(countsFor('stood'), row => row.stood), [countsFor])
+  const byBreadth = useMemo(
+    () => countBy(countsFor('breadth'), row => breadthOfRow(row) ?? ''),
+    [countsFor],
+  )
   /* what the second pass has been over, which a column drawn from it has to say */
   const read = useMemo(() => readCount(rows), [rows])
   /* the held row's own coverage: against the slice, not against what it has narrowed to */
@@ -361,12 +313,12 @@ function MistakesBody({ userId }: { userId: string }) {
         : [...current.stood, stood],
     }))
 
-  const toggleHeld = (label: string) =>
+  const toggleBreadth = (breadth: Breadth) =>
     setMistakeFilter(current => ({
       ...current,
-      held: current.held.includes(label)
-        ? current.held.filter(entry => entry !== label)
-        : [...current.held, label],
+      breadth: current.breadth.includes(breadth)
+        ? current.breadth.filter(entry => entry !== breadth)
+        : [...current.breadth, breadth],
     }))
 
   const toggleSquare = (square: string) =>
@@ -377,14 +329,17 @@ function MistakesBody({ userId }: { userId: string }) {
         : [...current.squares, square],
     }))
 
-  const anyMistakeFilter =
-    mistakeFilter.marks.length > 0 ||
-    mistakeFilter.pieces.length > 0 ||
-    mistakeFilter.phases.length > 0 ||
-    mistakeFilter.think.length > 0 ||
-    mistakeFilter.squares.length > 0 ||
-    mistakeFilter.stood.length > 0 ||
-    mistakeFilter.held.length > 0
+  /** How many of this page's own rows are narrowing, for the panel's one Reset. */
+  const activeRows = [
+    mistakeFilter.marks,
+    mistakeFilter.pieces,
+    mistakeFilter.phases,
+    mistakeFilter.think,
+    mistakeFilter.stood,
+    mistakeFilter.breadth,
+    mistakeFilter.squares,
+  ].filter(row => row.length > 0).length
+
 
   return (
     <>
@@ -400,220 +355,136 @@ function MistakesBody({ userId }: { userId: string }) {
         path={path}
         refresh={refresh}
         refreshing={refreshing}
+        extraActive={activeRows}
+        onReset={() => {
+          setFilters(DEFAULT_FILTERS)
+          setMistakeFilter(NO_MISTAKE_FILTER)
+        }}
         extra={
-          <div className="flex flex-col gap-3 border-t border-zinc-800 pt-3">
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs uppercase tracking-wide text-zinc-500">
-                Mark
-                <span className="normal-case tracking-normal text-zinc-600">
-                  {' '}
-                  — {all.length} of {totals.moves} of your moves
-                </span>
-                {totals.stale > 0 && (
+          <>
+            <FilterGroup>Which moves</FilterGroup>
+
+            <FilterRow label="Mark">
+              {marks.map(mark => (
+                <Chip
+                  key={mark}
+                  active={mistakeFilter.marks.includes(mark)}
+                  onClick={() => toggleMark(mark)}
+                  title={`${byMark.get(mark) ?? 0} of them`}
+                >
+                  <span className="font-mono">{mark}</span>
+                </Chip>
+              ))}
+            </FilterRow>
+
+            <FilterRow label="Piece">
+              {PIECES.map(piece => (
+                <Chip
+                  key={piece}
+                  active={mistakeFilter.pieces.includes(piece)}
+                  disabled={(byPiece.get(piece) ?? 0) === 0}
+                  onClick={() => togglePiece(piece)}
+                  title={`${PIECE_LABEL[piece]} — ${byPiece.get(piece) ?? 0}`}
+                >
+                  <PieceIcon piece={piece} color="white" size="w-4 h-4" />
+                </Chip>
+              ))}
+            </FilterRow>
+
+            <FilterRow label="Played in" title="When the move was played, in your own move numbers — not how long the game lasted">
+              {gamePhases().map(phase => (
+                <Chip
+                  key={phase.label}
+                  active={mistakeFilter.phases.includes(phase.label)}
+                  disabled={(byPhase.get(phase.label) ?? 0) === 0}
+                  onClick={() => togglePhase(phase.label)}
+                  title={`${phase.name} — ${byPhase.get(phase.label) ?? 0}`}
+                >
+                  <span className="font-mono">{phase.label}</span>
+                </Chip>
+              ))}
+            </FilterRow>
+
+            <FilterRow label="Thought for" title="Seconds you spent on the move itself, read off the game's own clock readings">
+              {THINK_BANDS.map(band => (
+                <Chip
+                  key={band.label}
+                  active={mistakeFilter.think.includes(band.label)}
+                  disabled={(byThink.get(band.label) ?? 0) === 0}
+                  onClick={() => toggleThink(band.label)}
+                  title={`${byThink.get(band.label) ?? 0} of them`}
+                >
+                  {band.label}
+                </Chip>
+              ))}
+            </FilterRow>
+
+            <FilterRow
+              label="Stood in"
+              title="The band you were in before you played it — the axis the verdict is named from. A band's own geometry is part of it: the mark is defined as falling OUT of the band you were in, and winning and losing have no ceiling or floor to fall through."
+            >
+              {STOOD_IN.map(stood => (
+                <Chip
+                  key={stood}
+                  active={mistakeFilter.stood.includes(stood)}
+                  disabled={(byStood.get(stood) ?? 0) === 0}
+                  onClick={() => toggleStood(stood)}
+                  title={`${byStood.get(stood) ?? 0} of them`}
+                >
                   <span
-                    className="normal-case tracking-normal text-amber-500/80"
-                    title="A shallower engine finds fewer faults and scores them smaller, so every share below reads low. The Engine filter can take them out."
-                  >
-                    {' '}
-                    · {totals.stale} analysed by an older build
-                  </span>
-                )}
-              </span>
-              {/* no per-chip total: every mark shares the one denominator above */}
-              <div className="flex gap-1.5 flex-wrap">
-                {marks.map(mark => (
-                  <FilterChip
-                    key={mark}
-                    label={<span className="font-mono">{mark}</span>}
-                    count={byMark.get(mark) ?? 0}
-                    on={mistakeFilter.marks.includes(mark)}
-                    onClick={() => toggleMark(mark)}
-                    describe={`moves marked ${mark}`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs uppercase tracking-wide text-zinc-500">Piece moved</span>
-              <div className="flex gap-1.5 flex-wrap">
-                {PIECES.map(piece => (
-                  <FilterChip
-                    key={piece}
-                    /* the board's own symbol, in white: the chip sits on a dark pill */
-                    label={<PieceIcon piece={piece} color="white" size="w-4 h-4" />}
-                    count={byPiece.get(piece) ?? 0}
-                    total={totals.byPiece.get(piece) ?? 0}
-                    on={mistakeFilter.pieces.includes(piece)}
-                    onClick={() => togglePiece(piece)}
-                    describe={`${PIECE_LABEL[piece].toLowerCase()} moves`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span
-                className="text-xs uppercase tracking-wide text-zinc-500"
-                title="When the move was played, in your own move numbers — not how long the game lasted"
-              >
-                Played in
-              </span>
-              <div className="flex gap-1.5 flex-wrap">
-                {gamePhases().map(phase => (
-                  <FilterChip
-                    key={phase.label}
-                    label={<span className="font-mono">{phase.label}</span>}
-                    count={byPhase.get(phase.label) ?? 0}
-                    total={totals.byPhase.get(phase.label) ?? 0}
-                    on={mistakeFilter.phases.includes(phase.label)}
-                    onClick={() => togglePhase(phase.label)}
-                    describe={`${phase.name.toLowerCase()} moves`}
-                  />
-                ))}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <span className="text-xs uppercase tracking-wide text-zinc-500">
-                <span title="Seconds you spent on the move itself, read off the game's own clock readings">
-                  Thought for
-                </span>
-                {totals.timed < totals.moves && (
-                  <span className="normal-case tracking-normal text-zinc-600">
-                    {' '}
-                    — {totals.timed} of {totals.moves} moves are timed
-                  </span>
-                )}
-              </span>
-              <div className="flex gap-1.5 flex-wrap">
-                {THINK_BANDS.map(band => (
-                  <FilterChip
-                    key={band.label}
-                    label={band.label}
-                    count={byThink.get(band.label) ?? 0}
-                    total={totals.byThink.get(band.label) ?? 0}
-                    on={mistakeFilter.think.includes(band.label)}
-                    onClick={() => toggleThink(band.label)}
-                    describe={`moves you spent ${band.label} on`}
-                  />
-                ))}
-              </div>
-            </div>
-
-
-            <div className="flex flex-col gap-1.5">
-              <span
-                className="text-xs uppercase tracking-wide text-zinc-500"
-                title="The band you were in before you played it. A band's share is partly its own geometry: the mark is defined as falling OUT of the band you were in, so a narrow band marks more than a wide one whoever is playing — winning and losing have no ceiling or floor to fall through."
-              >
-                Where you stood
-              </span>
-              <div className="flex gap-1.5 flex-wrap">
-                {STOOD_IN.map(stood => (
-                  <FilterChip
-                    key={stood}
-                    /*
-                      Plain ink, not the badge. A chip is already a bordered pill and the
-                      badge is another, which at 10px uppercase was two borders round one
-                      word — and on an active chip, which is light, the badge's own
-                      translucent background and pale text very nearly vanish. The hue is
-                      the badge's, so a chip and the rows it filters to still match.
-                    */
-                    label={
-                      <span
-                        className={`uppercase tracking-wide text-[11px] font-medium ${
-                          mistakeFilter.stood.includes(stood) ? '' : STANDING_INK[stood]
-                        }`}
-                      >
-                        {STANDING_LABEL[stood]}
-                      </span>
+                    className={
+                      mistakeFilter.stood.includes(stood) ? '' : STANDING_INK[stood]
                     }
-                    count={byStood.get(stood) ?? 0}
-                    total={totals.byStood.get(stood) ?? 0}
-                    on={mistakeFilter.stood.includes(stood)}
-                    onClick={() => toggleStood(stood)}
-                    describe={`moves played from ${STANDING_LABEL[stood]}`}
-                  />
-                ))}
-              </div>
-            </div>
-
-
-            <div className="flex flex-col gap-1.5">
-              <span
-                className="text-xs uppercase tracking-wide text-zinc-500"
-                title="How many of the five moves the engine looked at would not have been a mistake. One or two is a line to find; five is a position that forgave anything."
-              >
-                Moves that held
-                {readAll < all.length && (
-                  <span className="normal-case tracking-normal text-zinc-600">
-                    {' '}
-                    — {readAll} of {all.length} read
-                  </span>
-                )}
-              </span>
-              <div className="flex gap-1.5 flex-wrap">
-                {HELD_BANDS.map(band => (
-                  <FilterChip
-                    key={band.label}
-                    label={<span className="font-mono">{band.label}</span>}
-                    count={byHeld.get(band.label) ?? 0}
-                    on={mistakeFilter.held.includes(band.label)}
-                    onClick={() => toggleHeld(band.label)}
-                    describe={`moves where ${band.label} of the engine's candidates held`}
-                  />
-                ))}
-                {anyMistakeFilter && mistakeFilter.squares.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setMistakeFilter(NO_MISTAKE_FILTER)}
-                    className="px-3 py-1 text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
                   >
-                    Clear
-                  </button>
-                )}
-              </div>
-            </div>
+                    {STANDING_LABEL[stood]}
+                  </span>
+                </Chip>
+              ))}
+            </FilterRow>
+
+            <FilterRow
+              label="Position was"
+              title="What the position asked for: sharp is a line to find, tight a few playable moves, stable one that forgave anything. Only the moves the second pass has read carry this."
+            >
+              {BREADTHS_IN.map(breadth => (
+                <Chip
+                  key={breadth}
+                  active={mistakeFilter.breadth.includes(breadth)}
+                  disabled={(byBreadth.get(breadth) ?? 0) === 0}
+                  onClick={() => toggleBreadth(breadth)}
+                  title={`${BREADTH_LABEL[breadth]} — ${byBreadth.get(breadth) ?? 0}`}
+                >
+                  {breadth}
+                </Chip>
+              ))}
+              {readAll < all.length && (
+                <span className="text-[11px] text-zinc-600">
+                  {readAll} of {all.length} read
+                </span>
+              )}
+            </FilterRow>
 
             {/*
               Only once a square is picked. Sixty-four chips would be a board drawn badly,
-              and the board itself is upstairs doing that job — this row is the record of
+              and the board itself is downstairs doing that job — this row is the record of
               what it chose, where everything else active is already listed.
             */}
             {mistakeFilter.squares.length > 0 && (
-              <div className="flex flex-col gap-1.5">
-                <span
-                  className="text-xs uppercase tracking-wide text-zinc-500"
-                  title="Picked off the board below"
-                >
-                  Square
-                </span>
-                <div className="flex gap-1.5 flex-wrap">
-                  {mistakeFilter.squares.map(square => (
-                    <button
-                      key={square}
-                      type="button"
-                      onClick={() => toggleSquare(square)}
-                      title={`Stop showing only ${square}`}
-                      className="px-3 py-1 text-xs rounded-full border bg-zinc-200 text-zinc-900 border-zinc-200 font-mono transition-colors"
-                    >
-                      {square}{' '}
-                      <span className="text-zinc-600">{bySquare.get(square) ?? 0}</span>
-                      <span className="text-zinc-500"> ✕</span>
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    onClick={() => setMistakeFilter(NO_MISTAKE_FILTER)}
-                    className="px-3 py-1 text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+              <FilterRow label="Square" title="Picked off the board below">
+                {mistakeFilter.squares.map(square => (
+                  <Chip
+                    key={square}
+                    active
+                    onClick={() => toggleSquare(square)}
+                    title={`Stop showing only ${square}`}
                   >
-                    Clear
-                  </button>
-                </div>
-              </div>
+                    <span className="font-mono">{square}</span>
+                    <span className="text-zinc-500"> ✕</span>
+                  </Chip>
+                ))}
+              </FilterRow>
             )}
-          </div>
+          </>
         }
       />
 

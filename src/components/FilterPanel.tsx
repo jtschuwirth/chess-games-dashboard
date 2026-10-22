@@ -43,9 +43,56 @@ const COLOR_OPTIONS: { value: Color | 'both'; label: string }[] = [
   { value: 'black', label: 'as Black' },
 ]
 
-function FilterLabel({ children }: { children: React.ReactNode }) {
+function FilterLabel({ children, title }: { children: React.ReactNode; title?: string }) {
   return (
-    <span className="text-xs uppercase tracking-wide text-zinc-500 sm:pt-2">{children}</span>
+    <span
+      title={title}
+      className="text-xs uppercase tracking-wide text-zinc-500 sm:pt-1.5 sm:text-right"
+    >
+      {children}
+    </span>
+  )
+}
+
+/**
+ * One row of the filter: its name on the left, its control on the right.
+ *
+ * Exported because the rows a page adds have to be rows of the *same* grid, not a second
+ * stack underneath it. They were their own `flex flex-col` with their own labels, which
+ * is how a panel of ten tidy rows came to end in seven that lined up with nothing — the
+ * complaint was that it read as a pile of buttons, and that is why.
+ */
+export function FilterRow({
+  label,
+  title,
+  children,
+}: {
+  label: string
+  /** What the row means, where the name cannot say it. */
+  title?: string
+  children: React.ReactNode
+}) {
+  return (
+    <>
+      <FilterLabel title={title}>{label}</FilterLabel>
+      <div className="flex gap-1.5 flex-wrap items-center min-w-0">{children}</div>
+    </>
+  )
+}
+
+/**
+ * A heading over a run of rows, spanning both columns.
+ *
+ * Seventeen rows is a wall whatever you do to them; two groups of eight with a name over
+ * each is a thing you can look through. The split is real rather than decorative: the
+ * first group narrows which **games** are in the slice, the second narrows which **moves**
+ * of those games you are reading.
+ */
+export function FilterGroup({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="sm:col-span-2 text-[10px] uppercase tracking-[0.12em] text-zinc-600 border-t border-zinc-800 pt-3 mt-1 first:border-0 first:pt-0 first:mt-0">
+      {children}
+    </span>
   )
 }
 
@@ -72,6 +119,8 @@ export default function FilterPanel({
   refresh,
   refreshing,
   extra,
+  extraActive,
+  onReset,
 }: {
   filters: Filters
   setFilters: (next: Filters) => void
@@ -87,8 +136,19 @@ export default function FilterPanel({
   refreshing: boolean
   /** Rows a particular dashboard adds, such as the mark and piece a mistake was. */
   extra?: React.ReactNode
+  /**
+   * How many of the page's own rows are narrowing, and how to clear them.
+   *
+   * The panel knows about its own filters and nothing about a page's extra ones, so a
+   * page that added rows had to grow a second Clear beside the panel's Reset — two
+   * controls that both mean "stop narrowing", which is the disorganisation this row
+   * system is for. The page hands these over and there is one button again.
+   */
+  extraActive?: number
+  onReset?: () => void
 }) {
-  const isFiltered = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS)
+  const ownActive = JSON.stringify(filters) !== JSON.stringify(DEFAULT_FILTERS)
+  const isFiltered = ownActive || (extraActive ?? 0) > 0
   const { endedIn, shape, tag, mistakes, reviewed, opening } = filters
   const { source, timeControls, color, since, minRating, maxRating } = filters
   const unclassifiedView = opening === UNCLASSIFIED_OPENING
@@ -97,12 +157,15 @@ export default function FilterPanel({
       <Panel
         id="filters"
         title="Filters"
-        meta={`${scoped.length} of ${games.length} games`}
+        meta={
+          `${scoped.length} of ${games.length} games` +
+          (isFiltered ? ` · narrowed` : '')
+        }
         actions={
           <>
             {isFiltered && (
               <button
-                onClick={() => setFilters(DEFAULT_FILTERS)}
+                onClick={() => (onReset ? onReset() : setFilters(DEFAULT_FILTERS))}
                 className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
               >
                 Reset
@@ -119,7 +182,10 @@ export default function FilterPanel({
           </>
         }
       >
-        <div className="grid sm:grid-cols-[6rem_1fr] gap-x-4 gap-y-3 items-start">
+        <div className="grid sm:grid-cols-[7rem_1fr] gap-x-4 gap-y-2.5 items-start">
+          {/* a heading over the only group is a line that separates nothing */}
+          {extra && <FilterGroup>Which games</FilterGroup>}
+
           <FilterLabel>Opening</FilterLabel>
           <div className="flex flex-col gap-1.5 min-w-0">
             <select
@@ -344,14 +410,13 @@ export default function FilterPanel({
               className="w-20 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-zinc-200 outline-none focus:border-zinc-600"
             />
           </div>
+          {/*
+            Rows a particular dashboard adds — the mark a mistake carried, the piece that
+            moved. Inside the grid, so they are rows of the same table rather than a
+            second stack with its own alignment.
+          */}
+          {extra}
         </div>
-
-        {/*
-          Rows a particular dashboard adds — the mark a mistake carried, the piece that
-          moved. They sit inside this panel rather than in one of their own so that
-          "narrow what I am looking at" is one box wherever you are.
-        */}
-        {extra}
 
         {openings.length === 0 && (
           <p className="text-xs text-zinc-500">

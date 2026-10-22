@@ -14,8 +14,8 @@
  */
 import { isComparable, thinkBandOf } from './accuracy'
 import { gamePhases, thinkPerPly, type GamePhase } from './clocks'
-import { standingOf, verdictsOf } from './verdict'
-import { STANDINGS, type Standing } from './bands'
+import { breadthOf, standingOf, verdictsOf } from './verdict'
+import { BREADTHS, STANDINGS, type Breadth, type Standing } from './bands'
 import { isFault, markBadge } from './review'
 import { SEVERITIES, settings, type AnalysisSettings } from './settings'
 import { SEVERITY_MARK } from './bands'
@@ -304,31 +304,19 @@ export function activeMarks(config = settings()): string[] {
 }
 
 /**
-  * How many of the engine's candidates held, in the three buckets worth telling apart.
+  * What the position asked for, by the app's own word for it.
   *
-  * The counts rather than `sharp` / `tight` / `stable`, deliberately. Those names are a
-  * judgement with a setting behind them — `sharp` is "at most `narrow`", `stable` is
-  * "everything that was looked at" — and on a filter row what you want is the thing
-  * itself: was there one move, a few, or did anything do. `looked` is 5 on 98% of the
-  * readings, so `5+` is `stable` in all but a handful and says so without a word.
-  *
-  * `holds` is never 0 in this data and cannot be: the search is told to keep five lines
-  * and the move you played is one of them, so something always holds or the position is
-  * not one the second pass reads.
+  * `breadthOf` is the rule the verdict is already named from — `sharp` is a line to find,
+  * `tight` a few playable moves, `stable` a position that forgave anything — so the filter
+  * uses it rather than the raw count of holds. Counts were tried and are worse: they look
+  * precise and are not, because what counts as few is a setting (`narrow`), and `5 of 5`
+  * and `3 of 3` are the same thing said twice.
   */
-export const HELD_BANDS: { label: string; from: number; to: number | null }[] = [
-  { label: '1–2', from: 1, to: 2 },
-  { label: '3–4', from: 3, to: 4 },
-  { label: '5+', from: 5, to: null },
-]
+export const BREADTHS_IN: Breadth[] = BREADTHS
 
-/** Which band a count of holds falls in. Null for a move the second pass has not read. */
-export function heldBandOf(holds: number | null): string | null {
-  if (holds === null) return null
-  return (
-    HELD_BANDS.find(band => holds >= band.from && (band.to === null || holds <= band.to))?.label ??
-    null
-  )
+/** What a move's reading says the position asked for. Null until the second pass reads it. */
+export function breadthOfRow(row: MistakeRow): Breadth | null {
+  return row.verdict ? breadthOf(row.verdict.holds, row.verdict.looked) : null
 }
 
 export interface MistakeFilter {
@@ -344,8 +332,8 @@ export interface MistakeFilter {
   squares: string[]
   /** Bands you were standing in. Empty means wherever you stood. */
   stood: Standing[]
-  /** How many candidates held, by `HELD_BANDS` label. Empty means however many. */
-  held: string[]
+  /** What the position asked for. Empty means whatever it asked. */
+  breadth: Breadth[]
 }
 
 export const NO_MISTAKE_FILTER: MistakeFilter = {
@@ -355,7 +343,7 @@ export const NO_MISTAKE_FILTER: MistakeFilter = {
   think: [],
   squares: [],
   stood: [],
-  held: [],
+  breadth: [],
 }
 
 /**
@@ -367,7 +355,7 @@ export const NO_MISTAKE_FILTER: MistakeFilter = {
  * it would give you, not what it has already given you.
  */
 export function exceptSquares(filter: MistakeFilter): MistakeFilter {
-  return { ...filter, squares: [] }
+  return except(filter, 'squares')
 }
 
 export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean {
@@ -388,15 +376,27 @@ export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean 
   if (filter.squares.length > 0 && !filter.squares.includes(row.square)) return false
   if (filter.stood.length > 0 && !filter.stood.includes(row.stood)) return false
   /*
-   * A move the second pass has not read has no count to band, so a held filter drops it
-   * rather than guessing — the rule a think filter follows for a game with no clocks.
-   * How many that is sits in the row's own heading.
+   * A move the second pass has not read has no reading to ask, so this drops it rather
+   * than guessing — the rule a think filter follows for a game with no clocks. How many
+   * that is sits in the row's own label.
    */
-  if (filter.held.length > 0) {
-    const band = heldBandOf(row.verdict?.holds ?? null)
-    if (band === null || !filter.held.includes(band)) return false
+  if (filter.breadth.length > 0) {
+    const breadth = breadthOfRow(row)
+    if (breadth === null || !filter.breadth.includes(breadth)) return false
   }
   return true
+}
+
+/**
+ * The same filter with one row switched off.
+ *
+ * Every chip is meant to say what pressing it would give you, which means counting with
+ * the *other* rows in force and not its own — the patterns finder's rule. `exceptSquares`
+ * was that for one row; this is it for any of them, so a count can never be measured
+ * against a slice the page is no longer showing.
+ */
+export function except(filter: MistakeFilter, row: keyof MistakeFilter): MistakeFilter {
+  return { ...filter, [row]: [] }
 }
 
 /** How many rows carry a clock reading at all, which the think row has to say. */
