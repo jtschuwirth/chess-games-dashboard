@@ -21,8 +21,10 @@ import {
 } from '@/lib/dashboard-filters'
 import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
 import {
+  HELD_BANDS,
   NO_MISTAKE_FILTER,
   STOOD_IN,
+  heldBandOf,
   exceptSquares,
   PIECES,
   PIECE_LABEL,
@@ -42,6 +44,7 @@ import { formatEval, markColor } from '@/lib/review'
 import {
   BREADTH_LABEL,
   STANDING_BADGE,
+  STANDING_INK,
   STANDING_LABEL,
   VERDICT_LABEL,
   breadthOf,
@@ -298,6 +301,10 @@ function MistakesBody({ userId }: { userId: string }) {
   /* the chip counts what the board that picked it was showing, not what it left behind */
   const bySquare = useMemo(() => countBy(heatRows, row => row.square), [heatRows])
   const byStood = useMemo(() => countBy(all, row => row.stood), [all])
+  const byHeld = useMemo(
+    () => countBy(all, row => heldBandOf(row.verdict?.holds ?? null) ?? ''),
+    [all],
+  )
   /*
    * The denominator, over the same games the rows come from. It is the moves where
    * nothing went wrong, which is 93% of them, and it is what turns "5 marked" into
@@ -306,6 +313,8 @@ function MistakesBody({ userId }: { userId: string }) {
   const totals = useMemo(() => moveTotals(scoped), [scoped])
   /* what the second pass has been over, which a column drawn from it has to say */
   const read = useMemo(() => readCount(rows), [rows])
+  /* the held row's own coverage: against the slice, not against what it has narrowed to */
+  const readAll = useMemo(() => readCount(all), [all])
 
   const search = useMemo(() => writeFilters(filters), [filters])
 
@@ -352,6 +361,14 @@ function MistakesBody({ userId }: { userId: string }) {
         : [...current.stood, stood],
     }))
 
+  const toggleHeld = (label: string) =>
+    setMistakeFilter(current => ({
+      ...current,
+      held: current.held.includes(label)
+        ? current.held.filter(entry => entry !== label)
+        : [...current.held, label],
+    }))
+
   const toggleSquare = (square: string) =>
     setMistakeFilter(current => ({
       ...current,
@@ -366,7 +383,8 @@ function MistakesBody({ userId }: { userId: string }) {
     mistakeFilter.phases.length > 0 ||
     mistakeFilter.think.length > 0 ||
     mistakeFilter.squares.length > 0 ||
-    mistakeFilter.stood.length > 0
+    mistakeFilter.stood.length > 0 ||
+    mistakeFilter.held.length > 0
 
   return (
     <>
@@ -480,15 +498,6 @@ function MistakesBody({ userId }: { userId: string }) {
                     describe={`moves you spent ${band.label} on`}
                   />
                 ))}
-                {anyMistakeFilter && mistakeFilter.squares.length === 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setMistakeFilter(NO_MISTAKE_FILTER)}
-                    className="px-3 py-1 text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-                  >
-                    Clear
-                  </button>
-                )}
               </div>
             </div>
 
@@ -504,9 +513,18 @@ function MistakesBody({ userId }: { userId: string }) {
                 {STOOD_IN.map(stood => (
                   <FilterChip
                     key={stood}
+                    /*
+                      Plain ink, not the badge. A chip is already a bordered pill and the
+                      badge is another, which at 10px uppercase was two borders round one
+                      word — and on an active chip, which is light, the badge's own
+                      translucent background and pale text very nearly vanish. The hue is
+                      the badge's, so a chip and the rows it filters to still match.
+                    */
                     label={
                       <span
-                        className={`uppercase tracking-wide text-[10px] px-1 rounded border ${STANDING_BADGE[stood]}`}
+                        className={`uppercase tracking-wide text-[11px] font-medium ${
+                          mistakeFilter.stood.includes(stood) ? '' : STANDING_INK[stood]
+                        }`}
                       >
                         {STANDING_LABEL[stood]}
                       </span>
@@ -518,6 +536,43 @@ function MistakesBody({ userId }: { userId: string }) {
                     describe={`moves played from ${STANDING_LABEL[stood]}`}
                   />
                 ))}
+              </div>
+            </div>
+
+
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-xs uppercase tracking-wide text-zinc-500"
+                title="How many of the five moves the engine looked at would not have been a mistake. One or two is a line to find; five is a position that forgave anything."
+              >
+                Moves that held
+                {readAll < all.length && (
+                  <span className="normal-case tracking-normal text-zinc-600">
+                    {' '}
+                    — {readAll} of {all.length} read
+                  </span>
+                )}
+              </span>
+              <div className="flex gap-1.5 flex-wrap">
+                {HELD_BANDS.map(band => (
+                  <FilterChip
+                    key={band.label}
+                    label={<span className="font-mono">{band.label}</span>}
+                    count={byHeld.get(band.label) ?? 0}
+                    on={mistakeFilter.held.includes(band.label)}
+                    onClick={() => toggleHeld(band.label)}
+                    describe={`moves where ${band.label} of the engine's candidates held`}
+                  />
+                ))}
+                {anyMistakeFilter && mistakeFilter.squares.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setMistakeFilter(NO_MISTAKE_FILTER)}
+                    className="px-3 py-1 text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             </div>
 

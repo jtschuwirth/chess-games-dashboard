@@ -517,6 +517,23 @@ export const STANDING_BADGE: Record<Standing, string> = {
   mate: 'bg-zinc-800 text-zinc-500 border-zinc-700',
 }
 
+/**
+  * The same scale as plain ink, for the places a pill would be a pill inside a pill.
+  *
+  * A filter chip is already a bordered pill, and putting `STANDING_BADGE` inside one gave
+  * two borders round three words of 10px uppercase — and on an *active* chip, which is
+  * light, a `bg-red-500/15 text-red-300` badge is very nearly invisible. The hues are the
+  * badge's own, so a chip and the row it filters to still read as the same thing.
+  */
+export const STANDING_INK: Record<Standing, string> = {
+  winning: 'text-red-300',
+  better: 'text-amber-200',
+  level: 'text-zinc-400',
+  worse: 'text-sky-300',
+  losing: 'text-zinc-500',
+  mate: 'text-zinc-500',
+}
+
 /** A bar in the same hue as that badge, so the two halves of the panel read as one. */
 export const STANDING_BAR: Record<Standing, string> = {
   winning: 'bg-red-500/50',
