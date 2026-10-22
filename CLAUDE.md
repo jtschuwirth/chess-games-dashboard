@@ -34,8 +34,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
    never seen carries a control to analyse it right there in the list; press it on several
    and they queue up rather than fighting each other for the one engine.
 5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
-   four of its own: which mark a move carried, which piece moved, which phase of the game
-   it was played in, and how long you thought before playing it. A heatmap shows
+   five of its own: which mark a move carried, which piece moved, which phase of the game
+   it was played in, how long you thought before playing it, and which band you were
+   standing in when you did. A heatmap shows
    where on the board they land, and a square on it is a filter — press h4 to read only
    the mistakes that landed there. Under it, the engine's readings, the second pass's
    verdicts, the Mistake database and then every marked move as a row carrying what the
@@ -427,6 +428,53 @@ src/
   place everything else active is listed. Those chips count against what the *board* was
   showing rather than against the whole slice, because that is the number the press
   produced: with the queen filter on, h4 reads 9 and not 43.
+
+- **Where you stood is a filter, and it is the one the analysis kept asking for.** The
+  verdict is *named* after the band you fell from — `threw it` and `missed the follow-up`
+  are the same fall from two different places — and it was the one axis of that naming the
+  page could not narrow by. "Every mistake I made while winning" meant leaving the app and
+  writing a script.
+
+  It costs nothing to know. `cpBefore` is stored on **every** move the first pass
+  evaluated, not only the marked ones, so `standingOf` gives both the numerator and a real
+  denominator: a chip can say *326 of 5,984 moves played from winning are marked* rather
+  than only how many of your mistakes happened there. That is the same bargain the piece
+  and phase rows make, and unlike the verdict column beside it the coverage is 100% — no
+  second pass required.
+
+  **A band's share is partly its own geometry, and the row says so.** The mark is defined
+  as falling *out* of the band you were in, so a narrow band marks more than a wide one
+  whoever is playing, and `winning` and `losing` have no ceiling or floor to fall through
+  at all — which is why `losing` reads a true and useless 0 of 3,702 and keeps its chip
+  anyway. That is the one thing the control cannot say for itself, so it is a tooltip on
+  the heading, the rule the chess-day boundary already follows.
+
+  `mate` is left out: a position past the mate score is one you are being mated in, and
+  the grading refuses to mark a move there.
+
+- **The row is the move, what it cost and how long you took — then the trivia.** It read
+  move, square, *opponent*, evaluation: the opponent's name had the whole middle of the
+  row and the two figures you actually scan for were a small grey afterthought at either
+  end. Now the left is the question — the piece, the move, the square, the evaluation and
+  the clock, the last two a size up — and who you were playing and when are small, muted
+  and pushed right, where they do the one job they have, which is finding the game again.
+
+  It is a flex row with fixed widths on that left cluster rather than a grid. The columns
+  still line up, because each of those is a fixed width; what wants to disappear at a
+  narrower window can then simply be hidden, instead of a second grid template that has to
+  be kept in step with the first.
+
+  **The pieces are the board's.** They were Unicode figurines — the trap the board itself
+  hit and wrote down, where one font renders them as outlines and another as solid blocks
+  — and at the size a row wants them they were a smudge. These are the same Cburnett
+  symbols every board on the site draws, referenced by `<use>` off one sprite sheet
+  rendered once in the panel, so they scale with no font size per breakpoint. They are
+  drawn in **your** colour, which the text version could not say: a solid black pawn on a
+  row about a game you played as White was quietly wrong about the position.
+
+  The reading beside it dropped the `from →` half of its axes line, because where you
+  stood is its own column now and printing `winning → level` there would be the same word
+  twice on one row.
 
 - **The row says what the second pass made of the move, in the game view's own words.**
   The list was a move, a square, an opponent and a pair of evaluations — and `verdicts`

@@ -14,7 +14,8 @@
  */
 import { isComparable, thinkBandOf } from './accuracy'
 import { gamePhases, thinkPerPly, type GamePhase } from './clocks'
-import { verdictsOf } from './verdict'
+import { standingOf, verdictsOf } from './verdict'
+import { STANDINGS, type Standing } from './bands'
 import { isFault, markBadge } from './review'
 import { SEVERITIES, settings, type AnalysisSettings } from './settings'
 import { SEVERITY_MARK } from './bands'
@@ -97,6 +98,15 @@ export interface MistakeRow {
   piece: Piece
   /** The phase of the game it was played in, by the phase table's own label. */
   phase: string | null
+  /**
+   * The band you were standing in before you played it.
+   *
+   * Read off `cpBefore`, which every marked move carries — so unlike the second pass's
+   * reading this is known for all of them. It is the axis the verdict is named from and
+   * the one the page could not narrow by: "every mistake I made while winning" was a
+   * question you had to leave the app to ask.
+   */
+  stood: Standing
   /** Seconds spent on the move, or null where the game carries no clock readings. */
   think: number | null
   /** Which think-time band that falls in, by the band's own label. */
@@ -157,6 +167,7 @@ export function mistakeRows(
         square,
         piece: pieceMoved(move.san),
         phase: phaseOfMove(move.moveNumber, phases),
+        stood: standingOf(move.cpBefore, config),
         think,
         thinkBand: think === null ? null : thinkBandOf(think),
         verdict: readingAt(verdicts, move.ply),
@@ -215,6 +226,14 @@ export interface MoveTotals {
   byPiece: Map<Piece, number>
   byPhase: Map<string, number>
   byThink: Map<string, number>
+  /**
+   * Every analysed move by the band it was played from.
+   *
+   * A real denominator, which is the whole point: `cpBefore` is stored on every move the
+   * first pass evaluated and not only on the ones it marked, so "how often do I go wrong
+   * while winning" is answerable rather than "how many of my mistakes happened there".
+   */
+  byStood: Map<Standing, number>
   /** How many of them carry a clock reading, which only `byThink` can be short of. */
   timed: number
   /** Games in the slice analysed by an older build, which read low. */
@@ -230,6 +249,7 @@ export function moveTotals(
     byPiece: new Map(),
     byPhase: new Map(),
     byThink: new Map(),
+    byStood: new Map(),
     timed: 0,
     stale: 0,
   }
@@ -247,6 +267,7 @@ export function moveTotals(
     for (const move of moves) {
       totals.moves++
       add(totals.byPiece, pieceMoved(move.san))
+      add(totals.byStood, standingOf(move.cpBefore, config))
 
       const phase = phaseOfMove(move.moveNumber, phases)
       if (phase) add(totals.byPhase, phase)
@@ -262,6 +283,18 @@ export function moveTotals(
 
   return totals
 }
+
+/**
+ * The bands a move can be played from, best first.
+ *
+ * The order the verdict grid already reads in, and `mate` is left out because a position
+ * past the mate score is one you are being mated in — there is no move to mark there that
+ * the grading would not refuse. A band with nothing marked keeps its chip, since "I am
+ * never marked from a lost position" is the sort of thing the row exists to show.
+ */
+export const STOOD_IN: Standing[] = [...STANDINGS]
+  .filter(standing => standing !== 'mate')
+  .reverse()
 
 /** Which marks the account actually shows, worst first, for the filter row. */
 export function activeMarks(config = settings()): string[] {
@@ -281,6 +314,8 @@ export interface MistakeFilter {
   think: string[]
   /** Squares the move landed on, as played. Empty means anywhere on the board. */
   squares: string[]
+  /** Bands you were standing in. Empty means wherever you stood. */
+  stood: Standing[]
 }
 
 export const NO_MISTAKE_FILTER: MistakeFilter = {
@@ -289,6 +324,7 @@ export const NO_MISTAKE_FILTER: MistakeFilter = {
   phases: [],
   think: [],
   squares: [],
+  stood: [],
 }
 
 /**
@@ -319,6 +355,7 @@ export function matchesMistake(row: MistakeRow, filter: MistakeFilter): boolean 
     return false
   }
   if (filter.squares.length > 0 && !filter.squares.includes(row.square)) return false
+  if (filter.stood.length > 0 && !filter.stood.includes(row.stood)) return false
   return true
 }
 

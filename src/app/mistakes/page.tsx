@@ -22,9 +22,9 @@ import {
 import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
 import {
   NO_MISTAKE_FILTER,
+  STOOD_IN,
   exceptSquares,
   PIECES,
-  PIECE_FIGURINE,
   PIECE_LABEL,
   activeMarks,
   countBy,
@@ -51,8 +51,10 @@ import {
   standingOf,
   verdictHint,
 } from '@/lib/verdict'
+import PieceSprites, { spriteId } from '@/components/PieceSprites'
+import type { Standing } from '@/lib/bands'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
-import type { GameRecord, OpeningLine, PatternRecord } from '@/types/chess'
+import type { Color, GameRecord, OpeningLine, PatternRecord } from '@/types/chess'
 import type { MistakeRow } from '@/lib/mistakes'
 
 /** How many rows before the list becomes a page you scroll rather than read. */
@@ -119,6 +121,31 @@ function FilterChip({
 }
 
 /**
+ * The piece that moved, drawn the way the board draws it.
+ *
+ * The figurines were Unicode — `♟♞♝` — which is the trap the board itself hit and wrote
+ * down: one font renders them as outlines, another as solid blocks, and at the size a row
+ * wants them they are a smudge. These are the same Cburnett symbols every board on the
+ * site uses, referenced by `<use>`, so a knight is the knight you have been looking at all
+ * along and it scales without a font size per breakpoint.
+ *
+ * In **your** colour, which the text version could not say: a solid black pawn on a row
+ * about a game you played as White was quietly wrong about the position.
+ */
+function PieceIcon({ piece, color, size = 'w-7 h-7' }: { piece: Piece; color: Color; size?: string }) {
+  return (
+    <svg
+      viewBox="0 0 45 45"
+      className={`${size} shrink-0`}
+      role="img"
+      aria-label={`${color} ${PIECE_LABEL[piece].toLowerCase()}`}
+    >
+      <use href={`#${spriteId(piece, color)}`} />
+    </svg>
+  )
+}
+
+/**
  * What the second pass made of one marked move, on the row it belongs to.
  *
  * The same three things the game view shows and in the same words, because a descriptor
@@ -139,9 +166,9 @@ function Reading({ row }: { row: MistakeRow }) {
   const imbalance = imbalanceAt(row.verdict)
 
   return (
-    /* below sm the row keeps the move, the square and the evaluation: a descriptor
-       truncated to two characters is noise where those three are still the point */
-    <span className="hidden sm:flex items-center gap-2 min-w-0">
+    /* below lg the row keeps the move, the square, the evaluation and the clock: a
+       descriptor truncated to two characters is noise where those are still the point */
+    <span className="hidden lg:flex items-center gap-2 min-w-0 flex-1">
       <span
         title={verdictHint(from, to, breadth)}
         className={`min-w-0 truncate text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${STANDING_BADGE[from]}`}
@@ -149,13 +176,15 @@ function Reading({ row }: { row: MistakeRow }) {
         {VERDICT_LABEL[row.verdict.verdict]}
       </span>
 
-      {/* the two axes the descriptor is the name of, so the badge can be checked */}
+      {/*
+        Where it landed and how many held. Where it started is its own column now, so
+        printing `winning → level` here would be the same word twice on one row.
+      */}
       <span
         className="hidden xl:inline text-[11px] text-zinc-600 whitespace-nowrap"
         title={`${STANDING_LABEL[from]} → ${STANDING_LABEL[to]}, ${BREADTH_LABEL[breadth]}`}
       >
-        {STANDING_LABEL[from]} → {STANDING_LABEL[to]} · {row.verdict.holds}/
-        {row.verdict.looked} held
+        → {STANDING_LABEL[to]} · {row.verdict.holds}/{row.verdict.looked} held
       </span>
 
       {imbalance && (
@@ -268,6 +297,7 @@ function MistakesBody({ userId }: { userId: string }) {
   const byThink = useMemo(() => countBy(all, row => row.thinkBand ?? ''), [all])
   /* the chip counts what the board that picked it was showing, not what it left behind */
   const bySquare = useMemo(() => countBy(heatRows, row => row.square), [heatRows])
+  const byStood = useMemo(() => countBy(all, row => row.stood), [all])
   /*
    * The denominator, over the same games the rows come from. It is the moves where
    * nothing went wrong, which is 93% of them, and it is what turns "5 marked" into
@@ -314,6 +344,14 @@ function MistakesBody({ userId }: { userId: string }) {
         : [...current.think, label],
     }))
 
+  const toggleStood = (stood: Standing) =>
+    setMistakeFilter(current => ({
+      ...current,
+      stood: current.stood.includes(stood)
+        ? current.stood.filter(entry => entry !== stood)
+        : [...current.stood, stood],
+    }))
+
   const toggleSquare = (square: string) =>
     setMistakeFilter(current => ({
       ...current,
@@ -327,7 +365,8 @@ function MistakesBody({ userId }: { userId: string }) {
     mistakeFilter.pieces.length > 0 ||
     mistakeFilter.phases.length > 0 ||
     mistakeFilter.think.length > 0 ||
-    mistakeFilter.squares.length > 0
+    mistakeFilter.squares.length > 0 ||
+    mistakeFilter.stood.length > 0
 
   return (
     <>
@@ -383,7 +422,8 @@ function MistakesBody({ userId }: { userId: string }) {
                 {PIECES.map(piece => (
                   <FilterChip
                     key={piece}
-                    label={<span className="text-sm">{PIECE_FIGURINE[piece]}</span>}
+                    /* the board's own symbol, in white: the chip sits on a dark pill */
+                    label={<PieceIcon piece={piece} color="white" size="w-4 h-4" />}
                     count={byPiece.get(piece) ?? 0}
                     total={totals.byPiece.get(piece) ?? 0}
                     on={mistakeFilter.pieces.includes(piece)}
@@ -449,6 +489,35 @@ function MistakesBody({ userId }: { userId: string }) {
                     Clear
                   </button>
                 )}
+              </div>
+            </div>
+
+
+            <div className="flex flex-col gap-1.5">
+              <span
+                className="text-xs uppercase tracking-wide text-zinc-500"
+                title="The band you were in before you played it. A band's share is partly its own geometry: the mark is defined as falling OUT of the band you were in, so a narrow band marks more than a wide one whoever is playing — winning and losing have no ceiling or floor to fall through."
+              >
+                Where you stood
+              </span>
+              <div className="flex gap-1.5 flex-wrap">
+                {STOOD_IN.map(stood => (
+                  <FilterChip
+                    key={stood}
+                    label={
+                      <span
+                        className={`uppercase tracking-wide text-[10px] px-1 rounded border ${STANDING_BADGE[stood]}`}
+                      >
+                        {STANDING_LABEL[stood]}
+                      </span>
+                    }
+                    count={byStood.get(stood) ?? 0}
+                    total={totals.byStood.get(stood) ?? 0}
+                    on={mistakeFilter.stood.includes(stood)}
+                    onClick={() => toggleStood(stood)}
+                    describe={`moves played from ${STANDING_LABEL[stood]}`}
+                  />
+                ))}
               </div>
             </div>
 
@@ -536,51 +605,79 @@ function MistakesBody({ userId }: { userId: string }) {
           </p>
         ) : (
           <>
+            {/* defines the symbols every row's <use> points at; draws nothing itself */}
+            <PieceSprites />
+
             {/* flush in the panel, like the other wide tables */}
             <div className="-mx-5 flex flex-col divide-y divide-zinc-800/70">
               {rows.slice(0, limit).map(row => (
                 <Link
                   key={`${row.game.id}:${row.ply}`}
                   href={`/games/${row.game.id}${search}`}
-                  /* the reading is display:none below sm, and a track it no longer
-                     occupies would still cost its gap — so the row drops to the four
-                     columns it had before the column existed */
-                  className="grid grid-cols-[7.5rem_2.5rem_minmax(0,1fr)_auto] sm:grid-cols-[7.5rem_2.5rem_minmax(0,auto)_minmax(0,1fr)_auto] items-center gap-3 px-5 py-2 hover:bg-zinc-800/50 transition-colors"
+                  /*
+                    A flex row with a fixed-width cluster on the left rather than a grid:
+                    the columns still line up, because each of those is a fixed width, and
+                    what wants to disappear at a narrower window can simply be hidden
+                    without a second grid template to keep in step with the first.
+
+                    The order is what you are scanning for. The piece and the move say
+                    WHAT, the evaluation says what it cost, the clock says how long you
+                    took over it and the band says where you were standing — those five
+                    are the row. Who you were playing and when are how you find the game
+                    again afterwards, so they go right, small, and out of the way.
+                  */
+                  className="flex items-center gap-3 px-5 py-2 hover:bg-zinc-800/50 transition-colors"
                 >
-                  <span className="font-mono text-sm text-zinc-200 whitespace-nowrap">
+                  <PieceIcon piece={row.piece} color={row.game.color} />
+
+                  <span className="font-mono text-sm text-zinc-200 whitespace-nowrap w-[6.5rem] shrink-0">
                     {row.moveNumber}
                     {row.game.color === 'white' ? '.' : '…'} {row.san}
                     <span className={markColor(row.tag)}>{row.tag}</span>
                   </span>
 
                   <span
-                    className="text-xs font-mono px-1.5 py-0.5 rounded text-center"
+                    className="text-xs font-mono px-1.5 py-0.5 rounded text-center w-9 shrink-0"
                     style={{ background: `${markTint(row.tag)}22`, color: markTint(row.tag) }}
                     title={`Landed on ${row.square}`}
                   >
                     {row.square}
                   </span>
 
-                  <Reading row={row} />
-
-                  <span className="text-xs text-zinc-500 min-w-0 truncate text-right">
-                    <span className="text-zinc-600">{PIECE_FIGURINE[row.piece]}</span> vs{' '}
-                    {row.game.opponent}
-                    {row.think !== null && (
-                      <span className="text-zinc-600" title="Time spent on this move">
-                        {' '}
-                        · {formatDuration(row.think)}
-                      </span>
-                    )}
-                    <span className="text-zinc-600">
-                      {' '}
-                      · {new Date(row.game.playedAt).toLocaleDateString()}
+                  {/* what it cost, which is the figure the row is about */}
+                  <span className="font-mono text-sm tabular-nums whitespace-nowrap w-[7rem] shrink-0">
+                    <span className="text-zinc-400">
+                      {formatEval(row.cpBefore, row.game.color)}
+                    </span>
+                    <span className="text-zinc-600"> → </span>
+                    <span className={markColor(row.tag)}>
+                      {formatEval(row.cpAfter, row.game.color)}
                     </span>
                   </span>
 
-                  <span className="text-xs font-mono text-zinc-500 tabular-nums shrink-0">
-                    {formatEval(row.cpBefore, row.game.color)} →{' '}
-                    {formatEval(row.cpAfter, row.game.color)}
+                  {/* and how long you took over it */}
+                  <span
+                    className="hidden sm:block text-sm tabular-nums text-zinc-400 whitespace-nowrap w-[4.5rem] shrink-0"
+                    title="Time spent on this move"
+                  >
+                    {row.think === null ? '—' : formatDuration(row.think)}
+                  </span>
+
+                  <span
+                    className={`hidden md:block text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border text-center w-[4.75rem] shrink-0 ${STANDING_BADGE[row.stood]}`}
+                    title={`You were ${STANDING_LABEL[row.stood]} before this move`}
+                  >
+                    {STANDING_LABEL[row.stood]}
+                  </span>
+
+                  <Reading row={row} />
+
+                  <span className="hidden sm:block ml-auto text-xs text-zinc-600 min-w-0 truncate text-right">
+                    vs {row.game.opponent}
+                    <span className="text-zinc-700">
+                      {' '}
+                      · {new Date(row.game.playedAt).toLocaleDateString()}
+                    </span>
                   </span>
                 </Link>
               ))}
