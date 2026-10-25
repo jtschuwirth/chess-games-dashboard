@@ -227,6 +227,47 @@ export function essentialsCount(essentials: PatternEssentials | undefined): numb
   )
 }
 
+/* --------------------------------------------- which description it carries */
+
+/**
+ * How a write-up describes itself.
+ *
+ * Conditions and the method answer the same question at two depths and a write-up picks
+ * one, so this is the single fact that says whether there is more to do on it. It is
+ * derived rather than stored, because switching deletes nothing: a document can carry
+ * both, and what counts is the one the page will actually show.
+ */
+export type Description = 'method' | 'conditions' | 'nothing'
+
+export const DESCRIPTIONS: Description[] = ['method', 'conditions', 'nothing']
+
+/** One wording, so the mark on a row and the chip that finds it are the same words. */
+export const DESCRIPTION_LABEL: Record<Description, string> = {
+  method: 'taken apart',
+  conditions: 'conditions',
+  nothing: 'nothing yet',
+}
+
+export function describedBy(pattern: PatternRecord): Description {
+  if (hasMethod(pattern)) return 'method'
+  return pattern.conditions.some(condition => condition.trim().length > 0)
+    ? 'conditions'
+    : 'nothing'
+}
+
+/**
+ * How many points sit under each of the method's questions, in the table's own order.
+ *
+ * `essentialsCount` adds these up, and a sum cannot say which question is empty — which
+ * is the part worth knowing, since a write-up with 1 and 2 answered and no boundaries
+ * under 3a or 3b makes no drill cards at all and still counts as taken apart.
+ */
+export function pointsBySection(essentials: PatternEssentials | undefined): number[] {
+  return ESSENTIALS_KEYS.map(key =>
+    essentials ? essentials[key].filter(point => point.text.trim().length > 0).length : 0,
+  )
+}
+
 /* ------------------------------------------------------------------ the motif */
 
 export interface MotifGroup {

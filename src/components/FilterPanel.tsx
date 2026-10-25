@@ -96,6 +96,20 @@ export function FilterGroup({ children }: { children: React.ReactNode }) {
   )
 }
 
+/**
+ * The table the rows sit in: one track for the names, one for the controls.
+ *
+ * Exported for the page that filters something other than a slice of games — the
+ * patterns finder narrows write-ups and has no use for a single one of the rows below,
+ * but it is the same control doing the same job and must not be a second answer to how
+ * wide a label column is.
+ */
+export function FilterGrid({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="grid sm:grid-cols-[7rem_1fr] gap-x-4 gap-y-2.5 items-start">{children}</div>
+  )
+}
+
 
 /**
  * The one scope control, shared by every dashboard that reads a slice of your games.
@@ -182,7 +196,7 @@ export default function FilterPanel({
           </>
         }
       >
-        <div className="grid sm:grid-cols-[7rem_1fr] gap-x-4 gap-y-2.5 items-start">
+        <FilterGrid>
           {/* a heading over the only group is a line that separates nothing */}
           {extra && <FilterGroup>Which games</FilterGroup>}
 
@@ -416,7 +430,7 @@ export default function FilterPanel({
             second stack with its own alignment.
           */}
           {extra}
-        </div>
+        </FilterGrid>
 
         {openings.length === 0 && (
           <p className="text-xs text-zinc-500">

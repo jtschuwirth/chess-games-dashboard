@@ -6,19 +6,25 @@ import { useSearchParams } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { drillSummary } from '@/lib/pattern-drill'
 import Chip from '@/components/Chip'
+import Panel from '@/components/Section'
+import { FilterGrid, FilterRow } from '@/components/FilterPanel'
 import PatternForm from '@/components/PatternForm'
 import { getGames, getOpenings, getPatterns, savePattern } from '@/lib/firestore'
 import {
+  DESCRIPTION_LABEL,
+  DESCRIPTIONS,
+  ESSENTIALS_SECTIONS,
   KIND_BADGE,
   KIND_LABEL,
   PATTERN_KINDS,
-  essentialsCount,
-  hasMethod,
+  describedBy,
   motifOf,
   normalizePattern,
   patternBody,
+  pointsBySection,
   timesTagged,
 } from '@/lib/pattern'
+import type { Description } from '@/lib/pattern'
 import type {
   GameRecord,
   NewPattern,
@@ -27,13 +33,15 @@ import type {
   PatternRecord,
 } from '@/types/chess'
 
-/** One row of the list: the write-up and the figure read off the games. */
+/** One row of the list: the write-up and the figures read off it. */
 interface Row {
   pattern: PatternRecord
   kind: PatternKind
   motif: string | null
-  /** Whether the essentials have been answered — what the Method chips narrow by. */
-  method: boolean
+  /** Which description it carries — the mark on the row and the chip that finds it. */
+  written: Description
+  /** Points under each of the method's four questions, in the table's own order. */
+  points: number[]
   times: number
 }
 
@@ -47,22 +55,21 @@ interface Row {
 interface Find {
   text: string
   kind: PatternKind | null
-  /** 'yes' for the ones taken apart, 'no' for the ones still to do. */
-  method: 'yes' | 'no' | null
+  written: Description | null
   motif: string | null
 }
 
-const NOTHING: Find = { text: '', kind: null, method: null, motif: null }
+const NOTHING: Find = { text: '', kind: null, written: null, motif: null }
 
 function readFind(params: ReturnType<typeof useSearchParams>): Find {
   const kind = params.get('kind')
-  const method = params.get('method')
+  const written = params.get('written')
   return {
     text: params.get('q') ?? '',
     // an unknown value is dropped rather than passed through, so a hand-typed URL
     // cannot invent a category the list has no way to draw
     kind: PATTERN_KINDS.includes(kind as PatternKind) ? (kind as PatternKind) : null,
-    method: method === 'yes' || method === 'no' ? method : null,
+    written: DESCRIPTIONS.includes(written as Description) ? (written as Description) : null,
     motif: params.get('motif'),
   }
 }
@@ -71,7 +78,7 @@ function writeFind(find: Find): string {
   const query = new URLSearchParams()
   if (find.text.trim()) query.set('q', find.text.trim())
   if (find.kind) query.set('kind', find.kind)
-  if (find.method) query.set('method', find.method)
+  if (find.written) query.set('written', find.written)
   if (find.motif) query.set('motif', find.motif)
   const text = query.toString()
   return text ? `?${text}` : ''
@@ -94,18 +101,37 @@ function matches(row: Row, find: Find, ignore?: keyof Find): boolean {
     if (!haystack(row).includes(find.text.trim().toLowerCase())) return false
   }
   if (ignore !== 'kind' && find.kind && row.kind !== find.kind) return false
-  if (ignore !== 'method' && find.method && row.method !== (find.method === 'yes')) return false
+  if (ignore !== 'written' && find.written && row.written !== find.written) return false
   if (ignore !== 'motif' && find.motif && row.motif !== find.motif) return false
   return true
 }
 
-function FilterRow({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Which of the method's four questions have been answered.
+ *
+ * This is the mark the list was missing. A row said `12 points` where a write-up had
+ * been taken apart and said nothing at all where it had not — so the state you are
+ * looking for was an *absence*, which reads as the row having nothing to report rather
+ * than as work waiting. Four markers say it positively, and say more than a yes would:
+ * three filled and one empty is a write-up whose boundaries are half written, and 3a
+ * and 3b are the two questions the drill is built out of.
+ */
+function MethodMark({ points }: { points: number[] }) {
   return (
-    <div className="flex gap-2 items-baseline flex-wrap">
-      <span className="text-[11px] uppercase tracking-wide text-zinc-600 w-24 shrink-0">
-        {label}
-      </span>
-      <div className="flex gap-1.5 flex-wrap">{children}</div>
+    <div className="shrink-0 hidden sm:flex items-center gap-1">
+      {ESSENTIALS_SECTIONS.map((section, at) => (
+        <span
+          key={section.key}
+          title={`${section.number}. ${section.title} — ${
+            points[at] > 0 ? `${points[at]} point${points[at] === 1 ? '' : 's'}` : 'not written'
+          }`}
+          className={`w-6 py-0.5 text-center text-[10px] font-mono rounded ${
+            points[at] > 0 ? 'bg-zinc-800 text-zinc-300' : 'text-zinc-700'
+          }`}
+        >
+          {section.number}
+        </span>
+      ))}
     </div>
   )
 }
@@ -123,6 +149,7 @@ function PatternsBody({ userId }: { userId: string }) {
   const [reload, setReload] = useState(0)
 
   const search = useMemo(() => writeFind(find), [find])
+  const narrowed = search.length > 0
 
   useEffect(() => {
     // replaceState rather than a push, so narrowing the list does not fill the history
@@ -176,7 +203,8 @@ function PatternsBody({ userId }: { userId: string }) {
         pattern,
         kind: pattern.kind,
         motif: motifOf(pattern),
-        method: hasMethod(pattern),
+        written: describedBy(pattern),
+        points: pointsBySection(pattern.essentials),
         times: timesTagged(games, pattern),
       }))
       .sort(
@@ -188,34 +216,45 @@ function PatternsBody({ userId }: { userId: string }) {
 
   const shown = useMemo(() => rows.filter(row => matches(row, find)), [rows, find])
 
-  /** How many each chip would give you, measured with the other filters in force. */
+  /*
+   * What a row offers is read off everything you have written, never off the slice in
+   * front of you. Measured against the slice, chips appeared and disappeared as you
+   * typed in the box — a control that rearranges itself while you are aiming it. What
+   * the current slice has none of is disabled instead, which says the same thing and
+   * leaves the row where it was.
+   */
+  const kinds = useMemo(() => {
+    const present = new Set(rows.map(row => row.kind))
+    return PATTERN_KINDS.filter(kind => present.has(kind))
+  }, [rows])
+
+  const motifs = useMemo(() => {
+    const present = new Set<string>()
+    for (const row of rows) if (row.motif) present.add(row.motif)
+    return [...present].sort((a, b) => a.localeCompare(b))
+  }, [rows])
+
+  /**
+   * How many each chip would give you, measured with the other rows in force but not
+   * with its own.
+   *
+   * They are not drawn: a number on every chip is a column of digits to look past, and
+   * on a row of three it mostly repeats what the list underneath already says. What
+   * they decide is which chips have nothing behind them, and what the tooltip answers
+   * when you want the figure anyway.
+   */
   const counts = useMemo(() => {
     const of = (ignore: keyof Find, test: (row: Row) => boolean) =>
       rows.filter(row => matches(row, find, ignore) && test(row)).length
 
     return {
-      kind: new Map(PATTERN_KINDS.map(k => [k, of('kind', row => row.kind === k)])),
-      answered: of('method', row => row.method),
-      unanswered: of('method', row => !row.method),
-      anyKind: rows.filter(row => matches(row, find, 'kind')).length,
-      anyMethod: rows.filter(row => matches(row, find, 'method')).length,
-      anyMotif: rows.filter(row => matches(row, find, 'motif')).length,
+      kind: new Map(kinds.map(kind => [kind, of('kind', row => row.kind === kind)])),
+      written: new Map(
+        DESCRIPTIONS.map(written => [written, of('written', row => row.written === written)]),
+      ),
+      motif: new Map(motifs.map(motif => [motif, of('motif', row => row.motif === motif)])),
     }
-  }, [rows, find])
-
-  /**
-   * The motifs worth offering, which is the ones present in what you are already
-   * looking at — the Control chips rule. Without it the row would list sixteen names
-   * on an account that has used two.
-   */
-  const motifs = useMemo(() => {
-    const present = new Map<string, number>()
-    for (const row of rows) {
-      if (!row.motif || !matches(row, find, 'motif')) continue
-      present.set(row.motif, (present.get(row.motif) ?? 0) + 1)
-    }
-    return [...present].sort((a, b) => a[0].localeCompare(b[0]))
-  }, [rows, find])
+  }, [rows, find, kinds, motifs])
 
   if (error && patterns === null) {
     return <LoadError message={error} onRetry={() => setReload(n => n + 1)} />
@@ -294,100 +333,122 @@ function PatternsBody({ userId }: { userId: string }) {
             and by then the question is "where is the one about back rank mates", which
             is a search rather than a scroll. The kind moves onto the row as a badge, and
             the list is sorted by it, so browsing everything still reads grouped.
+
+            It is the games dashboard's filter in every respect that is not about games:
+            the same panel, the same two-track grid, the same chip, and the same single
+            Reset appearing only once something is narrowed. A filter that looked like
+            this on one screen and like a loose stack of buttons on another would be two
+            answers to one question.
           */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
-            <div className="flex items-center gap-3 flex-wrap">
-              <input
-                value={find.text}
-                onChange={event => setFind(current => ({ ...current, text: event.target.value }))}
-                placeholder="Find by name, motif or condition"
-                className="flex-1 min-w-[14rem] bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600"
-              />
-              <span className="text-xs text-zinc-500">
-                {shown.length === rows.length
-                  ? `${rows.length} write-up${rows.length === 1 ? '' : 's'}`
-                  : `${shown.length} of ${rows.length}`}
-              </span>
-              {search.length > 0 && (
+          <Panel
+            id="patterns-filters"
+            title="Filters"
+            meta={
+              `${shown.length === rows.length ? rows.length : `${shown.length} of ${rows.length}`}` +
+              ` write-up${rows.length === 1 ? '' : 's'}` +
+              (narrowed ? ' · narrowed' : '')
+            }
+            actions={
+              narrowed && (
                 <button
                   onClick={() => setFind(NOTHING)}
                   className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
                 >
                   Reset
                 </button>
-              )}
-            </div>
+              )
+            }
+          >
+            <FilterGrid>
+              <FilterRow label="Find">
+                <input
+                  value={find.text}
+                  onChange={event => setFind(current => ({ ...current, text: event.target.value }))}
+                  placeholder="Name, motif or condition"
+                  className="w-full sm:max-w-sm bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600"
+                />
+              </FilterRow>
 
-            <FilterRow label="Kind">
-              <Chip
-                active={find.kind === null}
-                onClick={() => setFind(c => ({ ...c, kind: null, motif: null }))}
-              >
-                any {counts.anyKind}
-              </Chip>
-              {PATTERN_KINDS.filter(
-                kind => (counts.kind.get(kind) ?? 0) > 0 || find.kind === kind,
-              ).map(kind => (
+              <FilterRow label="Kind">
                 <Chip
-                  key={kind}
-                  active={find.kind === kind}
-                  // a motif belongs to a kind, so changing the kind drops it rather than
-                  // leaving a filter on that nothing in the new slice could match
-                  onClick={() =>
-                    setFind(c => ({ ...c, kind: c.kind === kind ? null : kind, motif: null }))
-                  }
+                  active={find.kind === null}
+                  onClick={() => setFind(c => ({ ...c, kind: null, motif: null }))}
                 >
-                  {KIND_LABEL[kind]} {counts.kind.get(kind) ?? 0}
+                  any
                 </Chip>
-              ))}
-            </FilterRow>
-
-            {/*
-              Which have been taken apart against the method, which is the question the
-              old document type was really being asked — and now answers it without a
-              second copy of the idea to keep in step.
-            */}
-            <FilterRow label="Essentials">
-              <Chip
-                active={find.method === null}
-                onClick={() => setFind(c => ({ ...c, method: null }))}
-              >
-                any {counts.anyMethod}
-              </Chip>
-              <Chip
-                active={find.method === 'yes'}
-                onClick={() => setFind(c => ({ ...c, method: c.method === 'yes' ? null : 'yes' }))}
-              >
-                answered {counts.answered}
-              </Chip>
-              <Chip
-                active={find.method === 'no'}
-                onClick={() => setFind(c => ({ ...c, method: c.method === 'no' ? null : 'no' }))}
-              >
-                still to do {counts.unanswered}
-              </Chip>
-            </FilterRow>
-
-            {motifs.length > 0 && (
-              <FilterRow label="Motif">
-                <Chip
-                  active={find.motif === null}
-                  onClick={() => setFind(c => ({ ...c, motif: null }))}
-                >
-                  any {counts.anyMotif}
-                </Chip>
-                {motifs.map(([name, count]) => (
+                {kinds.map(kind => (
                   <Chip
-                    key={name}
-                    active={find.motif === name}
-                    onClick={() => setFind(c => ({ ...c, motif: c.motif === name ? null : name }))}
+                    key={kind}
+                    active={find.kind === kind}
+                    disabled={find.kind !== kind && (counts.kind.get(kind) ?? 0) === 0}
+                    // a motif belongs to a kind, so changing the kind drops it rather than
+                    // leaving a filter on that nothing in the new slice could match
+                    onClick={() =>
+                      setFind(c => ({ ...c, kind: c.kind === kind ? null : kind, motif: null }))
+                    }
+                    title={`${counts.kind.get(kind) ?? 0} of them`}
                   >
-                    {name} {count}
+                    {KIND_LABEL[kind]}
                   </Chip>
                 ))}
               </FilterRow>
-            )}
-          </div>
+
+              {/*
+                Which have been taken apart against the method, which is the question the
+                old document type was really being asked — and now answers it without a
+                second copy of the idea to keep in step. The chips are the words the mark
+                on each row uses, so the thing you spotted is the thing you press.
+              */}
+              <FilterRow
+                label="Written up"
+                title="Which description it carries: the method's four questions taken apart, a line of conditions, or neither yet"
+              >
+                <Chip
+                  active={find.written === null}
+                  onClick={() => setFind(c => ({ ...c, written: null }))}
+                >
+                  any
+                </Chip>
+                {DESCRIPTIONS.map(written => (
+                  <Chip
+                    key={written}
+                    active={find.written === written}
+                    disabled={find.written !== written && (counts.written.get(written) ?? 0) === 0}
+                    onClick={() =>
+                      setFind(c => ({ ...c, written: c.written === written ? null : written }))
+                    }
+                    title={`${counts.written.get(written) ?? 0} of them`}
+                  >
+                    {DESCRIPTION_LABEL[written]}
+                  </Chip>
+                ))}
+              </FilterRow>
+
+              {motifs.length > 0 && (
+                <FilterRow label="Motif">
+                  <Chip
+                    active={find.motif === null}
+                    onClick={() => setFind(c => ({ ...c, motif: null }))}
+                  >
+                    any
+                  </Chip>
+                  {motifs.map(motif => (
+                    <Chip
+                      key={motif}
+                      active={find.motif === motif}
+                      disabled={find.motif !== motif && (counts.motif.get(motif) ?? 0) === 0}
+                      onClick={() =>
+                        setFind(c => ({ ...c, motif: c.motif === motif ? null : motif }))
+                      }
+                      title={`${counts.motif.get(motif) ?? 0} of them`}
+                    >
+                      {motif}
+                    </Chip>
+                  ))}
+                </FilterRow>
+              )}
+            </FilterGrid>
+          </Panel>
 
           {shown.length === 0 ? (
             <p className="py-10 text-center text-sm text-zinc-500">
@@ -407,40 +468,59 @@ function PatternsBody({ userId }: { userId: string }) {
               your eye down a column of names is what you came to do.
             */
             <div className="border border-zinc-800 rounded-xl overflow-hidden divide-y divide-zinc-800">
-              {shown.map(({ pattern, kind, motif, times }) => (
-                <Link
-                  key={pattern.id}
-                  href={`/patterns/${pattern.id}`}
-                  className="flex items-center gap-3 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-zinc-100">{pattern.name}</span>
-                      <span
-                        className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${KIND_BADGE[kind]}`}
-                      >
-                        {KIND_LABEL[kind]}
-                      </span>
-                      {motif && <span className="text-xs font-mono text-zinc-400">{motif}</span>}
-                    </div>
-                  </div>
+              {shown.map(({ pattern, kind, motif, written, points, times }) => {
+                const total = points.reduce((sum, count) => sum + count, 0)
 
-                  <div className="shrink-0 flex items-center gap-3 text-xs text-zinc-600">
-                    <span>
-                      {pattern.examples.length} line{pattern.examples.length === 1 ? '' : 's'}
-                    </span>
-                    {hasMethod(pattern) && (
-                      <span>{essentialsCount(pattern.essentials)} points</span>
-                    )}
-                    {/*
-                      Plain, not amber. It is one count among three on a row you scan,
-                      and a colour here was claiming an importance the figure does not
-                      have — the amber belongs where a mistake is being reported.
-                    */}
-                    {times > 0 && <span className="text-zinc-500">{times} flagged</span>}
-                  </div>
-                </Link>
-              ))}
+                return (
+                  <Link
+                    key={pattern.id}
+                    href={`/patterns/${pattern.id}`}
+                    className="flex items-center gap-3 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-zinc-100">{pattern.name}</span>
+                        <span
+                          className={`text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${KIND_BADGE[kind]}`}
+                        >
+                          {KIND_LABEL[kind]}
+                        </span>
+                        {motif && <span className="text-xs font-mono text-zinc-400">{motif}</span>}
+                      </div>
+                    </div>
+
+                    <MethodMark points={points} />
+
+                    <div className="shrink-0 flex items-center gap-3 text-xs text-zinc-600">
+                      {/*
+                        One column, one meaning: what the description amounts to. A
+                        write-up taken apart reports its points, and one that has not
+                        been says which basic it carries instead — the figure and the
+                        fallback are the same answer at two depths, so they share a slot
+                        rather than leaving a gap down the list.
+                      */}
+                      <span
+                        className={`w-20 text-right ${
+                          written === 'nothing' ? 'text-zinc-700' : 'text-zinc-500'
+                        }`}
+                      >
+                        {written === 'method' ? `${total} points` : DESCRIPTION_LABEL[written]}
+                      </span>
+                      <span className="w-14 text-right">
+                        {pattern.examples.length} line{pattern.examples.length === 1 ? '' : 's'}
+                      </span>
+                      {/*
+                        Plain, not amber. It is one count among three on a row you scan,
+                        and a colour here was claiming an importance the figure does not
+                        have — the amber belongs where a mistake is being reported.
+                      */}
+                      <span className="w-16 text-right text-zinc-500">
+                        {times > 0 ? `${times} flagged` : ''}
+                      </span>
+                    </div>
+                  </Link>
+                )
+              })}
             </div>
           )}
         </>

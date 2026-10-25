@@ -49,9 +49,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
-7. `/patterns` — write up the ideas themselves, found rather than scrolled: a search box
-   over names, motifs and conditions, and chips for the kind, whether the essentials are
-   answered, and the motif. One write-up is a name, a kind (tactics, mate, strategy,
+7. `/patterns` — write up the ideas themselves, found rather than scrolled: the same
+   filter panel the dashboards use, with rows for the text, the kind, how it is written
+   up and the motif. Every row says which description it carries — the four method
+   questions as markers, lit where they have been answered, and the points they add up
+   to or the word for the basic it has instead, so what is still to take apart is read
+   off the list rather than hunted for. One write-up is a name, a kind (tactics, mate, strategy,
    development, endgame), the conditions that bring it about and the examples showing it
    — and any of them can be taken apart against the *Pattern Internalisation Essentials*
    method: what each piece is responsible for, what weakness lets the tactic exist, what
@@ -499,7 +502,10 @@ src/
   `FilterGroup` are exported from `FilterPanel` so a page's own rows are rows of the *same*
   grid, and the `extra` slot renders inside it rather than after it. Every row is a name on
   the left and a control on the right, every chip is the one `Chip`, and the label column is
-  right-aligned so the names end where the controls begin.
+  right-aligned so the names end where the controls begin. `FilterGrid` is exported beside
+  them for the page that filters something which is not a slice of games at all: the
+  patterns finder has no use for a single row below, and still must not be a second answer
+  to how wide a label column is.
 
   Two groups rather than seventeen rows: **which games** are in the slice, then **which
   moves** of those games you are reading. The split is real rather than decorative, and the
@@ -941,17 +947,53 @@ src/
   kind as a badge, so browsing everything still reads grouped without headings to scroll
   past.
 
-  **Every chip carries the count it would give you**, measured with the *other* filters in
-  force but not its own — otherwise every chip except the active one reads zero and the
-  row stops being worth looking at. A kind nothing is filed under is dropped, and the
-  motif row offers only the motifs actually present in what you are already looking at:
-  the Control chips rule, which exists so a list of sixteen names does not appear on an
-  account that has used two. Changing the kind clears the motif, since a motif belongs to
-  a kind and would otherwise leave a filter on that nothing could match.
+  **It is the dashboard's filter, and not a second idea of what a filter looks like.**
+  It was a box of its own with its own label column, its own Reset tucked beside the
+  count and its own ideas about spacing — the same job done differently two clicks away.
+  Now it is `Panel` with the title, the meta and the one Reset in the heading, and
+  `FilterGrid` with `FilterRow` inside it, so the search box, the kind, how it is written
+  up and the motif are rows of the same table the games and mistakes dashboards draw.
+
+  **A chip that would give you nothing is disabled, never removed**, and what a row
+  offers is read off everything you have written rather than off the slice in front of
+  you. Measured against the slice, chips appeared and vanished as you typed in the box —
+  a control that rearranges itself while you are aiming it, which is the opposite of
+  something you can press twice without looking. The counts are still taken, with the
+  *other* rows in force but not the row's own, and they decide which chips are dead and
+  what the tooltip says; they are not drawn, for the reason they came off the mistakes
+  page. Changing the kind clears the motif, since a motif belongs to a kind and would
+  otherwise leave a filter on that nothing could match.
 
   The four live in the query string, like the dashboard's, so a narrowed list is a link
   and Back from a write-up returns to the slice you came from. An unknown value is dropped
   on read rather than passed through, so a hand-typed URL cannot invent a category.
+
+- **A row says which description it carries, and the four questions say how far.** The
+  list reported `12 points` where a write-up had been taken apart and said nothing at all
+  where it had not — so the state you were actually looking for, *this one still needs
+  doing*, was an **absence**. An absence reads as the row having nothing to report, which
+  is why finding the ones still to improve meant opening them.
+
+  `describedBy` is the fact, derived and never stored: the method where it has been
+  answered, the conditions where it has not, and `nothing yet` where neither is written.
+  It names the method even on a write-up that also carries conditions, because that is
+  the one the page will show — switching how something is described deletes nothing, so
+  the row has to say which half is live rather than which halves exist.
+
+  The mark is `1 2 3a 3b`, the method's own numbering out of `ESSENTIALS_SECTIONS`, lit
+  where there are points under it. A yes would have done for the question asked, and this
+  costs nothing more and answers the next one: three lit and one dark is a write-up whose
+  boundaries are half written, and 3a and 3b are the two the drill is built out of. They
+  are deliberately not coloured by the section's own tone — four hues on a row you scan
+  is four things to decode, and the rose and emerald belong on the study page, where the
+  distinction is the lesson.
+
+  Beside them, one column with one meaning: what the description amounts to. A write-up
+  taken apart reports its points and one that has not says which basic it carries, since
+  the figure and the fallback are the same answer at two depths and a column that went
+  blank on a third of the rows would read as a gap rather than as a state. The chips in
+  the **Written up** row are the same three words, so the thing you spotted is the thing
+  you press.
 
 - **An example is a game pointed at a move, or a position with moves on top of it.** The
   second is the common case for a tactic and had nowhere to go: you have the position and
