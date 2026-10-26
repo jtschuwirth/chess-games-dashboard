@@ -7,12 +7,21 @@ export const ALL_OPENINGS = 'all'
 /** Dropdown value meaning "games that reached none of the saved openings". */
 export const UNCLASSIFIED_OPENING = 'unclassified'
 
+/**
+ * How the game got into the opening you picked: by its own move order, or from
+ * somewhere else. It only means anything once a particular line is picked, which is
+ * why the row that sets it appears only then.
+ */
+export type Arrival = 'played' | 'transposed'
+
 export interface Filters extends GameCriteria {
   opening: string
+  arrival: Arrival | null
 }
 
 export const DEFAULT_FILTERS: Filters = {
   opening: ALL_OPENINGS,
+  arrival: null,
   timeControls: [],
   since: 'all',
   minRating: null,
@@ -44,6 +53,10 @@ function readReviewed(raw: string | null): GameCriteria['reviewed'] {
   return raw === 'yes' || raw === 'no' ? raw : null
 }
 
+function readArrival(raw: string | null): Arrival | null {
+  return raw === 'played' || raw === 'transposed' ? raw : null
+}
+
 /** Anything unrecognised in the query string falls back to the default. */
 /** `arc:<id>` or `name:<name>`, and nothing else — a hand-typed URL cannot invent one. */
 function readShape(raw: string | null): string | null {
@@ -70,6 +83,7 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
 
   return {
     opening: params.get('opening') || ALL_OPENINGS,
+    arrival: readArrival(params.get('arrival')),
     timeControls: controls,
     since: since && isSinceKey(since) ? (since as SinceKey) : 'all',
     minRating: readRating(params.get('minElo')),
@@ -88,6 +102,7 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
 export function writeFilters(filters: Filters): string {
   const params = new URLSearchParams()
   if (filters.opening !== ALL_OPENINGS) params.set('opening', filters.opening)
+  if (filters.arrival) params.set('arrival', filters.arrival)
   if (filters.timeControls.length > 0) params.set('tc', filters.timeControls.join(','))
   if (filters.since !== 'all') params.set('since', filters.since)
   if (filters.minRating !== null) params.set('minElo', String(filters.minRating))

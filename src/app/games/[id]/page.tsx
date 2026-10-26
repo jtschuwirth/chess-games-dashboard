@@ -22,6 +22,7 @@ import EnginePanel from '@/components/EnginePanel'
 import EvalGraph from '@/components/EvalGraph'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import ReviewEditor from '@/components/ReviewEditor'
+import OpeningRoute from '@/components/OpeningRoute'
 import StatusTag from '@/components/StatusTag'
 import { replayGame } from '@/lib/board'
 import {
@@ -35,7 +36,7 @@ import { opponentMoves } from '@/lib/analysis'
 import { onAnalysed } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getOpenings, getPatterns, getTagGroups, saveVariations } from '@/lib/firestore'
-import { buildOpeningTree, matchingPath, openingLabel } from '@/lib/opening'
+import { buildOpeningTree, openingRoute, routeSteps } from '@/lib/opening'
 import { patternTags } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import {
@@ -414,11 +415,9 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   /** One replay of every game, kept off the filter path so changing a filter is cheap. */
   const keys = useMemo(() => positionKeyMap(games ?? []), [games])
 
-  const line = useMemo(() => {
+  const route = useMemo(() => {
     if (!game) return []
-    return matchingPath(tree, game, keys.get(game.id) ?? new Set()).map(node =>
-      openingLabel(node.opening),
-    )
+    return routeSteps(openingRoute(tree, game, keys.get(game.id) ?? new Map()))
   }, [tree, game, keys])
 
   /**
@@ -617,8 +616,8 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
         </div>
 
         <div className="text-xs">
-          {line.length > 0 ? (
-            <span className="text-zinc-400">{line.join(' › ')}</span>
+          {route.length > 0 ? (
+            <OpeningRoute steps={route} />
           ) : (
             <span className="text-zinc-600">
               {game.openingName ?? 'Unknown opening'} — not in a saved line

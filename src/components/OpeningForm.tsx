@@ -33,17 +33,49 @@ export default function OpeningForm({
   const [name, setName] = useState(initial?.name ?? '')
   const [pgn, setPgn] = useState(initial?.pgn ?? '')
   const [color, setColor] = useState<OpeningColor>(initial?.color ?? 'any')
+  /** The other ways in, as the text of each — parsed the same way the main line is. */
+  const [altPgns, setAltPgns] = useState<string[]>(
+    () => initial?.alts?.map(alt => alt.pgn || formatMoves(alt.moves)) ?? [],
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const parsed = useMemo(() => {
-    if (!pgn.trim()) return null
+  const read = (text: string) => {
+    if (!text.trim()) return null
     try {
-      return { ok: true as const, value: parseOpening(pgn) }
+      return { ok: true as const, value: parseOpening(text) }
     } catch (caught) {
       return { ok: false as const, message: (caught as Error).message }
     }
-  }, [pgn])
+  }
+
+  const parsed = useMemo(() => read(pgn), [pgn])
+
+  /**
+   * Each other way in, with what is wrong with it.
+   *
+   * Two complaints rather than one, the exercise card's rule: a line that will not parse
+   * is a different problem from one that parses and says nothing new, and rolling them
+   * into a single message sends you to the box you did not touch.
+   */
+  const alts = useMemo(() => {
+    const seen = new Set(parsed?.ok ? [parsed.value.positionKey] : [])
+
+    return altPgns.map(text => {
+      const entry = read(text)
+      if (!entry?.ok) return { text, parsed: entry, duplicate: false, claimedBy: null }
+
+      const key = entry.value.positionKey
+      const duplicate = seen.has(key)
+      seen.add(key)
+
+      // a position another line already claims will put the same game in two rows of the
+      // dashboard's breakdown, so it is said here rather than discovered in the totals
+      const claimedBy = others.find(other => other.keys.includes(key)) ?? null
+
+      return { text, parsed: entry, duplicate, claimedBy }
+    })
+  }, [altPgns, parsed, others])
 
   /**
    * Where this line will be filed. `blocked` is a line it continues but cannot join
@@ -76,10 +108,16 @@ export default function OpeningForm({
         positionKey: parsed.value.positionKey,
         ply: parsed.value.ply,
         color,
+        // a way in that will not parse, or that reaches the main line's own position, is
+        // dropped rather than stored — the same bargain an empty exercise makes
+        alts: alts.flatMap(alt =>
+          alt.parsed?.ok && !alt.duplicate ? [{ pgn: alt.text.trim(), ...alt.parsed.value }] : [],
+        ),
       })
       if (!initial) {
         setName('')
         setPgn('')
+        setAltPgns([])
         setColor('any')
       }
     } catch (caught) {
@@ -122,6 +160,81 @@ export default function OpeningForm({
           className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-zinc-600 resize-y"
         />
       </label>
+
+      {/*
+        Other move orders reaching the same idea. They widen what counts as having
+        reached this opening and change nothing else: the main line above is still what
+        the tree files it under, so the Panov sits once under the Caro-Kann however many
+        ways into it you write down, rather than nesting inside itself five times.
+      */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-xs uppercase tracking-wide text-zinc-500">Other ways in</span>
+          <button
+            type="button"
+            onClick={() => setAltPgns(current => [...current, ''])}
+            className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors"
+          >
+            + Another way in
+          </button>
+        </div>
+
+        {alts.length === 0 ? (
+          <p className="text-xs text-zinc-600">
+            A line that arrives from a different opening — the Panov from a Queen&rsquo;s Gambit
+            move order. Games reaching any of them count as this opening, and say which one
+            they took.
+          </p>
+        ) : (
+          alts.map((alt, index) => (
+            <div key={index} className="flex flex-col gap-1">
+              <div className="flex items-start gap-2">
+                <textarea
+                  value={alt.text}
+                  onChange={event =>
+                    setAltPgns(current =>
+                      current.map((entry, at) => (at === index ? event.target.value : entry)),
+                    )
+                  }
+                  rows={2}
+                  placeholder="1. d4 d5 2. c4 c6 3. e4 dxe4 4. Nc3"
+                  className="flex-1 min-w-0 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm font-mono outline-none focus:border-zinc-600 resize-y"
+                />
+                <button
+                  type="button"
+                  onClick={() => setAltPgns(current => current.filter((_, at) => at !== index))}
+                  title="Remove this way in"
+                  className="shrink-0 mt-1.5 w-6 h-6 flex items-center justify-center rounded border border-zinc-800 text-zinc-500 hover:border-zinc-600 hover:text-zinc-200 transition-colors"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {alt.parsed && !alt.parsed.ok && (
+                <p className="text-xs text-red-400">{alt.parsed.message}</p>
+              )}
+              {alt.parsed?.ok && (
+                <p className="text-xs text-zinc-600">
+                  {alt.parsed.value.ply} half-moves
+                  {alt.duplicate && (
+                    <span className="text-amber-400">
+                      {' '}
+                      · reaches the same position as a line above, so it adds nothing
+                    </span>
+                  )}
+                  {!alt.duplicate && alt.claimedBy && (
+                    <span className="text-amber-400">
+                      {' '}
+                      · {openingLabel(alt.claimedBy)} already claims that position, so a game
+                      reaching it will count under both
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          ))
+        )}
+      </div>
 
       <label className="flex flex-col gap-1.5">
         <span className="text-xs uppercase tracking-wide text-zinc-500">Count games played</span>

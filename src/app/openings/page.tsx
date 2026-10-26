@@ -10,6 +10,7 @@ import {
   flattenTree,
   formatMoves,
   gameMatchesNode,
+  normalizeOpening,
   type OpeningNode,
 } from '@/lib/opening'
 import { positionKeyMap } from '@/lib/scope'
@@ -79,7 +80,7 @@ function OpeningsBody({ userId }: { userId: string }) {
       for (const node of nodes) {
         map.set(
           node.opening.id,
-          games.filter(game => gameMatchesNode(game, keys.get(game.id) ?? new Set(), node)).length,
+          games.filter(game => gameMatchesNode(game, keys.get(game.id) ?? new Map(), node)).length,
         )
         walk(node.children)
       }
@@ -94,15 +95,20 @@ function OpeningsBody({ userId }: { userId: string }) {
     setError(null)
     if (editingId) {
       await updateOpening(userId, editingId, opening)
+      // through the reader, so the row on screen is the row a reload would draw — it is
+      // where `keys` comes from, and a bare spread would leave the edited line matching
+      // whatever it matched before
       setOpenings(prev =>
-        (prev ?? []).map(item => (item.id === editingId ? { ...opening, id: editingId } : item)),
+        (prev ?? []).map(item =>
+          item.id === editingId ? normalizeOpening({ ...opening, id: editingId }) : item,
+        ),
       )
       setEditingId(null)
       return
     }
 
     const id = await saveOpening(userId, opening)
-    setOpenings(prev => [...(prev ?? []), { ...opening, id }])
+    setOpenings(prev => [...(prev ?? []), normalizeOpening({ ...opening, id })])
   }
 
   async function handleDelete(openingId: string) {
@@ -161,6 +167,13 @@ function OpeningsBody({ userId }: { userId: string }) {
                   </span>
                   <span className="text-xs text-zinc-600">
                     {opening.ply} half-moves
+                    {/*
+                      Other ways in are a count here rather than rows: they are the same
+                      opening, so listing them would be the self-nesting they replaced.
+                    */}
+                    {opening.alts &&
+                      opening.alts.length > 0 &&
+                      ` · ${opening.alts.length} other way${opening.alts.length === 1 ? '' : 's'} in`}
                     {children.length > 0 &&
                       ` · ${children.length} sub-variation${children.length === 1 ? '' : 's'}`}
                   </span>

@@ -14,7 +14,10 @@ win/draw/loss splits for all games or for the games that followed one of those l
    database counts, in groups you name, where renaming one renames it on every review
    already carrying it and removing one takes it off them.
 3. `/openings` — paste an opening line, name it, optionally tie it to a colour; a line that
-   continues an existing one nests under it as a sub-variation. Saved lines can be edited.
+   continues an existing one nests under it as a sub-variation. Saved lines can be edited,
+   and one can carry **other ways in**: the move orders that reach the same idea from
+   somewhere else, so the Panov is one entry with five routes rather than five entries
+   called Panov nested inside each other.
    Each one opens as a **study** at `/openings/{id}`: what the opening is for, the plans on
    both sides, and then three things read off what is already on disk — the sub-variations
    under it, your games that reached it, and the patterns naming it. Under those, the
@@ -28,7 +31,10 @@ win/draw/loss splits for all games or for the games that followed one of those l
    own rating band — the Control chips list the clocks you have actually played. Read overall / as White / as Black stats, the clock KPI, and the game phase
    analysis, a table of what kind of games these were — which doubles as a filter, since
    clicking a row narrows the slice to it — plus a table breaking the slice down by
-   sub-variation. The "Ended in" dropdown scopes
+   sub-variation. Every game row says how it got where it got — `Caro Kann › Exchange
+   Variation → with 4.Nf3`, where the arrow is a move order you did not play into — and
+   with a line picked, the **Arrived** chips narrow to the games that played into it or
+   the ones that transposed in. The "Ended in" dropdown scopes
    to games that finished in one phase (`?phase=11-15`); clicking a phase's *ended* count sets the
    same filter, the way clicking a variation row sets the opening. A game the engine has
    never seen carries a control to analyse it right there in the list; press it on several
@@ -123,7 +129,8 @@ src/
 │       └── export/route.ts     # read-only JSON export, API-key gated
 ├── components/                 # PageShell, SyncPanel, OpeningForm, StatBlockCard,
 │                               # AnalyseButton,
-│                               # VariationTable, GameRow, Chip, Board, PieceSprites,
+│                               # VariationTable, GameRow, OpeningRoute, Chip, Board,
+│                               # PieceSprites,
 │                               # MoveList, ReviewEditor, ReviewPanel, DrillCard,
 │                               # MoveTreeBoard, MoveNoteCard, ProposedMoves, TagPicker,
 │                               # PatternStudy, ExerciseCard, FilterPanel, MistakeHeatmap,
@@ -2063,6 +2070,88 @@ src/
 - **Opening matching is position-based**: `positionKey` is FEN fields 1–3 (placement, side to move,
   castling) after the opening's last move, and a game matches if it ever reaches that key within
   `MAX_OPENING_PLY` (60) half-moves. That makes transpositions count.
+
+- **An opening is one name with several ways in.** Some lines are reached from
+  everywhere: the Panov is a Caro-Kann line that arrives just as often from a Queen's
+  Gambit move order, and the Catalan in this repertoire is filed under the QGD. With one
+  position per opening, covering the Panov meant saving the same name five times — and
+  since the tree nests by literal move prefix, those five filed themselves inside each
+  other and the repertoire read `Panov › Panov › Panov`.
+
+  So `alts` is a list of other lines on the opening itself, and `keys` is the main
+  position plus each alternate's. `gameMatchesOpening` asks `keys.some`, which is the one
+  chokepoint everything else funnels through — `gameMatchesNode`, the route, the scope
+  rule, the dashboard breakdown and the export all came along for nothing.
+
+  **The main line still decides the tree.** `buildOpeningTree`, `isParentLine` and
+  `canNest` were not touched: an opening nests once, under the line it was saved with, and
+  every other way in is a row on its own study page rather than a second node. Appearing
+  under every parent it can be reached from was the alternative and is the same disease in
+  a nicer coat — the name turns up four times in a dropdown you are scanning.
+
+  `keys` is **derived by `normalizeOpening` and never stored**, so none of the 72 lines
+  written before this needed touching: a line with no alternates has exactly the one key
+  it always had, checked against all 1,136 games at 2,075 matches, unchanged. `NewOpeningLine`
+  omits it so no writer can emit it, and `openingBody` is the writer that proves it —
+  the same job `patternBody` and `studyBody` do, in the domain module rather than in
+  `firestore.ts`, which is also what makes it testable without starting Firebase.
+
+  The one thing this broke was the **server**: `/api/export` read openings with a bare
+  cast and so skipped the normaliser, which was survivable while every field was stored
+  and is not once one is derived. It goes through `normalizeOpening` now, like the client.
+
+- **A game says how it arrived, and the separator carries it.** `Caro Kann › Exchange
+  Variation › Panov Attack` is a game that played its way down its own chain;
+  `Queen's Gambit Declined → Panov Attack` is the same destination reached by a move order
+  saved for something else. One glyph, nothing added to a row with nothing to report, and
+  `OpeningRoute` draws it in both places so the two cannot drift. The arrow is a **weight,
+  not a hue** — every colour here already means something and a transposition is not a
+  fault — and it only ever sits *between* two names, since the first step has nothing in
+  front of it to have come from.
+
+  **`matchingPath` is gone, and it was lying.** It asked `gameMatchesNode`, the *subtree*
+  test, so a parent matched whenever any child did — right for counting, where a parent's
+  totals have to cover its children, and flatly wrong for naming. A Panov reached through
+  a Queen's Gambit was announced as `Caro Kann › Exchange Variation › Panov Attack` about
+  a game that never played 1.e4 c6. `openingRoute` tests each node against its own
+  positions and sorts by *when* the game got there rather than by where the node sits. It
+  changed what 94 of 1,136 games say about themselves; the other 992 read character for
+  character as they did.
+
+  **`gamePositionKeys` returns a `Map` of key → first ply**, which is what makes "in the
+  order it happened" expressible at all. `.has()` is identical on a `Set`, so the change
+  cost nothing at the call sites that only ask that. The first ply wins on a repetition:
+  you reached a position when you first stood in it, not when you wandered back through
+  it on move 30.
+
+  **`played` is about the opening's *main* line, and the first attempt got this exactly
+  backwards.** Defining it as "played any of this opening's lines" meant that writing the
+  Queen's Gambit route down as a Panov line made a game playing it count as having played
+  the Panov — silencing the arrow, which is the one thing adding that line was for. The
+  check caught it. Writing a transposition down does not stop it being one; it makes it
+  one you know about.
+
+  The scale of it, measured on the real games: **157 of 2,075 opening matches arrive by a
+  move order that is not the line's own**, and every single one has a saved line it played
+  first, so no route ever has to open with an arrow. `with 4.Nf3` is reached 45 times by
+  transposition against 5 by its own move order — a line that is, in practice, almost
+  never played the way it is written down.
+
+- **The Arrived chips appear only once a line is picked.** "Played into" says nothing
+  about every game you have ever played, so the row is hidden at `All games` — the habit
+  the mistakes page's Square row already follows. It is asked of the **whole subtree**
+  rather than of the one line, because that is what the slice is: a game that played the
+  Caro-Kann and transposed into the Panov played its way into the Caro-Kann and only
+  transposed into the Panov, and filtering on either should answer about the one you
+  picked. `arrivalCounts` measures the split with every other filter in force but not
+  this row's own, so a chip cannot claim a number it would not deliver.
+
+- **The editor says what a new way in will cost, where it is written.** Two warnings,
+  neither blocking: a line reaching the **main line's own position** adds nothing, and one
+  whose position **another saved opening already claims** will put the same game in two
+  rows of the dashboard's breakdown. That second one is the inflation the dormant
+  `alsoReaches` field was written to avoid, said out loud at the point it is created
+  rather than discovered later in a total that does not add up.
 - **The variation tree is derived, never stored.** `buildOpeningTree` nests a saved line under the
   deepest other saved line that is a move-prefix of it, so 1.e4 c6 2.d4 d5 3.e5 files itself under
   1.e4 c6. Editing or deleting a line re-parents everything automatically.
@@ -2426,6 +2515,5 @@ yarn lint
   A re-sync fixes them; nothing can at read time, because the rating change was never stored.
 
 ## Not built yet
-- Transpositions *between* named openings (a line only nests by literal move prefix)
 - Background or scheduled syncing
 - Any training drill built from the tag counts — the database is read by eye for now

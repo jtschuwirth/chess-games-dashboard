@@ -25,10 +25,12 @@ import {
   flattenTree,
   formatMoves,
   gameMatchesNode,
-  matchingPath,
   openingLabel,
+  openingRoute,
+  routeSteps,
+  type RouteStep,
 } from '@/lib/opening'
-import { positionKeyMap, scopeGames } from '@/lib/scope'
+import { arrivalCounts, positionKeyMap, scopeGames } from '@/lib/scope'
 import {
   ALL_OPENINGS,
   UNCLASSIFIED_OPENING,
@@ -175,6 +177,12 @@ function DashboardBody({ userId }: { userId: string }) {
     () => scopeGames(games ?? [], tree, positionKeys, filters),
     [games, tree, positionKeys, filters],
   )
+  /** The Arrival chips' counts — null, and the row hidden, until a line is picked. */
+  const arrivals = useMemo(
+    () => arrivalCounts(games ?? [], tree, positionKeys, filters),
+    [games, tree, positionKeys, filters],
+  )
+
 
   /** The game view, carrying the filters so its Back link restores this exact slice. */
   const search = useMemo(() => writeFilters(filters), [filters])
@@ -188,12 +196,15 @@ function DashboardBody({ userId }: { userId: string }) {
   const clock = useMemo(() => computeClockStats(scoped), [scoped])
   const phases = useMemo(() => computePhases(scoped), [scoped])
 
-  /** Which of the saved lines each visible game followed, computed only for the rendered slice. */
-  const linesByGame = useMemo(() => {
-    const map = new Map<string, string[]>()
+  /** How each visible game got where it got, computed only for the rendered slice. */
+  const routesByGame = useMemo(() => {
+    const map = new Map<string, RouteStep[]>()
     for (const game of scoped.slice(0, limit)) {
-      const nodes = matchingPath(tree, game, positionKeys.get(game.id) ?? new Set())
-      if (nodes.length > 0) map.set(game.id, nodes.map(node => node.opening.name))
+      const steps = routeSteps(
+        openingRoute(tree, game, positionKeys.get(game.id) ?? new Map()),
+        opening => opening.name,
+      )
+      if (steps.length > 0) map.set(game.id, steps)
     }
     return map
   }, [scoped, limit, tree, positionKeys])
@@ -208,7 +219,7 @@ function DashboardBody({ userId }: { userId: string }) {
     const claimed = new Set<string>()
     const rows: VariationRow[] = children.map(node => {
       const matching = scoped.filter(game =>
-        gameMatchesNode(game, positionKeys.get(game.id) ?? new Set(), node),
+        gameMatchesNode(game, positionKeys.get(game.id) ?? new Map(), node),
       )
       for (const game of matching) claimed.add(game.id)
       const matchingClock = computeClockStats(matching)
@@ -311,6 +322,7 @@ function DashboardBody({ userId }: { userId: string }) {
         path={path}
         refresh={refresh}
         refreshing={refreshing}
+        arrivals={arrivals}
       />
 
       {/*
@@ -415,7 +427,7 @@ function DashboardBody({ userId }: { userId: string }) {
                   key={game.id}
                   userId={userId}
                   game={game}
-                  line={linesByGame.get(game.id) ?? []}
+                  route={routesByGame.get(game.id) ?? []}
                   href={hrefFor(game)}
                 />
               ))}

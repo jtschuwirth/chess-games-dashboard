@@ -37,6 +37,11 @@ const REVIEW_OPTIONS: { value: Filters['reviewed']; label: string; title: string
   { value: 'no', label: 'not reviewed', title: 'Games still waiting' },
 ]
 
+const ARRIVAL_OPTIONS: { value: 'played' | 'transposed'; label: string }[] = [
+  { value: 'played', label: 'played into' },
+  { value: 'transposed', label: 'transposed in' },
+]
+
 const COLOR_OPTIONS: { value: Color | 'both'; label: string }[] = [
   { value: 'both', label: 'both' },
   { value: 'white', label: 'as White' },
@@ -132,6 +137,7 @@ export default function FilterPanel({
   path,
   refresh,
   refreshing,
+  arrivals,
   extra,
   extraActive,
   onReset,
@@ -148,6 +154,12 @@ export default function FilterPanel({
   path: OpeningNode[]
   refresh: () => void
   refreshing: boolean
+  /**
+   * How the slice splits between lines you played into and lines you transposed into,
+   * or null when no particular line is picked — which is also when the row is hidden,
+   * since "played it" says nothing about every game you have ever played.
+   */
+  arrivals?: { played: number; transposed: number } | null
   /** Rows a particular dashboard adds, such as the mark and piece a mistake was. */
   extra?: React.ReactNode
   /**
@@ -256,6 +268,33 @@ export default function FilterPanel({
               </div>
             )}
           </div>
+
+          {/*
+            Only once a line is picked. The question is how you got into *this* opening,
+            and over all games there is no "this" to have arrived at — the same reason
+            the mistakes page grows a Square row only once a square is chosen.
+          */}
+          {arrivals && (
+            <FilterRow
+              label="Arrived"
+              title="Whether the game played this line's own move order, or reached it from a move order saved for something else"
+            >
+              <Chip active={filters.arrival === null} onClick={() => patch({ arrival: null })}>
+                any
+              </Chip>
+              {ARRIVAL_OPTIONS.map(option => (
+                <Chip
+                  key={option.value}
+                  active={filters.arrival === option.value}
+                  disabled={filters.arrival !== option.value && arrivals[option.value] === 0}
+                  onClick={() => patch({ arrival: option.value })}
+                  title={`${arrivals[option.value]} of them`}
+                >
+                  {option.label}
+                </Chip>
+              ))}
+            </FilterRow>
+          )}
 
           <FilterLabel>Site</FilterLabel>
           <div className="flex gap-1.5 flex-wrap">

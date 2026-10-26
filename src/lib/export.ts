@@ -3,7 +3,10 @@ import {
   flattenTree,
   gameMatchesNode,
   gamePositionKeys,
-  matchingPath,
+  openingRoute,
+  routeSteps,
+  routeText,
+  type GameKeys,
 } from './opening'
 import { computeSplit, computeStats, type StatBlock, type StatSplit } from './stats'
 import { actualScore, expectedScore, withRatingsBefore } from './ratings'
@@ -93,8 +96,17 @@ export interface CompactGame {
   ratingDiff: number | null
   eco: string | null
   openingName: string | null
-  /** The saved lines this game followed, root first. Empty when it matched none. */
+  /**
+   * The saved lines this game reached, in the order it reached them. Empty when it
+   * matched none. Only lines the game actually stood in — a parent it never played
+   * through is no longer named for it.
+   */
   line: string[]
+  /**
+   * The same route written out, with `→` where the game transposed in rather than
+   * playing that line's own move order: `Queen's Gambit Declined → Panov Attack`.
+   */
+  route: string
   /** Seconds left on your clock at the end, null without clock data. */
   timeLeft: number | null
   /** Median seconds you spent per move. */
@@ -183,17 +195,15 @@ export function buildExport(
 ): ExportPayload {
   const counted = withRatingsBefore(games)
   const keys = new Map(counted.map(game => [game.id, gamePositionKeys(game.moves)]))
-  const keysFor = (game: GameRecord) => keys.get(game.id) ?? new Set<string>()
+  const keysFor = (game: GameRecord): GameKeys => keys.get(game.id) ?? new Map()
 
   const tree = buildOpeningTree(openings)
   const nodes = flattenTree(tree)
 
-  const pathsById = new Map<string, string[]>()
+  const routesById = new Map<string, { line: string[]; route: string }>()
   for (const game of counted) {
-    pathsById.set(
-      game.id,
-      matchingPath(tree, game, keysFor(game)).map(node => node.opening.name),
-    )
+    const steps = routeSteps(openingRoute(tree, game, keysFor(game)), opening => opening.name)
+    routesById.set(game.id, { line: steps.map(step => step.name), route: routeText(steps) })
   }
 
   const variations: VariationExport[] = nodes.map(node => {
@@ -220,7 +230,7 @@ export function buildExport(
     variations[index].path = [...trail]
   })
 
-  const unmatched = counted.filter(game => (pathsById.get(game.id) ?? []).length === 0)
+  const unmatched = counted.filter(game => (routesById.get(game.id)?.line ?? []).length === 0)
 
   const grouped = new Map<string, GameRecord[]>()
   for (const game of unmatched) {
@@ -324,7 +334,8 @@ export function buildExport(
         ratingDiff: game.ratingDiff,
         eco: game.eco,
         openingName: game.openingName,
-        line: pathsById.get(game.id) ?? [],
+        line: routesById.get(game.id)?.line ?? [],
+        route: routesById.get(game.id)?.route ?? '',
         timeLeft: clock?.timeLeft ?? null,
         medianPerMove: clock?.medianPerMove ?? null,
         slowestMove: clock?.slowestMove ?? null,

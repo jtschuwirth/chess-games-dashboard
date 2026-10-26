@@ -237,17 +237,45 @@ export interface StoredAnalysis {
   }[]
 }
 
+/**
+ * Another move order that reaches the same idea.
+ *
+ * The Panov is a Caro-Kann line and arrives just as often from a Queen's Gambit move
+ * order; saving it as a second opening of the same name files it *inside* the first,
+ * since the tree nests by literal move prefix, and the repertoire reads Panov › Panov ›
+ * Panov. So an opening owns its other ways in instead of being copied for each.
+ */
+export interface AltLine {
+  /** The line exactly as it was typed. */
+  pgn: string
+  moves: string[]
+  positionKey: string
+  ply: number
+}
+
 export interface OpeningLine {
   id: string
   name: string
-  /** The line exactly as the user typed it. */
+  /** The main line, exactly as the user typed it. */
   pgn: string
-  /** Normalized SAN move list. */
+  /** Normalized SAN move list for the main line — what the tree nests by. */
   moves: string[]
-  /** FEN fields 1-3 after the last move — what games are matched against. */
+  /** FEN fields 1-3 after the last move of the main line. */
   positionKey: string
   ply: number
   color: OpeningColor
+  /**
+   * Other move orders reaching this same opening. Absent on every line saved before
+   * they existed, which is most of them — read through `openingKeys`, never directly.
+   */
+  alts?: AltLine[]
+  /**
+   * Every position that counts as having reached this opening: the main line's and each
+   * alternate's. **Derived by `normalizeOpening`, never stored** — it is the main key on
+   * a line with no alternates, so the 72 documents written before any of this need
+   * nothing done to them. `NewOpeningLine` leaves it out, so no writer can emit it.
+   */
+  keys: string[]
   /**
    * What you know about this opening. Absent on a line nobody has written up, which is
    * why `normalizeOpening` fills it in on read rather than every caller testing for it.
@@ -261,7 +289,7 @@ export interface OpeningLine {
   updatedAt?: number
 }
 
-export type NewOpeningLine = Omit<OpeningLine, 'id'>
+export type NewOpeningLine = Omit<OpeningLine, 'id' | 'keys'>
 
 /* ------------------------------------------------------------ opening studies */
 

@@ -1,6 +1,12 @@
 import { Chess } from 'chess.js'
 import { normalizeStudy } from './study'
-import type { GameRecord, OpeningColor, OpeningLine } from '@/types/chess'
+import type {
+  AltLine,
+  GameRecord,
+  NewOpeningLine,
+  OpeningColor,
+  OpeningLine,
+} from '@/types/chess'
 
 /**
  * How deep into a game we look for the opening position. Openings transpose long
@@ -43,10 +49,22 @@ export function parseOpening(pgn: string): ParsedOpening {
   return { moves, positionKey: positionKey(chess.fen()), ply: moves.length }
 }
 
-/** Every position the game passed through, as position keys. Computed once per game. */
-export function gamePositionKeys(moves: string[], limitPly: number = MAX_OPENING_PLY): Set<string> {
+/**
+ * Every position the game passed through, and the half-move it first stood there.
+ *
+ * It was a `Set` and could only answer whether a position was reached, never when — so
+ * two saved openings both matching a game said nothing about which came first, which is
+ * the whole of "this was a Queen's Gambit that became a Panov". A `Map` answers `.has`
+ * exactly as a `Set` does, so this cost nothing at the call sites that only ask that.
+ *
+ * The first ply wins on a repetition: you reached the position when you first stood in
+ * it, not when you wandered back through it on move 30.
+ */
+export type GameKeys = Map<string, number>
+
+export function gamePositionKeys(moves: string[], limitPly: number = MAX_OPENING_PLY): GameKeys {
   const chess = new Chess()
-  const keys = new Set<string>()
+  const keys: GameKeys = new Map()
   const end = Math.min(moves.length, limitPly)
 
   for (let i = 0; i < end; i++) {
@@ -55,19 +73,44 @@ export function gamePositionKeys(moves: string[], limitPly: number = MAX_OPENING
     } catch {
       break // corrupt move list — keep whatever we replayed successfully
     }
-    keys.add(positionKey(chess.fen()))
+    const key = positionKey(chess.fen())
+    if (!keys.has(key)) keys.set(key, i + 1)
   }
 
   return keys
 }
 
+/** The main line and every alternate, as the lines they are. */
+export function openingLines(opening: OpeningLine): AltLine[] {
+  const main: AltLine = {
+    pgn: opening.pgn,
+    moves: opening.moves,
+    positionKey: opening.positionKey,
+    ply: opening.ply,
+  }
+  return [main, ...(opening.alts ?? [])]
+}
+
 export function gameMatchesOpening(
   game: GameRecord,
-  keys: Set<string>,
+  keys: GameKeys,
   opening: OpeningLine,
 ): boolean {
   if (opening.color !== 'any' && game.color !== opening.color) return false
-  return keys.has(opening.positionKey)
+  return opening.keys.some(key => keys.has(key))
+}
+
+/**
+ * The half-move at which the game first stood in any of this opening's positions, or
+ * null when it never did. Colour is not checked here — `gameMatchesOpening` owns that.
+ */
+export function reachedAt(keys: GameKeys, opening: OpeningLine): number | null {
+  let first: number | null = null
+  for (const key of opening.keys) {
+    const ply = keys.get(key)
+    if (ply !== undefined && (first === null || ply < first)) first = ply
+  }
+  return first
 }
 
 /** ["e4","c6","d4"] -> "1. e4 c6 2. d4" */
@@ -174,30 +217,108 @@ export function subtreeOpenings(node: OpeningNode): OpeningLine[] {
  * A game belongs to a variation when it reached that line or any of its
  * sub-variations — so a parent's totals always cover its children.
  */
-export function gameMatchesNode(game: GameRecord, keys: Set<string>, node: OpeningNode): boolean {
+export function gameMatchesNode(game: GameRecord, keys: GameKeys, node: OpeningNode): boolean {
   return subtreeOpenings(node).some(opening => gameMatchesOpening(game, keys, opening))
 }
 
+/* --------------------------------------------------------- how a game got here */
+
+export interface Arrival {
+  node: OpeningNode
+  /** Half-moves played when the game first stood in one of this opening's positions. */
+  ply: number
+  /**
+   * Whether the game played this opening's **main** move order to get there.
+   *
+   * The main line and not any of the other ways in, which is the whole point and was
+   * got wrong first: once the Queen's Gambit route into the Panov is written down as a
+   * Panov line, a game playing it would count as having played the Panov and the route
+   * would stop saying where it came from — silencing exactly the thing the alternates
+   * were added to catch. Writing a transposition down does not stop it being one; it
+   * makes it one you know about.
+   */
+  played: boolean
+}
+
 /**
- * The deepest chain of saved variations a game belongs to, e.g. Caro-Kann >
- * Exchange Variation > Panov Attack. Empty when the game matched nothing saved.
- * Siblings can both match a transposing game, so the longest chain wins.
+ * Every saved opening the game actually reached, in the order it reached them.
+ *
+ * This replaced `matchingPath`, which asked `gameMatchesNode` — the **subtree** test —
+ * and so named parents the game had never been anywhere near. A Panov reached through a
+ * Queen's Gambit move order read `Caro Kann › Exchange Variation › Panov Attack`,
+ * because the Panov sits under the Caro-Kann in the tree and a parent matches whenever
+ * any child does. That roll-up is right for counting, where a parent's totals have to
+ * cover its children, and flatly wrong for naming: the game never played 1.e4 c6.
+ *
+ * So each node is tested against its own positions, and the result is sorted by when the
+ * game got there rather than by where the node sits. A normal game comes out exactly as
+ * it did before, because it really did pass through every line on its chain.
  */
-export function matchingPath(
-  nodes: OpeningNode[],
-  game: GameRecord,
-  keys: Set<string>,
-): OpeningNode[] {
-  let best: OpeningNode[] = []
+export function openingRoute(nodes: OpeningNode[], game: GameRecord, keys: GameKeys): Arrival[] {
+  const arrivals: Arrival[] = []
 
-  for (const node of nodes) {
-    if (!gameMatchesNode(game, keys, node)) continue
+  for (const node of flattenTree(nodes)) {
+    if (!gameMatchesOpening(game, keys, node.opening)) continue
+    const ply = reachedAt(keys, node.opening)
+    if (ply === null) continue
 
-    const candidate = [node, ...matchingPath(node.children, game, keys)]
-    if (candidate.length > best.length) best = candidate
+    arrivals.push({
+      node,
+      ply,
+      played: node.opening.moves.every((san, index) => game.moves[index] === san),
+    })
   }
 
-  return best
+  // when two lines name the same position, the longer one is the more specific thing
+  // to have reached, so it reads second
+  return arrivals.sort(
+    (a, b) =>
+      a.ply - b.ply ||
+      a.node.opening.ply - b.node.opening.ply ||
+      a.node.opening.name.localeCompare(b.node.opening.name),
+  )
+}
+
+export interface RouteStep {
+  name: string
+  /** Reached from the step before it by a move order that is not its own. */
+  transposed: boolean
+}
+
+/**
+ * The route as names, for whichever of the two labellings the screen uses.
+ *
+ * The first step is never a transposition however it was reached: there is nothing
+ * saved in front of it to have come *from*, and an arrow with one end is a claim the
+ * route cannot support. So the arrow always sits between two names and always means
+ * "from this, into that".
+ */
+export function routeSteps(
+  arrivals: Arrival[],
+  label: (opening: OpeningLine) => string = openingLabel,
+): RouteStep[] {
+  return arrivals.map((arrival, index) => ({
+    name: label(arrival.node.opening),
+    transposed: index > 0 && !arrival.played,
+  }))
+}
+
+/** Whether the game played its way into this part of the repertoire at all. */
+export function arrivedPlayed(arrivals: Arrival[], node: OpeningNode): boolean {
+  const below = new Set(subtreeOpenings(node).map(opening => opening.id))
+  return arrivals.some(arrival => below.has(arrival.node.opening.id) && arrival.played)
+}
+
+/**
+ * `Queen's Gambit Declined › Exchange Variation → Panov Attack`.
+ *
+ * The separator carries the fact: `›` is a line you played into, `→` is one you
+ * transposed into. A game with nothing to report reads exactly as it always has.
+ */
+export function routeText(steps: RouteStep[]): string {
+  return steps
+    .map((step, index) => (index === 0 ? step.name : `${step.transposed ? '→' : '›'} ${step.name}`))
+    .join(' ')
 }
 
 /** The chain of variations from a root down to `id`, for breadcrumbs. */
@@ -219,6 +340,48 @@ export function findPath(nodes: OpeningNode[], id: string): OpeningNode[] {
  * converted on read rather than migrated, so the 65 lines saved before any of this
  * existed need nothing done to them.
  */
-export function normalizeOpening(raw: OpeningLine): OpeningLine {
-  return { ...raw, study: normalizeStudy(raw.study) }
+/**
+ * What of an opening actually goes to Firestore.
+ *
+ * The same job `patternBody` and `studyBody` do, and it exists for two reasons. `keys`
+ * is derived on read and must never be stored, or a stale copy would outlive the lines
+ * it was computed from; and `alts` is optional, so it has to be set or left out and
+ * never assigned `undefined`, which rejects the whole document rather than the field.
+ */
+export function openingBody(opening: NewOpeningLine): NewOpeningLine {
+  const body: NewOpeningLine = {
+    name: opening.name,
+    pgn: opening.pgn,
+    moves: opening.moves,
+    positionKey: opening.positionKey,
+    ply: opening.ply,
+    color: opening.color,
+  }
+
+  if (opening.alts && opening.alts.length > 0) body.alts = opening.alts
+
+  return body
+}
+
+export function normalizeOpening(raw: Omit<OpeningLine, 'keys'>): OpeningLine {
+  const alts = Array.isArray(raw.alts)
+    ? raw.alts.filter(
+        (alt): alt is AltLine =>
+          Boolean(alt) && typeof alt.positionKey === 'string' && Array.isArray(alt.moves),
+      )
+    : []
+
+  /*
+    `keys` is derived here and nowhere else, so the match is one `some` over an array
+    rather than a walk of the alternates on every one of 72 openings against every one of
+    a thousand games. A line with no alternates has exactly the one key it always had,
+    which is why none of the documents written before this needed touching.
+  */
+  const keys = [...new Set([raw.positionKey, ...alts.map(alt => alt.positionKey)])]
+
+  const read: OpeningLine = { ...raw, alts, keys, study: normalizeStudy(raw.study) }
+  // a line with no other way in carries no empty array to be read back as one
+  if (alts.length === 0) delete read.alts
+
+  return read
 }

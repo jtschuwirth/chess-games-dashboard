@@ -3,6 +3,7 @@ import { deny, requireUser } from '@/lib/api-auth'
 import { getAdminDb } from '@/lib/firebase-admin'
 import { buildExport } from '@/lib/export'
 import { isSinceKey, matchesCriteria, type GameCriteria, type SinceKey } from '@/lib/game-filters'
+import { normalizeOpening } from '@/lib/opening'
 import { applyTagGroups, normalizeTagGroups } from '@/lib/tags'
 import type { GameRecord, OpeningLine, UserProfile } from '@/types/chess'
 
@@ -98,7 +99,11 @@ export async function GET(request: Request) {
     const games = gamesSnap.docs
       .map(doc => ({ ...doc.data(), id: doc.id }) as GameRecord)
       .filter(game => matchesCriteria(game, criteria, now))
-    const openings = openingsSnap.docs.map(doc => ({ ...doc.data(), id: doc.id }) as OpeningLine)
+    // through the normaliser, like the client read: `keys` is derived there, and an
+    // opening that arrives here as a bare cast matches nothing at all
+    const openings = openingsSnap.docs.map(doc =>
+      normalizeOpening({ ...doc.data(), id: doc.id } as OpeningLine),
+    )
 
     return NextResponse.json({
       filters: criteria,

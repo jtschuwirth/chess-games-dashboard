@@ -1,9 +1,11 @@
 import Link from 'next/link'
 import AnalyseButton from '@/components/AnalyseButton'
+import OpeningRoute from '@/components/OpeningRoute'
 import StatusTag from '@/components/StatusTag'
 import { ENGINE_DEPTH, isStale } from '@/lib/analysis'
 import { hasReview, trainableMistakes } from '@/lib/review'
 import { tagName } from '@/lib/tags'
+import type { RouteStep } from '@/lib/opening'
 import type { GameRecord, GameResult } from '@/types/chess'
 import { SOURCE_LABEL } from '@/types/chess'
 
@@ -22,14 +24,14 @@ const RESULT_LABEL: Record<GameResult, string> = {
 export default function GameRow({
   userId,
   game,
-  line,
+  route,
   href,
 }: {
   /** Whose games these are, for the analysis the row can start. */
   userId: string
   game: GameRecord
-  /** Names of the saved variations this game followed, root first. Empty if none matched. */
-  line: string[]
+  /** How this game reached the saved lines it reached. Empty if it matched none. */
+  route: RouteStep[]
   /** The game view, carrying the current filters so Back returns to this list. */
   href: string
 }) {
@@ -123,9 +125,9 @@ export default function GameRow({
               </span>
             )}
           </div>
-          {line.length > 0 ? (
-            <div className="text-xs text-zinc-400 mt-0.5 truncate" title="One of your saved lines">
-              {line.join(' › ')}
+          {route.length > 0 ? (
+            <div className="text-xs mt-0.5 truncate">
+              <OpeningRoute steps={route} />
             </div>
           ) : (
             game.openingName && (

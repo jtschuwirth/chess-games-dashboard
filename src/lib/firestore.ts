@@ -17,7 +17,7 @@ import {
 } from 'firebase/firestore'
 import { db } from './firebase'
 import { normalizeAnalysis } from './analysis'
-import { normalizeOpening } from './opening'
+import { normalizeOpening, openingBody } from './opening'
 import {
   PATTERN_OPTIONAL_FIELDS,
   PATTERN_RETIRED_FIELDS,
@@ -521,7 +521,7 @@ export async function getOpenings(userId: string, options?: ReadOptions): Promis
 
 export async function saveOpening(userId: string, opening: NewOpeningLine): Promise<string> {
   const ref = collection(db, 'users', userId, 'patterns')
-  const docRef = await addDoc(ref, { ...opening, createdAt: serverTimestamp() })
+  const docRef = await addDoc(ref, { ...openingBody(opening), createdAt: serverTimestamp() })
   return docRef.id
 }
 
@@ -537,7 +537,9 @@ export async function updateOpening(
     is a page that silently eats everything you wrote the first time you fix a typo.
   */
   await updateDoc(doc(db, 'users', userId, 'patterns', openingId), {
-    ...opening,
+    ...openingBody(opening),
+    // an update merges, so a line whose last other way in was removed has to be told so
+    alts: opening.alts && opening.alts.length > 0 ? opening.alts : deleteField(),
     updatedAt: Date.now(),
   })
 }

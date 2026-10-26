@@ -17,8 +17,11 @@ import {
   buildOpeningTree,
   findPath,
   formatMoves,
+  openingLines,
   gameMatchesNode,
-  matchingPath,
+  openingRoute,
+  routeSteps,
+  type RouteStep,
   openingLabel,
 } from '@/lib/opening'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
@@ -264,6 +267,24 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
 
   const split = useMemo(() => computeSplit(slice), [slice])
 
+  /**
+   * Each way into this opening and how many of its games came that way.
+   *
+   * The second, third and fourth Panov line goes here rather than into the tree — they
+   * are the same opening, so a node each would be the self-nesting this replaced. The
+   * figure is what makes the list worth reading: a way in that brings more games than
+   * the main line is the move order you are actually meeting.
+   */
+  const waysIn = useMemo(() => {
+    if (!opening?.alts?.length) return []
+
+    return openingLines(opening).map((line, index) => ({
+      line,
+      main: index === 0,
+      games: slice.filter(game => line.moves.every((san, at) => game.moves[at] === san)).length,
+    }))
+  }, [opening, slice])
+
   /** One row per sub-variation, measured inside this slice — the dashboard's breakdown. */
   const variants = useMemo(() => {
     if (!node) return [] as { opening: OpeningLine; stats: StatBlock }[]
@@ -273,7 +294,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
         opening: child.opening,
         stats: computeStats(
           slice.filter(game =>
-            gameMatchesNode(game, positionKeys.get(game.id) ?? new Set(), child),
+            gameMatchesNode(game, positionKeys.get(game.id) ?? new Map(), child),
           ),
         ),
       }))
@@ -282,11 +303,14 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
 
   const shown = useMemo(() => slice.slice(0, SHOWN_GAMES), [slice])
 
-  const linesByGame = useMemo(() => {
-    const map = new Map<string, string[]>()
+  const routesByGame = useMemo(() => {
+    const map = new Map<string, RouteStep[]>()
     for (const game of shown) {
-      const nodes = matchingPath(tree, game, positionKeys.get(game.id) ?? new Set())
-      if (nodes.length > 0) map.set(game.id, nodes.map(entry => entry.opening.name))
+      const steps = routeSteps(
+        openingRoute(tree, game, positionKeys.get(game.id) ?? new Map()),
+        entry => entry.name,
+      )
+      if (steps.length > 0) map.set(game.id, steps)
     }
     return map
   }, [shown, tree, positionKeys])
@@ -358,6 +382,28 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
           <p className="text-xs text-zinc-500 font-mono mt-1 break-words">
             {formatMoves(opening.moves)}
           </p>
+
+          {waysIn.length > 0 && (
+            <div className="mt-2 flex flex-col gap-1">
+              <span
+                className="text-[10px] uppercase tracking-[0.12em] text-zinc-600"
+                title="Move orders that reach this same opening. A game arriving by one of them counts here, and says so."
+              >
+                Ways in
+              </span>
+              {waysIn.map((way, index) => (
+                <div key={index} className="flex items-baseline gap-2 text-xs">
+                  <span className="font-mono text-zinc-500 break-words min-w-0">
+                    {formatMoves(way.line.moves)}
+                  </span>
+                  <span className="shrink-0 text-zinc-600">
+                    {way.main && 'main · '}
+                    {way.games} game{way.games === 1 ? '' : 's'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-x-3 gap-y-2 flex-wrap justify-end">
@@ -583,7 +629,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
                   key={game.id}
                   userId={userId}
                   game={game}
-                  line={linesByGame.get(game.id) ?? []}
+                  route={routesByGame.get(game.id) ?? []}
                   href={`/games/${game.id}?opening=${openingId}`}
                 />
               ))}

@@ -58,7 +58,7 @@ import {
 } from '@/lib/verdict'
 import PieceSprites, { spriteId } from '@/components/PieceSprites'
 import type { Breadth, Standing } from '@/lib/bands'
-import { positionKeyMap, scopeGames } from '@/lib/scope'
+import { arrivalCounts, positionKeyMap, scopeGames } from '@/lib/scope'
 import type { Color, GameRecord, OpeningLine, PatternRecord } from '@/types/chess'
 import type { MistakeRow } from '@/lib/mistakes'
 
@@ -213,6 +213,12 @@ function MistakesBody({ userId }: { userId: string }) {
     () => scopeGames(games ?? [], tree, positionKeys, filters),
     [games, tree, positionKeys, filters],
   )
+  /** The Arrival chips' counts — null, and the row hidden, until a line is picked. */
+  const arrivals = useMemo(
+    () => arrivalCounts(games ?? [], tree, positionKeys, filters),
+    [games, tree, positionKeys, filters],
+  )
+
 
   /*
    * Every marked move in the slice, before this page's own two filters. The chips are
@@ -355,6 +361,7 @@ function MistakesBody({ userId }: { userId: string }) {
         path={path}
         refresh={refresh}
         refreshing={refreshing}
+        arrivals={arrivals}
         extraActive={activeRows}
         onReset={() => {
           setFilters(DEFAULT_FILTERS)
