@@ -12,6 +12,7 @@ import { clearDraft, planChanged, readDraft, writeDraft } from '@/lib/plan-draft
 import {
   MAX_PLAN_WEEKS,
   buildWeek,
+  moveTask,
   planBody,
   planProgress,
   planRange,
@@ -19,8 +20,10 @@ import {
   todayPosition,
   weekLabel,
   weekProgress,
+  type TaskAt,
 } from '@/lib/plan'
 import type { RatingHistory } from '@/lib/rating-history'
+import { ghostTarget, useTaskDrag } from '@/lib/use-task-drag'
 import type { GameRecord, NewStudyPlan, StudyPlan } from '@/types/chess'
 
 /**
@@ -124,6 +127,20 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
     },
     [],
   )
+
+  /**
+   * Picking a task up and putting it down is the page's job, because the page is the
+   * smallest thing holding both ends of it: a task dragged out of Sunday and into the
+   * Monday below is one edit to two weeks, and neither week knows the other exists.
+   *
+   * It goes through `save` like every other edit, so it is a draft on the device until
+   * the button is pressed, and one `moveTask` away from being undone by hand.
+   */
+  const moveOne = useCallback(
+    (from: TaskAt, to: TaskAt) => save(current => moveTask(current, from, to)),
+    [save],
+  )
+  const drag = useTaskDrag(moveOne)
 
   const unsaved = plan !== null && stored !== null && planChanged(planBody(plan), stored)
 
@@ -296,6 +313,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
             today={today}
             history={history}
             startOpen={index === openWeek}
+            drag={drag}
             onChange={update =>
               save(current => ({
                 ...current,
@@ -325,6 +343,20 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
         >
           + Add a week
         </button>
+      )}
+
+      {/*
+        What is in hand, following the pointer. Fixed to the viewport and `pointer-events-none`,
+        the second of which is load-bearing: the drop target is whatever is under the
+        pointer, and a label that could be hit would be the only thing ever under it.
+      */}
+      {drag.carrying && (
+        <div
+          {...ghostTarget()}
+          className="fixed top-0 left-0 z-50 pointer-events-none max-w-56 truncate rounded-lg border border-sky-500/50 bg-zinc-900/95 px-2.5 py-1 text-xs text-zinc-100 shadow-lg shadow-zinc-950/60"
+        >
+          {drag.carrying.label.trim() || 'something to do'}
+        </div>
       )}
     </div>
   )

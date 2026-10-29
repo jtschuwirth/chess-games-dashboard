@@ -75,7 +75,10 @@ win/draw/loss splits for all games or for the games that followed one of those l
    still works, scheduled so the ones you get wrong come back soonest.
 8. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
-   puzzles — write a note on the day, and see the games you played that day beside it.
+   puzzles — write a note on the day, and see the games you played that day beside it. A
+   task can be picked up by the grip beside it and dropped somewhere else: further up its
+   own day, or onto another day entirely, including a folded one and one in another open
+   week.
    The plan says what it has been worth — your rating going in against where it stands
    now — and every week says the same over its own seven days, read from the rating
    history with nothing to press. Weeks fold, and more can be added as the plan runs on.
@@ -177,6 +180,7 @@ src/
 │   ├── mistakes.ts             # marked moves as rows: the square, the piece, the heatmap
 │   ├── exercise.ts             # a coach's sheet: guides, exercises, how far through
 │   ├── use-line-editor.ts      # editing a line on a board, cursor held as moves
+│   ├── use-task-drag.ts        # a plan task carried from one day to another
 │   ├── tags.ts                 # your own tag vocabulary: groups, stable ids, display names
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
@@ -2368,6 +2372,81 @@ src/
   copies whatever the last week asks for. Dates are still counted straight through: day one is
   `startDate` and `dayOffset` walks the weeks before it, so nothing stores a date and no two days
   can disagree about which one they are.
+- **A task can be picked up and put down somewhere else.** A plan is written before it
+  is run and then survives contact with the week: an evening disappears, a chapter takes
+  two days instead of one, and the fix was retyping the task on the day you actually did
+  it and deleting it from the day you did not. So the row has a grip, and what it drags
+  is the task itself — its text, how many there are and how many of them are done, because
+  that is what a task is. Three of five puzzles moved to Thursday is three of five on
+  Thursday, and the plan's own total cannot change, which is the check worth having.
+
+  **A gap is an insertion point read off the list as it is drawn**, not a destination
+  slot, and the two differ by one the moment the task comes out of the same day. Dragging
+  the first task into the gap below the second is `to.index === 2` against a `from.index`
+  of 0: insert at 2 in the shortened list and it lands back where it started. `moveTask`
+  decrements for it, and that is the reorder bug every list makes once.
+
+  The two gaps either side of a task are where it already is, so neither is a move.
+  `wouldMoveTask` says so, and it is the plan's rule rather than the drag's **because
+  both need it**: the drop answers such a press with the plan it was given, and the page
+  draws no line for it. A line promising a move that will not happen is worse than no
+  line. It is the cheap half — a gap past the end of a day is also not a move when the
+  task is already last, and only `moveTask` has the day to clamp against.
+
+- **It is pointer events, not HTML5 drag and drop.** This is the page you tick off on a
+  phone, and `dragstart` never fires for a finger. One code path covers a mouse, a finger
+  and a pen, at the price of drawing the feedback ourselves — and `touch-action: none` on
+  the grip, without which the browser claims the gesture as a scroll before the second
+  move arrives.
+
+  **The grip exists because the row cannot be the handle**: the middle of it is a text
+  field, and dragging from a text field is selecting text. It is drawn as six circles in
+  their own `viewBox` rather than set as `⠿`, the board's own lesson about glyphs — a
+  character renders differently per font and can render as nothing at all, and an empty
+  box on the one control you are looking for is worse than anywhere else. It is a real
+  button in the tab order, so it answers ↑ and ↓ as well, which is the whole feature for
+  anyone without a pointer. After a key move it **focuses the row the task went to**:
+  rows are keyed by position, so the elements stay put and only their contents change,
+  and without that a second press would move whichever task had slid into the old slot —
+  `moveExercise`'s index-captured-by-the-render trap in another costume.
+
+  **The drop target is read off the DOM at the pointer** — `elementFromPoint` finds the
+  day card and the rows inside it say where their own gaps are — rather than from a
+  registry of rectangles. A registry would be a second description of where things are,
+  and the first one moves whenever a day folds, a note grows a line or the list scrolls
+  under a still finger. The whole card takes a drop, not just its task list: over the
+  games below the tasks the forgiving answer is also the right one.
+
+  **A folded day is somewhere to put a task**, which is what `data-plan-tasks` on the card
+  is for: with no rows to measure against, a drop appends, and the only thing that knows
+  how many are already there is the card. It matters because most days are folded — on a
+  phone, all of them — so without it a task could only be moved to a day you had opened
+  first. A folded *week* draws no days at all, which is the honest limit of a gesture that
+  has to point at something.
+
+  **The pointer's position never enters state.** A drag is forty moves a second and this
+  page draws a week of day cards with their games under them, so a render per move would
+  be exactly that. The only thing that follows the pointer is one floating label, and its
+  transform is written by hand on a frame; state changes when the *answer* changes, which
+  gap the task would land in, and not before. The label is found by attribute like
+  everything else here rather than handed over as a ref — which also keeps a ref out of
+  the controller, and so out of a render that reads it.
+
+  **The insertion line is drawn inside the row, absolutely placed**, so nothing moves. A
+  marker inserted *between* rows pushes everything below it down as the pointer crosses
+  each boundary — which changes the very rectangles the target is measured from, and
+  leaves the line flickering between two gaps.
+
+  **Dragging to a day off the screen is the normal case, so it scrolls.** An open week is
+  seven day cards and the one you want is usually below the fold. The thing that scrolls
+  is **not the window**: `PageShell` puts the page in a full-height column with its own
+  `overflow-y-auto`, so `window.scrollBy` does nothing at all. It is found by walking up
+  from the grip rather than named, so the drag does not have to know the shell it is in.
+
+  Escape and `pointercancel` throw the drag away, and every listener a drag adds goes on
+  one `AbortController`, so ending it is a single call rather than four removals that have
+  to match four identities.
+
 - **A task is a count, not a tick.** Most of what a plan asks for comes in quantities — five
   puzzles, two rapid games — and three of five is neither done nor not done. `target: 1` is an
   ordinary checkbox and is what a task without a count becomes, so the common case keeps its

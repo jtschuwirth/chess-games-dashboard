@@ -5,6 +5,7 @@ import PlanDayCard from '@/components/PlanDayCard'
 import { WeekRatings } from '@/components/PlanRatings'
 import { dayDate, weekLabel, weekProgress, weekRange, type PlanPosition } from '@/lib/plan'
 import type { RatingHistory } from '@/lib/rating-history'
+import type { TaskDragController } from '@/lib/use-task-drag'
 import type { GameRecord, PlanWeek, StudyPlan } from '@/types/chess'
 
 /**
@@ -22,6 +23,7 @@ export default function PlanWeekCard({
   today,
   history,
   startOpen,
+  drag,
   onChange,
   onRemove,
 }: {
@@ -34,6 +36,13 @@ export default function PlanWeekCard({
   history: RatingHistory
   /** Whether this is the week to open on arrival — today's, or the first unfinished one. */
   startOpen: boolean
+  /**
+   * Carrying a task about, which is the plan's rather than the week's: a task dragged out
+   * of Sunday can land on the Monday of the week below. Only into an *open* week, since a
+   * folded one draws no days to drop onto — which is the honest limit of a gesture that
+   * has to point at something.
+   */
+  drag: TaskDragController
   onChange: (update: (current: PlanWeek) => PlanWeek) => void
   onRemove: () => void
 }) {
@@ -96,11 +105,13 @@ export default function PlanWeekCard({
           {week.days.map((day, dayIndex) => (
             <PlanDayCard
               key={dayIndex}
+              week={index}
               index={dayIndex}
               day={day}
               date={dayDate(plan, index, dayIndex)}
               isToday={today?.week === index && today.day === dayIndex}
               games={games}
+              drag={drag}
               onChange={update =>
                 onChange(current => ({
                   ...current,

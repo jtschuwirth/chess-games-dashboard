@@ -355,3 +355,88 @@ export function templateFrom(plan: Pick<StudyPlan, 'weeks'>): PlanTask[] {
   const day = last?.days.find(entry => entry.tasks.length > 0)
   return (day?.tasks ?? []).map(task => ({ ...task, done: 0 }))
 }
+
+/* ------------------------------------------------------------------- editing */
+
+/** One task, said in the only terms that identify it: which day, and where in it. */
+export interface TaskAt {
+  week: number
+  day: number
+  index: number
+}
+
+export function sameTaskAt(a: TaskAt, b: TaskAt): boolean {
+  return a.week === b.week && a.day === b.day && a.index === b.index
+}
+
+/**
+ * Whether a gap is somewhere the task is not already.
+ *
+ * Within one day the gap above a task and the gap below it are both where it already is,
+ * so two of the gaps on offer are not moves at all. This is here rather than in the drag
+ * because it is a fact about moving a task: `moveTask` answers such a drop with the plan
+ * it was given, and the drag draws no line for it, and those must be the same rule or the
+ * page promises a move it will not make.
+ *
+ * It is the cheap half of the answer. A gap past the end of the day it is read against is
+ * also not a move when the task is already last, and only `moveTask` knows that, because
+ * only it has the day to clamp against.
+ */
+export function wouldMoveTask(from: TaskAt, to: TaskAt): boolean {
+  if (from.week !== to.week || from.day !== to.day) return true
+  return to.index !== from.index && to.index !== from.index + 1
+}
+
+/**
+ * A task picked up in one place and put down in another, within a day or across days.
+ *
+ * `to.index` is an **insertion point read off the list as it is drawn** — the gap above
+ * the task at that index — and not a destination slot. Those differ by one as soon as
+ * the task comes out of the same day, because everything after it shifts up: dragging
+ * the first task into the gap below the second is `to.index === 2` against a `from.index`
+ * of 0, and inserting at 2 in the shortened list would put it back where it started.
+ * Getting that wrong is the reorder bug every list makes once.
+ *
+ * The task record moves whole, counts included, because that is what it is: a task you
+ * had done three of, moved to Thursday, is three done on Thursday. The plan's own total
+ * cannot change, which is the check worth having.
+ *
+ * Out-of-range weeks, days and indices are clamped rather than refused — the drop target
+ * is read off the DOM, and a folded day reports an append past the rows it is not
+ * drawing — so no caller has to range-check first. A move that would change nothing
+ * returns the plan it was given, so a press that went nowhere leaves nothing to save.
+ */
+export function moveTask(plan: StudyPlan, from: TaskAt, to: TaskAt): StudyPlan {
+  if (!wouldMoveTask(from, to)) return plan
+
+  const source = plan.weeks[from.week]?.days[from.day]
+  const target = plan.weeks[to.week]?.days[to.day]
+  const task = source?.tasks[from.index]
+  if (!source || !target || !task) return plan
+
+  const sameDay = from.week === to.week && from.day === to.day
+  const gap = Math.max(0, Math.min(to.index, target.tasks.length))
+  const at = sameDay && gap > from.index ? gap - 1 : gap
+  if (sameDay && at === from.index) return plan
+
+  return {
+    ...plan,
+    weeks: plan.weeks.map((week, w) => {
+      if (w !== from.week && w !== to.week) return week
+
+      return {
+        ...week,
+        days: week.days.map((day, d) => {
+          const takeFrom = w === from.week && d === from.day
+          const giveTo = w === to.week && d === to.day
+          if (!takeFrom && !giveTo) return day
+
+          let tasks = day.tasks
+          if (takeFrom) tasks = tasks.filter((_, i) => i !== from.index)
+          if (giveTo) tasks = [...tasks.slice(0, at), task, ...tasks.slice(at)]
+          return { ...day, tasks }
+        }),
+      }
+    }),
+  }
+}

@@ -10,8 +10,10 @@ import {
   isDayComplete,
   reviewedCount,
   taskComplete,
+  type TaskAt,
 } from '@/lib/plan'
 import { hasReview } from '@/lib/review'
+import { dropSlot, dropTarget, type TaskDragController } from '@/lib/use-task-drag'
 import type { GameRecord, GameResult, PlanDay, PlanTask } from '@/types/chess'
 
 const RESULT_COLOR: Record<GameResult, string> = {
@@ -52,6 +54,46 @@ function StepButton({
 }
 
 /**
+ * Where the task would land, drawn in the gap it would land in.
+ *
+ * Inside the row and absolutely placed, so nothing moves: a marker inserted *between*
+ * the rows would push everything below it down as the pointer crossed each boundary,
+ * which changes the very rectangles the drop target is being measured from and leaves
+ * the line flickering between two gaps.
+ */
+function Gap({ edge }: { edge: 'top' | 'bottom' }) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`absolute left-0 right-0 h-0.5 rounded-full bg-sky-400 ${
+        edge === 'top' ? '-top-1' : '-bottom-1'
+      }`}
+    />
+  )
+}
+
+/**
+ * The grip, drawn rather than typed.
+ *
+ * `⠿` is the conventional glyph and is a glyph: the board already learned here that a
+ * character renders differently per font and can render as nothing at all, and a missing
+ * box on the one control you are trying to find is worse than anywhere else. Six circles
+ * in their own `viewBox` scale with the row and look the same everywhere.
+ */
+function GripDots() {
+  return (
+    <svg viewBox="0 0 6 10" aria-hidden="true" fill="currentColor" className="w-1.5 h-2.5">
+      <circle cx="1.2" cy="1.2" r="0.9" />
+      <circle cx="4.8" cy="1.2" r="0.9" />
+      <circle cx="1.2" cy="5" r="0.9" />
+      <circle cx="4.8" cy="5" r="0.9" />
+      <circle cx="1.2" cy="8.8" r="0.9" />
+      <circle cx="4.8" cy="8.8" r="0.9" />
+    </svg>
+  )
+}
+
+/**
  * One task, which is a count rather than a tick.
  *
  * Most of what a plan asks for comes in quantities — five puzzles, two rapid games — and
@@ -64,11 +106,20 @@ function StepButton({
  * clicks and leave no way to say "all of it, done".
  */
 function TaskRow({
+  at,
   task,
+  drag,
+  insertBefore,
+  insertAfter,
   onPatch,
   onRemove,
 }: {
+  /** Which day this row is in and where in it, which is what a drop needs to say. */
+  at: TaskAt
   task: PlanTask
+  drag: TaskDragController
+  insertBefore: boolean
+  insertAfter: boolean
   /**
    * A function of the current task, not a finished one. Three clicks on `+` in the same
    * React batch would otherwise all read `done` from the same render and all set it to
@@ -79,9 +130,56 @@ function TaskRow({
 }) {
   const complete = taskComplete(task)
   const counted = task.target > 1
+  const carried = drag.isCarrying(at)
 
   return (
-    <div className="flex items-center gap-2.5 group/task">
+    <div
+      {...dropSlot(at.index)}
+      className={`relative flex items-center gap-2.5 group/task transition-opacity ${
+        carried ? 'opacity-30' : ''
+      }`}
+    >
+      {insertBefore && <Gap edge="top" />}
+      {insertAfter && <Gap edge="bottom" />}
+
+      {/*
+        The grip is its own control because the row cannot be one: the middle of it is a
+        text field, and dragging from a text field is selecting text.
+
+        `touch-none` is what makes a finger work. Without it the browser claims the
+        gesture as a scroll before the second move arrives and cancels the drag.
+      */}
+      <button
+        type="button"
+        data-plan-grip=""
+        aria-label={`Move ${task.text.trim() || 'this task'}`}
+        title="Drag to move this task, or press it and use ↑ ↓"
+        onPointerDown={event => drag.grab(at, task.text, event)}
+        onKeyDown={event => {
+          const step = event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0
+          if (step === 0) return
+          event.preventDefault()
+
+          /*
+            The row that will hold this task is the sibling it is heading for, and it is
+            in the document already — rows are keyed by position, so the elements stay
+            put and only their contents change. Focusing it after the move keeps a second
+            press on the same task instead of on whichever task slid into the old slot,
+            which is the index-captured-by-the-render trap `moveExercise` writes down.
+            A press at either end finds no sibling, and the move is a no-op anyway.
+          */
+          const row = event.currentTarget.parentElement
+          const next = step < 0 ? row?.previousElementSibling : row?.nextElementSibling
+
+          // one step down is the gap *after* the next task, which is two gaps along
+          drag.move(at, { ...at, index: at.index + (step < 0 ? -1 : 2) })
+          next?.querySelector<HTMLElement>('[data-plan-grip]')?.focus()
+        }}
+        className="w-3 h-5 shrink-0 flex items-center justify-center text-zinc-700 hover:text-zinc-300 focus-visible:text-zinc-300 transition-colors cursor-grab active:cursor-grabbing touch-none outline-none"
+      >
+        <GripDots />
+      </button>
+
       <button
         type="button"
         role="checkbox"
@@ -183,18 +281,23 @@ function TaskRow({
  * reviewed again.
  */
 export default function PlanDayCard({
+  week,
   index,
   day,
   date,
   isToday,
   games,
+  drag,
   onChange,
 }: {
+  /** Which week this day belongs to, since a task can be dragged out of it into another. */
+  week: number
   index: number
   day: PlanDay
   date: number
   isToday: boolean
   games: GameRecord[]
+  drag: TaskDragController
   /**
    * Takes a function of the current day rather than a finished day. Two boxes ticked in
    * the same React batch would otherwise both be computed from the same stale `day`
@@ -215,6 +318,9 @@ export default function PlanDayCard({
   const { done, total } = dayProgress(day)
   const played = useMemo(() => gamesOn(games, date), [games, date])
 
+  /** Where a carried task would land in this day, or null when it would not land here. */
+  const insertion = drag.insertionAt(week, index)
+
   function patchTask(taskIndex: number, update: (current: PlanTask) => PlanTask) {
     onChange(current => ({
       ...current,
@@ -223,7 +329,18 @@ export default function PlanDayCard({
   }
 
   return (
-    <section className="border border-zinc-800 rounded-xl bg-zinc-900">
+    /*
+      The whole card is the drop target, not the task list: a folded day draws no rows
+      and is still somewhere to put a task, and over the games below the tasks the
+      forgiving answer — append — is also the right one. The count is on the card for
+      the folded case, where there is nothing in the page to measure against.
+    */
+    <section
+      {...dropTarget(week, index, day.tasks.length)}
+      className={`border rounded-xl bg-zinc-900 transition-colors ${
+        insertion === null ? 'border-zinc-800' : 'border-sky-500/50 ring-1 ring-sky-500/30'
+      }`}
+    >
       <div className="flex items-center gap-3 px-4 py-3">
         <button
           type="button"
@@ -266,7 +383,11 @@ export default function PlanDayCard({
             {day.tasks.map((task, taskIndex) => (
               <TaskRow
                 key={taskIndex}
+                at={{ week, day: index, index: taskIndex }}
                 task={task}
+                drag={drag}
+                insertBefore={insertion === taskIndex}
+                insertAfter={insertion === day.tasks.length && taskIndex === day.tasks.length - 1}
                 onPatch={update => patchTask(taskIndex, update)}
                 onRemove={() =>
                   onChange(current => ({
@@ -276,6 +397,11 @@ export default function PlanDayCard({
                 }
               />
             ))}
+
+            {/* a day with nothing in it has no row to hang the line off */}
+            {day.tasks.length === 0 && insertion === 0 && (
+              <span aria-hidden="true" className="h-0.5 rounded-full bg-sky-400" />
+            )}
 
             <button
               type="button"
