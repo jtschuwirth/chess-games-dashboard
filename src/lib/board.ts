@@ -135,6 +135,18 @@ export function sideToMove(fen: string): 'white' | 'black' {
   return fen.split(' ')[1] === 'b' ? 'black' : 'white'
 }
 
+/**
+ * Whose move it is, written out.
+ *
+ * One phrase rather than two, because a position handed to you out of its game — a
+ * coach's exercise, a boundary in the pattern drill — is unreadable without it and the
+ * two screens showing it must not word it differently. The board is already turned to
+ * that side in both; this is the part you can read.
+ */
+export function playLabel(color: 'white' | 'black'): string {
+  return color === 'white' ? 'White to play' : 'Black to play'
+}
+
 export interface PlayedMove {
   san: string
   /** The position the move leads to — what an engine needs to judge it. */

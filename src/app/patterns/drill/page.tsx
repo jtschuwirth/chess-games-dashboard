@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import MoveTreeBoard from '@/components/MoveTreeBoard'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
-import { sideToMove } from '@/lib/board'
+import { playLabel, sideToMove } from '@/lib/board'
 import { getPatterns, savePatternDrill } from '@/lib/firestore'
-import { emptyTree } from '@/lib/movetree'
+import { emptyTree, fenAt, type MoveTree, type Path } from '@/lib/movetree'
 import {
   LADDER,
   dueCards,
@@ -17,6 +17,13 @@ import {
   type PatternCard,
 } from '@/lib/pattern-drill'
 import type { PatternRecord } from '@/types/chess'
+
+/** The board as it currently stands, and the card it belongs to. */
+interface Scratch {
+  key: string
+  tree: MoveTree
+  path: Path
+}
 
 /**
  * The boundary drill: does the pattern still work here?
@@ -30,6 +37,10 @@ import type { PatternRecord } from '@/types/chess'
  * yourself; one without is shown as the sentence you wrote. The first is the real
  * exercise and the second is what the method gives you for free, which is why adding a
  * FEN upgrades a card rather than creating one.
+ *
+ * The question asks for the reason as well, which is the half nothing here can mark. It
+ * is asked on **every** card, written or not: making the prompt depend on whether a
+ * reason is stored would tell you something about the answer before you had given one.
  */
 function DrillBody({ userId }: { userId: string }) {
   const [patterns, setPatterns] = useState<PatternRecord[] | null>(null)
@@ -38,6 +49,8 @@ function DrillBody({ userId }: { userId: string }) {
   const [said, setSaid] = useState<PatternAnswer | null>(null)
   /** Answers from this session, layered over the queue rather than written back into it. */
   const [answered, setAnswered] = useState<Record<string, boolean>>({})
+  /** Moves played on the card in front of you, thrown away when it goes. */
+  const [scratch, setScratch] = useState<Scratch | null>(null)
   const [now] = useState(() => Date.now())
 
   const load = useCallback(
@@ -69,10 +82,36 @@ function DrillBody({ userId }: { userId: string }) {
     [patterns, now],
   )
 
+  const card: PatternCard | undefined = queue[index]
+
+  /**
+   * The card's own position, untouched.
+   *
+   * The scratch board is matched to the card by key rather than cleared when the card
+   * moves on, so there is no effect to synchronise and nothing of the last card's can
+   * survive onto the next one's board.
+   */
+  const start = useMemo(() => emptyTree(card?.fen ?? undefined), [card?.fen])
+  const live = card && scratch?.key === card.key ? scratch : null
+  const tree = live?.tree ?? start
+  const path = live?.path ?? []
+
+  /**
+   * An updater, like every edit in this app, and for the reason written down twice
+   * already: playing a move calls `onPath` and then `onTree` in the same React batch,
+   * and two plain sets computed from the same render would lose the first of them.
+   */
+  function onBoard(update: (current: Scratch) => Scratch) {
+    if (!card) return
+    const key = card.key
+    setScratch(current =>
+      update(current?.key === key ? current : { key, tree: start, path: [] }),
+    )
+  }
+
   if (loadError) return <LoadError message={loadError} onRetry={load} />
   if (!patterns) return <Spinner />
 
-  const card: PatternCard | undefined = queue[index]
   const right = card && said !== null ? judge(card, said) : null
 
   async function answer(choice: PatternAnswer) {
@@ -166,18 +205,45 @@ function DrillBody({ userId }: { userId: string }) {
               <h2 className="text-lg font-semibold text-zinc-100">{card.patternName}</h2>
               <p className="text-sm text-zinc-500">
                 {card.fen
-                  ? 'Something has changed. Does the pattern still work here?'
-                  : 'With this change, does the pattern still work?'}
+                  ? 'Something has changed. Does the pattern still work here, and why?'
+                  : 'With this change, does the pattern still work, and why?'}
               </p>
             </div>
 
             {card.fen ? (
-              <div className="w-full max-w-[26rem]">
+              <div className="w-full max-w-[26rem] flex flex-col gap-2">
+                {/*
+                  A position handed to you out of its game is unreadable without this.
+                  It is read off the board rather than off the card, so it keeps telling
+                  the truth once you have played a move on it.
+                */}
+                <div className="flex items-baseline justify-between gap-2">
+                  <span className="text-xs text-zinc-400">
+                    {playLabel(sideToMove(fenAt(tree, path)))}
+                  </span>
+                  {tree.children.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setScratch(null)}
+                      className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+                    >
+                      back to the position
+                    </button>
+                  )}
+                </div>
+
+                {/*
+                  Playable, because a boundary you cannot see is one you work out by
+                  pushing the pieces — the king walks up, the pawn runs, and the answer
+                  is on the board rather than in your head. Nothing here is stored: the
+                  moves belong to this card and go with it.
+                */}
                 <MoveTreeBoard
                   key={card.key}
-                  tree={emptyTree(card.fen)}
-                  path={[]}
-                  onPath={() => {}}
+                  tree={tree}
+                  path={path}
+                  onPath={next => onBoard(board => ({ ...board, path: next }))}
+                  onTree={(next, at) => onBoard(board => ({ ...board, tree: next, path: at }))}
                   orientation={sideToMove(card.fen)}
                 />
               </div>
@@ -228,6 +294,20 @@ function DrillBody({ userId }: { userId: string }) {
                 */}
                 {card.fen && (
                   <p className="text-[15px] leading-relaxed text-zinc-200">{card.text}</p>
+                )}
+
+                {/*
+                  The reason, where one is written. Most of `survives` carries none — there
+                  is often nothing to say beyond "nothing it relies on moved" — so a line
+                  saying none was written would be furniture on half the deck.
+                */}
+                {card.why && (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[11px] uppercase tracking-wide text-zinc-600">
+                      {card.asks}
+                    </span>
+                    <p className="text-[15px] leading-relaxed text-zinc-300">{card.why}</p>
+                  </div>
                 )}
 
                 <div className="flex items-center gap-3 flex-wrap">

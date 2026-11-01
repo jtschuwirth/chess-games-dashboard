@@ -627,18 +627,22 @@ export default function PatternForm({
                   <PointRow
                     key={point.id}
                     point={point}
-                    testable={testable}
+                    asks={testable ? section.asks : undefined}
                     onText={text => setPointText(section.key, index, text)}
+                    onWhy={why =>
+                      setPoints(
+                        section.key,
+                        points.map((entry, at) =>
+                          at === index ? withField(entry, 'why', why) : entry,
+                        ),
+                      )
+                    }
                     onFen={fen =>
                       setPoints(
                         section.key,
-                        points.map((entry, at) => {
-                          if (at !== index) return entry
-                          if (fen) return { ...entry, fen }
-                          // rebuilt without it rather than set to undefined, which
-                          // Firestore refuses outright
-                          return { id: entry.id, text: entry.text }
-                        }),
+                        points.map((entry, at) =>
+                          at === index ? withField(entry, 'fen', fen) : entry,
+                        ),
                       )
                     }
                     onRemove={() =>
@@ -775,31 +779,62 @@ export default function PatternForm({
 }
 
 /**
+ * An optional field set to a value, or taken off the point entirely.
+ *
+ * Never assigned `undefined`, which Firestore refuses for the whole document rather
+ * than for the field — the rule `patternBody` enforces on the way out, kept here too so
+ * the form never holds a shape the writer would have to clean up after it.
+ */
+function withField(
+  point: EssentialsPoint,
+  field: 'why' | 'fen',
+  value: string | null,
+): EssentialsPoint {
+  const next: EssentialsPoint = { id: point.id, text: point.text }
+  if (point.why) next.why = point.why
+  if (point.fen) next.fen = point.fen
+
+  if (value) next[field] = value
+  else delete next[field]
+  return next
+}
+
+/**
  * One answer to one of the method's questions.
  *
- * For 3a and 3b it can carry a position: the board with that change made. That is what
- * turns a boundary from a sentence you nod at into something a drill can put in front of
- * you — "Black has an f6 Knight" is a claim about a board, and with the board stored the
- * question becomes whether the pattern still works, which is the one thing about a
- * pattern you cannot answer from having memorised its diagram.
+ * For 3a and 3b it carries two more things, and both are what make it drillable. The
+ * **position** is the board with that change made — "Black has an f6 Knight" is a claim
+ * about a board, and with the board stored the question becomes whether the pattern
+ * still works, which is the one thing you cannot answer from having memorised a diagram.
+ * The **reason** is the other half of that question: the drill shows the change, asks
+ * you for the why, and this is what it has to reveal.
  *
- * The FEN box is behind a press, because most points will never have one and a second
- * input on every row would make answering four questions look like filling in a form.
+ * Both sit behind a press, because most points will never carry either and three inputs
+ * on every row would make answering four questions look like filling in a form. The
+ * panel opens by itself on a point that already has one, so nothing written is hidden.
+ *
+ * The reason comes first because it is the one every boundary can have: a change you can
+ * explain in a sentence is worth writing down whether or not you ever set the board up.
  */
 function PointRow({
   point,
-  testable,
+  asks,
   onText,
+  onWhy,
   onFen,
   onRemove,
 }: {
   point: EssentialsPoint
-  testable: boolean
+  /** What a reason answers here, from the sections table. Absent where none is asked. */
+  asks?: string
   onText: (text: string) => void
+  onWhy: (why: string | null) => void
   onFen: (fen: string | null) => void
   onRemove: () => void
 }) {
-  const [open, setOpen] = useState(() => Boolean(point.fen))
+  const testable = asks !== undefined
+  const [open, setOpen] = useState(() => Boolean(point.fen || point.why))
+  const [why, setWhy] = useState(point.why ?? '')
   const [fen, setFen] = useState(point.fen ?? '')
 
   const valid = fen.trim().length === 0 || fenIsValid(fen)
@@ -821,16 +856,16 @@ function PointRow({
             onClick={() => setOpen(current => !current)}
             title={
               point.fen
-                ? 'This point has a position, and is drilled'
-                : 'Add the position with this change made, to drill it'
+                ? 'This point has a position, and is drilled from the board'
+                : `Add ${asks}, and the position with this change made`
             }
             className={`shrink-0 px-2 py-2 text-xs rounded-lg border transition-colors ${
-              point.fen
+              point.fen || point.why
                 ? 'border-zinc-700 bg-zinc-800 text-zinc-200'
                 : 'border-zinc-800 text-zinc-600 hover:text-zinc-300 hover:border-zinc-700'
             }`}
           >
-            {point.fen ? '▣' : '▢'}
+            {point.fen ? '▣' : point.why ? '▤' : '▢'}
           </button>
         )}
 
@@ -846,6 +881,22 @@ function PointRow({
 
       {testable && open && (
         <div className="flex flex-col gap-1 pl-1">
+          {/*
+            The prompt is the placeholder, so what you type reads back as the sentence
+            the drill will show: "why it breaks — the king cannot take the opposition in
+            time". A label above it would say the same words twice.
+          */}
+          <input
+            value={why}
+            onChange={event => {
+              setWhy(event.target.value)
+              const next = event.target.value.trim()
+              onWhy(next.length > 0 ? next : null)
+            }}
+            placeholder={asks}
+            className={INPUT}
+          />
+
           <input
             value={fen}
             onChange={event => {
@@ -864,7 +915,7 @@ function PointRow({
           {valid && fen.trim().length > 0 && (
             <span className="text-[11px] text-zinc-600">
               Drilled: you will be shown this board and asked whether the pattern still
-              works.
+              works{why.trim().length > 0 ? ', with the reason kept back' : ''}.
             </span>
           )}
         </div>

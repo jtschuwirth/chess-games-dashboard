@@ -34,8 +34,16 @@ export interface PatternCard {
   fen: string | null
   /** The pattern's own position, for the reveal — what the change was made *to*. */
   originalFen: string | null
-  /** Shown as the question when there is no board, and as the reason once answered. */
+  /** Shown as the question when there is no board, and as the change once answered. */
   text: string
+  /**
+   * Why it breaks or survives, revealed with the answer. Null where none is written,
+   * which is most of `survives` and is not a gap: the drill asks for the reason, and
+   * only shows one where there was something worth saying.
+   */
+  why: string | null
+  /** What the reason answers, in the method's own words, for the line above it. */
+  asks: string
   /** `fails` for a point under 3a, `works` for one under 3b. */
   answer: PatternAnswer
   /** Which question it came from, for the reveal. */
@@ -118,6 +126,8 @@ export function cardsOf(pattern: PatternRecord): PatternCard[] {
         fen: point.fen ?? null,
         originalFen: original,
         text: point.text,
+        why: point.why?.trim() || null,
+        asks: section.asks ?? '',
         answer,
         section: section.short,
         stat,
@@ -152,8 +162,15 @@ export function drillSummary(patterns: PatternRecord[], now: number) {
   const due = all.filter(card => card.due <= now)
   const unseen = all.filter(card => card.stat === null)
   const withBoard = all.filter(card => card.fen !== null)
+  const withReason = all.filter(card => card.why !== null)
 
-  return { total: all.length, due: due.length, unseen: unseen.length, withBoard: withBoard.length }
+  return {
+    total: all.length,
+    due: due.length,
+    unseen: unseen.length,
+    withBoard: withBoard.length,
+    withReason: withReason.length,
+  }
 }
 
 /** Whether an answer was right. The section the point sits in is the truth. */

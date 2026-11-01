@@ -12,7 +12,7 @@ import {
   pointText,
 } from '@/lib/pattern'
 import { emptyTree, moveLabel, type Path } from '@/lib/movetree'
-import { sideToMove } from '@/lib/board'
+import { playLabel, sideToMove } from '@/lib/board'
 import type { PatternLine, PatternRecord } from '@/types/chess'
 
 /**
@@ -147,36 +147,50 @@ export default function PatternStudy({
                           {roman(index + 1)}
                         </span>
 
-                        {/*
-                          A point with a position is a button; one without is text. Not
-                          every sentence is a board, and making them all look clickable
-                          would promise something three quarters of them cannot do.
-                        */}
-                        {point.fen ? (
-                          <button
-                            type="button"
-                            onClick={() => setPreview(shownHere ? null : point.fen!)}
-                            className={`min-w-0 text-left text-[15px] leading-relaxed transition-colors ${
-                              shownHere
-                                ? 'text-zinc-50'
-                                : 'text-zinc-200 hover:text-white'
-                            }`}
-                            title={shownHere ? 'Back to the example' : 'See this position'}
-                          >
-                            {pointText(point.text)}
-                            <span
-                              className={`ml-1.5 text-[11px] align-middle ${
-                                shownHere ? 'text-zinc-300' : 'text-zinc-600'
+                        <div className="min-w-0 flex flex-col gap-0.5">
+                          {/*
+                            A point with a position is a button; one without is text. Not
+                            every sentence is a board, and making them all look clickable
+                            would promise something three quarters of them cannot do.
+                          */}
+                          {point.fen ? (
+                            <button
+                              type="button"
+                              onClick={() => setPreview(shownHere ? null : point.fen!)}
+                              className={`text-left text-[15px] leading-relaxed transition-colors ${
+                                shownHere
+                                  ? 'text-zinc-50'
+                                  : 'text-zinc-200 hover:text-white'
                               }`}
+                              title={shownHere ? 'Back to the example' : 'See this position'}
                             >
-                              ▣
+                              {pointText(point.text)}
+                              <span
+                                className={`ml-1.5 text-[11px] align-middle ${
+                                  shownHere ? 'text-zinc-300' : 'text-zinc-600'
+                                }`}
+                              >
+                                ▣
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="text-[15px] leading-relaxed text-zinc-200">
+                              {pointText(point.text)}
                             </span>
-                          </button>
-                        ) : (
-                          <span className="min-w-0 text-[15px] leading-relaxed text-zinc-200">
-                            {pointText(point.text)}
-                          </span>
-                        )}
+                          )}
+
+                          {/*
+                            Why it breaks, or why it survives — the half of a boundary the
+                            drill asks for and keeps back. It reads as the sentence under
+                            the claim rather than as a labelled field, because that is what
+                            it is: the because of the line above it.
+                          */}
+                          {point.why && (
+                            <span className="text-sm leading-relaxed text-zinc-500">
+                              {point.why}
+                            </span>
+                          )}
+                        </div>
                       </li>
                     )
                   })}
@@ -330,7 +344,13 @@ function PreviewBoard({ fen, onClose }: { fen: string; onClose: () => void }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-zinc-300">The changed position</span>
+        <span className="text-sm font-medium text-zinc-300">
+          The changed position
+          {/* a position out of its game says whose move it is, as the drill's does */}
+          <span className="ml-2 text-xs font-normal text-zinc-500">
+            {playLabel(sideToMove(fen))}
+          </span>
+        </span>
         <button
           type="button"
           onClick={onClose}

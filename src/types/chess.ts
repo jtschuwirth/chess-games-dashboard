@@ -515,6 +515,16 @@ export type PatternKind = 'tactics' | 'mate' | 'strategy' | 'development' | 'end
 export interface EssentialsPoint {
   id: string
   text: string
+  /**
+   * Why the change breaks it, or why it survives — the half of a boundary the drill
+   * asks you for and cannot mark.
+   *
+   * Optional, and that is not an oversight about half-finished write-ups: a change the
+   * pattern works through often has nothing to justify beyond "nothing it relies on
+   * moved", and a field that had to be filled would be filled with that sentence forty
+   * times. So a boundary with no reason written is a complete boundary.
+   */
+  why?: string
   /** The position with this change made. Absent on a point nobody has set up yet. */
   fen?: string
 }

@@ -85,6 +85,16 @@ export interface EssentialsSection {
   tone: 'neutral' | 'breaks' | 'survives'
   /** A heading short enough to sit above the answers rather than wrap over them. */
   short: string
+  /**
+   * What a point's reason answers, where the question has one to ask.
+   *
+   * Only 3a and 3b do: they state something that is true or false of a position, so
+   * there is a *because* behind each one. 1 and 2 describe the pattern itself, where
+   * the point already is the explanation. Carried here rather than switched on the
+   * tone at the point of drawing, so the form's prompt and the drill's heading are the
+   * same words and a fifth question brings its own.
+   */
+  asks?: string
 }
 
 /**
@@ -118,6 +128,7 @@ export const ESSENTIALS_SECTIONS: EssentialsSection[] = [
     short: 'What breaks it',
     tone: 'breaks',
     hint: 'Change the position slightly, in a realistic way. What stops this combination working?',
+    asks: 'why it breaks',
   },
   {
     key: 'survives',
@@ -126,6 +137,7 @@ export const ESSENTIALS_SECTIONS: EssentialsSection[] = [
     short: 'What it survives',
     tone: 'survives',
     hint: 'What can change and still leave the tactic — or a different one — available?',
+    asks: 'why it still works',
   },
 ]
 
@@ -185,6 +197,9 @@ export function normalizePoint(raw: unknown): EssentialsPoint | null {
     id: typeof point.id === 'string' && point.id.length > 0 ? point.id : pointId(text),
     text,
   }
+  // the reason is optional everywhere, so nothing written is nothing stored
+  const why = typeof point.why === 'string' ? point.why.trim() : ''
+  if (why.length > 0) normalized.why = why
   // a FEN that will not read is dropped rather than kept to fail in a board later
   if (typeof point.fen === 'string' && fenIsValid(point.fen)) normalized.fen = point.fen.trim()
   return normalized
@@ -578,8 +593,13 @@ export function patternBody(pattern: NewPattern): NewPattern {
       key,
       held[key]
         .filter(point => point.text.trim().length > 0)
-        // never `fen: undefined`: an undefined value rejects the whole document
-        .map(point => (point.fen ? { id: point.id, text: point.text, fen: point.fen } : { id: point.id, text: point.text })),
+        // set or left out, never assigned: an undefined value rejects the whole document
+        .map(point => {
+          const kept: EssentialsPoint = { id: point.id, text: point.text }
+          if (point.why && point.why.trim().length > 0) kept.why = point.why.trim()
+          if (point.fen) kept.fen = point.fen
+          return kept
+        }),
     ]),
   ) as unknown as PatternEssentials
   if (essentialsHaveContent(answered)) body.essentials = answered

@@ -70,9 +70,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    it came from. Any move of a line can carry its own comment, and they are listed beside
    the board to read or to jump to. The name becomes a tag in the review form, so a
    mistake can point at the idea you should have played, and its own page lists the games
-   where you wanted it. The boundaries you write under 3a and 3b become a **drill**
-   at `/patterns/drill`: a change is put in front of you and you say whether the pattern
-   still works, scheduled so the ones you get wrong come back soonest.
+   where you wanted it. A boundary can also say **why** it breaks or why it survives, and
+   that reason is what the drill keeps back. The boundaries you write under 3a and 3b
+   become that **drill** at `/patterns/drill`: a change is put in front of you and you say
+   whether the pattern still works and why, scheduled so the ones you get wrong come back
+   soonest. The board says whose move it is and you can push the pieces around on it to
+   work the answer out.
 8. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Count things off — three of five
    puzzles — write a note on the day, and see the games you played that day beside it. A
@@ -1387,6 +1390,54 @@ src/
 
   Questions 1 and 2 make no cards. They describe the pattern itself, which the example
   already shows, and neither states something that can be true or false of a position.
+
+- **A boundary can say why, and that is the half nothing here can mark.** Breaks or
+  holds is the question a section answers for free; *why* is the one you actually have
+  to know, and there was nowhere to write it down. `why` is an optional field on a
+  point, revealed with the answer.
+
+  **Optional, and that is the design rather than a half-built field.** A change the
+  pattern works through usually has nothing to justify beyond "nothing it relies on
+  moved", so a required box would be filled with that sentence forty times. A boundary
+  with no reason is a complete boundary, and the reveal simply shows nothing — a line
+  saying none was written would be furniture on half the deck.
+
+  **The question asks for it on every card, written or not.** Wording the prompt from
+  whether a reason happens to be stored would tell you something about the answer before
+  you had given one. So every card asks "and why?", and some of them have nothing to
+  show you afterwards, which is the honest state: you were asked to think and there was
+  nothing on disk to check yourself against.
+
+  What the reason answers comes off the sections table as `asks` — `why it breaks`,
+  `why it still works` — so the form's placeholder and the drill's heading are the same
+  words, and 1 and 2 offer no box at all because they have no `asks`. The reason sits
+  **before** the position in the editor, because it is the half every boundary can have:
+  a change you can explain in a sentence is worth writing down whether or not you ever
+  set the board up. It shows on the write-up too, as the quiet line under the claim,
+  since a field you can only see by drilling is a field you will not write.
+
+- **A position handed to you out of its game says whose move it is.** A boundary and a
+  coach's exercise are the same problem: a board with no moves in front of it, where the
+  side to move is the first thing you need and the only thing the picture cannot tell
+  you. The board was already turned to that side; `playLabel` is the part you can read,
+  and it is one function rather than a phrase written twice, because two screens wording
+  it differently is exactly the kind of drift this codebase keeps finding.
+
+  On the drill it is read off **the board** rather than off the card, so it still tells
+  the truth after you have played a move on it.
+
+- **The drill board is playable, and nothing it holds is kept.** Some boundaries are
+  worked out by pushing the pieces — the king walks up, the pawn runs, and the answer is
+  on the board rather than in your head. `MoveTreeBoard` is read-only without `onTree`
+  and the drill passed none, which is also why it sat there saying *No moves yet — play
+  one on the board* under a board you could not play on.
+
+  The moves belong to the card and go with it. They are **matched to it by key** rather
+  than cleared when it moves on: a board whose key is not the current card's is never
+  read, so there is no effect to synchronise and nothing of the last card's can survive
+  onto the next one's. `back to the position` throws them away outright, which `⏮` must
+  not do — that one moves the cursor, and a step back that deleted what you had played
+  would be a different control wearing the same icon.
 
 - **A point has an id that does not change and text that does.** A drill record is keyed
   to the point, so rewording one keeps what you have learned about it instead of quietly

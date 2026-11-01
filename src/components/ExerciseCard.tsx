@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import MoveTreeBoard from '@/components/MoveTreeBoard'
 import { toPlay } from '@/lib/exercise'
+import { playLabel } from '@/lib/board'
 import { commentedNodes, fenIsValid, lineOrientation, parsePatternPgn } from '@/lib/pattern'
 import { commentAt as setComment, moveLabel } from '@/lib/movetree'
 import { useLineEditor } from '@/lib/use-line-editor'
@@ -144,7 +145,7 @@ export default function ExerciseCard({
         </button>
 
         <span className="text-xs text-zinc-500 shrink-0">
-          {toPlay(exercise) === 'white' ? 'White to play' : 'Black to play'}
+          {playLabel(toPlay(exercise))}
         </span>
 
         {/*
