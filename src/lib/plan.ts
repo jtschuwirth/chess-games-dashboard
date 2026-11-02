@@ -440,3 +440,48 @@ export function moveTask(plan: StudyPlan, from: TaskAt, to: TaskAt): StudyPlan {
     }),
   }
 }
+
+/* ------------------------------------------------------------ saving one day */
+
+/** Whether a day differs from the copy Firestore has. */
+export function dayChanged(a: PlanDay | undefined, b: PlanDay | undefined): boolean {
+  return JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)
+}
+
+/**
+ * The stored plan with one day replaced, for saving that day and nothing else.
+ *
+ * The whole document still goes to Firestore — a plan is one document and a day is an
+ * entry two arrays deep, so there is nothing smaller to write. What makes it a partial
+ * save is *what* is written: the server's own copy with this one day put into it, so
+ * every other edit on the device stays a draft and nothing you were still in the middle
+ * of is committed by a press you made somewhere else.
+ *
+ * **The plan's shape is the plan's**, taken from the baseline and left alone: how many
+ * weeks there are, how many days each holds, what the weeks are called. Changing any of
+ * that is a change to the plan rather than to a day, and belongs to Save changes.
+ *
+ * Null where the baseline has no such day, which is a week added on this device and not
+ * yet saved. The exercise sheet inserts an exercise the server has never seen, and this
+ * cannot do the same thing: an exercise is a leaf, so inserting it commits only itself,
+ * while a week is seven days and inserting one would commit six you had not pressed.
+ */
+export function planWithDay(
+  stored: NewStudyPlan,
+  at: PlanPosition,
+  day: PlanDay,
+): NewStudyPlan | null {
+  if (!stored.weeks[at.week]?.days[at.day]) return null
+
+  return {
+    ...stored,
+    weeks: stored.weeks.map((week, w) =>
+      w !== at.week
+        ? week
+        : {
+            ...week,
+            days: week.days.map((entry, d) => (d === at.day ? day : entry)),
+          },
+    ),
+  }
+}

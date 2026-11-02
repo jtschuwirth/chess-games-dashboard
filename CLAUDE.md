@@ -86,7 +86,10 @@ win/draw/loss splits for all games or for the games that followed one of those l
    now — and every week says the same over its own seven days, read from the rating
    history with nothing to press. Weeks fold, and more can be added as the plan runs on.
    Editing is local until you press Save, and what you have not saved is kept on the
-   device, so closing the tab or switching app does not cost you it.
+   device, so closing the tab or switching app does not cost you it. A day can be saved
+   **by itself**, the way one exercise of a sheet can: a dot says which days are still
+   only on this device, and the day you have just written up goes without taking the rest
+   of the week with it.
 9. `/guides` — a coach's sheet of positions written up. A guide is a name, a line
    saying what the set trains, and the exercises themselves; an exercise is a diagram
    pasted in as a FEN and the board you solve it on, with variations, a comment on any
@@ -2537,6 +2540,46 @@ src/
   written before the field existed has none and falls back to the draft winning, which is
   the safer way to be wrong: a visible banner offering Discard beats silently dropping
   work nobody can get back.
+- **A day saves on its own, and that needs a baseline.** A plan is filled in a day at a
+  time, over weeks, on whichever device is to hand — so being made to commit all
+  eighty-four to keep the evening you have just written up is the wrong unit. You either
+  save work you were still in the middle of, or leave the finished day at the mercy of
+  the device. The sheet of exercises already made this trade; this is the same one, and
+  `stored` was already the thing it needs: the plan as Firestore last confirmed it.
+
+  The whole document still goes over the wire — a plan is one document and a day is an
+  entry two arrays deep, so there is nothing smaller to write. What makes it *partial* is
+  what is in it: `planWithDay` takes the **server's own copy** and puts this one day into
+  it, so every other edit on the device stays a draft.
+
+  **The plan's shape is the plan's**, taken from the baseline and left alone: how many
+  weeks, how many days, what they are called, what the plan is called. Changing any of
+  that is a change to the plan rather than to a day and belongs to Save changes — the
+  sheet's rule about ordering, one level up.
+
+  **A day in a week the server has never seen is unsaved but not savable**, and that is
+  where this stops short of the sheet, which inserts an exercise it has never seen. An
+  exercise is a leaf, so inserting it commits only itself; a week is seven days, and
+  inserting one would commit six nobody pressed. So the dot shows, the button says why it
+  cannot, and one press of Save changes puts the week on the server — after which its
+  days save on their own like any other.
+
+  **A task dragged between two days leaves both of them asking**, which is the one thing
+  a per-day save cannot do by itself: saving only the day the task arrived in would put
+  it on the server twice. `dayChanged` is derived against the baseline, so the day it
+  left is dirty too and keeps its own dot and its own button. Press one and the plan on
+  the server is half-moved for as long as it takes to press the other — and the device
+  still holds the truth, because the draft outranks it until it is saved.
+
+  **The draft effect clears as well as writes**, which is the half this needed. Saving the
+  last unsaved day leaves nothing on the device worth restoring, and nobody pressed the
+  button that used to be the only thing that cleared it. For the same reason the restored
+  banner is drawn only while something is still unsaved: it is about work waiting, not
+  about how that work arrived.
+
+  `saving` holds **what** is being written rather than whether anything is, so the plan's
+  button and a day's cannot run at once and each knows which spinner is its own.
+
 - **A plan is saved by a button, and what is unsaved lives on the device.** Every edit used to
   write the whole document, which lost data in two ways at once. A write *replaces* the document
   and several in flight are not ordered, so an earlier snapshot could land last and undo the three

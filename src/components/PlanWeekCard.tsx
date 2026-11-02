@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import PlanDayCard from '@/components/PlanDayCard'
+import PlanDayCard, { type DaySave } from '@/components/PlanDayCard'
 import { WeekRatings } from '@/components/PlanRatings'
 import { dayDate, weekLabel, weekProgress, weekRange, type PlanPosition } from '@/lib/plan'
 import type { RatingHistory } from '@/lib/rating-history'
@@ -24,6 +24,7 @@ export default function PlanWeekCard({
   history,
   startOpen,
   drag,
+  save,
   onChange,
   onRemove,
 }: {
@@ -43,6 +44,8 @@ export default function PlanWeekCard({
    * has to point at something.
    */
   drag: TaskDragController
+  /** Saving one day on its own; the week only passes it through. */
+  save: DaySave
   onChange: (update: (current: PlanWeek) => PlanWeek) => void
   onRemove: () => void
 }) {
@@ -112,6 +115,7 @@ export default function PlanWeekCard({
               isToday={today?.week === index && today.day === dayIndex}
               games={games}
               drag={drag}
+              save={save}
               onChange={update =>
                 onChange(current => ({
                   ...current,

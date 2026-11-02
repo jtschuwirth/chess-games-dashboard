@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { PlanRatings } from '@/components/PlanRatings'
+import type { DaySave } from '@/components/PlanDayCard'
 import PlanWeekCard from '@/components/PlanWeekCard'
 import { formatMoment } from '@/lib/days'
 import { deletePlan, getGames, getPlans, getRatingHistory, updatePlan } from '@/lib/firestore'
@@ -12,8 +13,10 @@ import { clearDraft, planChanged, readDraft, writeDraft } from '@/lib/plan-draft
 import {
   MAX_PLAN_WEEKS,
   buildWeek,
+  dayChanged,
   moveTask,
   planBody,
+  planWithDay,
   planProgress,
   planRange,
   templateFrom,
@@ -51,9 +54,18 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
   const [error, setError] = useState<string | null>(null)
   const [reload, setReload] = useState(0)
 
-  /** The plan as Firestore last confirmed it, which is what "unsaved" is measured against. */
+  /**
+   * The plan as Firestore last confirmed it.
+   *
+   * It is what "unsaved" is measured against, and once a day can be written on its own
+   * it is also what that write is built *from*: the server's copy with one day put into
+   * it, so nothing else on the device goes with it.
+   */
   const [stored, setStored] = useState<NewStudyPlan | null>(null)
-  const [saving, setSaving] = useState(false)
+  /** What is being written — `plan`, or `week:day` — so two writes cannot overlap. */
+  const [saving, setSaving] = useState<string | null>(null)
+  /** The day just written, for the word beside its button. */
+  const [savedDay, setSavedDay] = useState<string | null>(null)
   /** When a draft restored from this device was last edited, or null if there was none. */
   const [restored, setRestored] = useState<number | null>(null)
 
@@ -148,35 +160,85 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
    * The draft follows the plan rather than being written by each edit, which is what lets
    * the edit be a plain updater. It writes only when there is something to keep: an
    * unchanged plan would otherwise rewrite the draft on every load.
+   *
+   * It also **clears** it, which is the half a partial save needs: saving the last
+   * unsaved day leaves nothing on the device worth restoring, and nobody pressed the
+   * button that used to be the only thing that cleared it.
    */
   useEffect(() => {
-    if (plan && unsaved) writeDraft(userId, planId, planBody(plan))
+    if (!plan) return
+    if (unsaved) writeDraft(userId, planId, planBody(plan))
+    else clearDraft(userId, planId)
   }, [plan, unsaved, userId, planId])
 
   /** One write, for everything since the last one. */
   async function commit() {
-    if (!plan) return
+    if (!plan || saving) return
 
-    setSaving(true)
+    setSaving('plan')
     setError(null)
 
     const body = planBody(plan)
     try {
       await updatePlan(userId, planId, body)
       setStored(body)
-      clearDraft(userId, planId)
-      setRestored(null)
+      setSavedDay(null)
     } catch (caught) {
       setError(errorText(caught, 'Could not save this plan — your changes are still here.'))
     } finally {
-      setSaving(false)
+      setSaving(null)
     }
+  }
+
+  /**
+   * Write one day and leave the rest of the plan unsaved.
+   *
+   * A plan is filled in a day at a time, over weeks, and on whichever device is to hand.
+   * Being made to commit all eighty-four to keep the evening you have just written up is
+   * the wrong unit — you either save work you were still in the middle of, or leave the
+   * finished day at the mercy of the device. The sheet of exercises already made this
+   * trade; this is the same one.
+   */
+  async function saveDay(week: number, day: number) {
+    if (!plan || !stored || saving) return
+
+    const edited = plan.weeks[week]?.days[day]
+    const body = edited ? planWithDay(stored, { week, day }, edited) : null
+    if (!body) return
+
+    setSaving(`${week}:${day}`)
+    setError(null)
+    try {
+      await updatePlan(userId, planId, body)
+      setStored(body)
+      setSavedDay(`${week}:${day}`)
+    } catch (caught) {
+      setError(errorText(caught, 'Could not save that day — your changes are still here.'))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  /**
+   * What each day knows about itself. A day in a week the server has never seen is
+   * **unsaved but not savable**: the shape of the plan is not a day's to write, so it
+   * waits for one press of Save changes and saves on its own after that.
+   */
+  const daySave: DaySave = {
+    unsaved: (week, day) =>
+      stored !== null && dayChanged(plan?.weeks[week]?.days[day], stored.weeks[week]?.days[day]),
+    savable: (week, day) => Boolean(stored?.weeks[week]?.days[day]),
+    saving: (week, day) => saving === `${week}:${day}`,
+    justSaved: (week, day) => savedDay === `${week}:${day}`,
+    save: saveDay,
   }
 
   /** Throw the draft away and take what Firestore has. */
   function discard() {
     clearDraft(userId, planId)
     setRestored(null)
+    // the word beside a day's button belongs to the copy being replaced
+    setSavedDay(null)
     setReload(count => count + 1)
   }
 
@@ -272,7 +334,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
               know is there and reach for, and its label is the state of the plan */}
           <button
             onClick={commit}
-            disabled={!unsaved || saving}
+            disabled={!unsaved || saving !== null}
             title={
               unsaved
                 ? 'Write every change since the last save, in one go'
@@ -280,7 +342,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
             }
             className="px-3 py-1.5 text-xs font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40 disabled:hover:bg-zinc-100"
           >
-            {saving ? 'Saving…' : unsaved ? 'Save changes' : 'Saved'}
+            {saving === 'plan' ? 'Saving…' : unsaved ? 'Save changes' : 'Saved'}
           </button>
 
           <button
@@ -292,7 +354,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
         </div>
       </div>
 
-      {restored !== null && (
+      {restored !== null && unsaved && (
         <p className="text-xs text-amber-400">
           Unsaved changes from {formatMoment(restored)} were picked up from this device.
           Save them, or discard to go back to the stored plan.
@@ -314,6 +376,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
             history={history}
             startOpen={index === openWeek}
             drag={drag}
+            save={daySave}
             onChange={update =>
               save(current => ({
                 ...current,

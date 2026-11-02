@@ -16,6 +16,24 @@ import { hasReview } from '@/lib/review'
 import { dropSlot, dropTarget, type TaskDragController } from '@/lib/use-task-drag'
 import type { GameRecord, GameResult, PlanDay, PlanTask } from '@/types/chess'
 
+/**
+ * Saving one day and leaving the rest of the plan alone.
+ *
+ * One object threaded down rather than five props, the shape the drag controller
+ * already takes: the page is the only thing that knows what Firestore has, and a week
+ * is a pass-through for both.
+ */
+export interface DaySave {
+  /** Whether this day differs from the copy Firestore has. */
+  unsaved: (week: number, day: number) => boolean
+  /** Whether it can be saved on its own — false in a week the server has never seen. */
+  savable: (week: number, day: number) => boolean
+  saving: (week: number, day: number) => boolean
+  /** Whether this is the one just written, for the word that says so. */
+  justSaved: (week: number, day: number) => boolean
+  save: (week: number, day: number) => void
+}
+
 const RESULT_COLOR: Record<GameResult, string> = {
   win: 'text-emerald-400',
   loss: 'text-red-400',
@@ -288,6 +306,7 @@ export default function PlanDayCard({
   isToday,
   games,
   drag,
+  save,
   onChange,
 }: {
   /** Which week this day belongs to, since a task can be dragged out of it into another. */
@@ -298,6 +317,8 @@ export default function PlanDayCard({
   isToday: boolean
   games: GameRecord[]
   drag: TaskDragController
+  /** Writing this day by itself, which is how a day's work is kept without the rest. */
+  save: DaySave
   /**
    * Takes a function of the current day rather than a finished day. Two boxes ticked in
    * the same React batch would otherwise both be computed from the same stale `day`
@@ -321,6 +342,10 @@ export default function PlanDayCard({
   /** Where a carried task would land in this day, or null when it would not land here. */
   const insertion = drag.insertionAt(week, index)
 
+  const unsaved = save.unsaved(week, index)
+  const savable = save.savable(week, index)
+  const saving = save.saving(week, index)
+
   function patchTask(taskIndex: number, update: (current: PlanTask) => PlanTask) {
     onChange(current => ({
       ...current,
@@ -341,7 +366,9 @@ export default function PlanDayCard({
         insertion === null ? 'border-zinc-800' : 'border-sky-500/50 ring-1 ring-sky-500/30'
       }`}
     >
-      <div className="flex items-center gap-3 px-4 py-3">
+      {/* wrapping rather than overflowing: on a phone the date, the count, the dot and
+          the button do not fit beside each other on one line */}
+      <div className="flex items-center gap-3 px-4 py-3 flex-wrap">
         <button
           type="button"
           onClick={() => setOpen(!open)}
@@ -370,6 +397,42 @@ export default function PlanDayCard({
         <span className="text-xs font-mono text-zinc-600 shrink-0">
           {done}/{total}
         </span>
+
+        {/*
+          A dot rather than a word, the sheet's rule: a plan is eighty-four days and
+          "unsaved" written out on each of them is a column of noise. It shows folded as
+          well as open, because what you want at a glance is which days are still only
+          on this device.
+        */}
+        {unsaved && (
+          <span
+            title={
+              savable
+                ? 'This day has changes that are not saved'
+                : 'This day has changes that are not saved, and its week is new'
+            }
+            className="w-1.5 h-1.5 rounded-full bg-amber-400/80 shrink-0"
+          />
+        )}
+
+        {open && (
+          <button
+            type="button"
+            onClick={() => save.save(week, index)}
+            disabled={!savable || saving || !unsaved}
+            title={
+              savable
+                ? 'Save this day, and leave the rest of the plan as it is'
+                : 'This week has not been saved yet — press Save changes once, and days save on their own after that'
+            }
+            className="px-2.5 py-1 text-xs rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        )}
+        {open && save.justSaved(week, index) && !unsaved && (
+          <span className="text-xs text-emerald-400 shrink-0">Saved</span>
+        )}
       </div>
 
       {open && (
