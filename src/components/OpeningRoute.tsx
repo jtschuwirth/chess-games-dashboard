@@ -48,16 +48,29 @@ export default function OpeningRoute({
  * A route whose *first* step is the transposition has no saved line in front of it to
  * have come from — nothing you have written down was played — so it says that instead
  * of naming a predecessor it does not have.
+ *
+ * What it transposed *into* can be several names: a line whose parents were skipped
+ * brings them along, and they are the rest of one destination rather than steps of
+ * their own. So the sentence takes the whole run — the arrow and every `under` step
+ * after it — and reads "into with 4.Nf3 › 5. c3", which is the thing that was reached.
  */
 function title(steps: RouteStep[], transposed: RouteStep[]): string {
   if (transposed.length === 0) return 'The saved lines this game played through'
 
   return transposed
     .map(step => {
-      const from = steps[steps.indexOf(step) - 1]
+      const at = steps.indexOf(step)
+      const into: string[] = []
+      for (let next = at; next < steps.length; next++) {
+        into.push(steps[next].name)
+        if (!steps[next].under) break
+      }
+
+      const from = steps[at - 1]
+      const name = into.join(' › ')
       return from
-        ? `Transposed into ${step.name} from ${from.name}`
-        : `Reached ${step.name} by a move order you have not saved`
+        ? `Transposed into ${name} from ${from.name}`
+        : `Reached ${name} by a move order you have not saved`
     })
     .join('. ')
 }

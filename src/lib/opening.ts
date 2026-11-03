@@ -238,6 +238,22 @@ export interface Arrival {
    * makes it one you know about.
    */
   played: boolean
+  /**
+   * The lines this one is nested under that the game never stood in — the rest of its
+   * name, which a transposition into a sub-variation otherwise leaves unsaid.
+   *
+   * `5. c3` is a child of `with 4.Nf3`, and a game that plays 4.c3 and only then Nf3
+   * lands in it without ever standing in its parent. The route had nothing to say about
+   * that, so it read `Caro Kann › Exchange Variation → 5. c3` — and the arrow was in the
+   * wrong place twice over: the Caro-Kann and the Exchange were played normally, and the
+   * thing after the arrow is half a name. Which 5.c3? The one under 4.Nf3, which is the
+   * only part of the whole line that *is* different.
+   *
+   * Empty on an arrival the game played into, always: playing a line's own moves means
+   * standing in every position above it, so its ancestors are arrivals in their own
+   * right. It fills only where a transposition skipped a level.
+   */
+  under: OpeningNode[]
 }
 
 /**
@@ -253,6 +269,11 @@ export interface Arrival {
  * So each node is tested against its own positions, and the result is sorted by when the
  * game got there rather than by where the node sits. A normal game comes out exactly as
  * it did before, because it really did pass through every line on its chain.
+ *
+ * What it cannot drop is the **name** of a line it did reach. A sub-variation is named by
+ * its chain, so an arrival whose parents were skipped carries them in `under` — unreached,
+ * and still part of what the thing is called. Each one is spelled out once: an ancestor
+ * already in the route, or already written out under an earlier arrival, is not repeated.
  */
 export function openingRoute(nodes: OpeningNode[], game: GameRecord, keys: GameKeys): Arrival[] {
   const arrivals: Arrival[] = []
@@ -266,23 +287,43 @@ export function openingRoute(nodes: OpeningNode[], game: GameRecord, keys: GameK
       node,
       ply,
       played: node.opening.moves.every((san, index) => game.moves[index] === san),
+      under: [],
     })
   }
 
   // when two lines name the same position, the longer one is the more specific thing
   // to have reached, so it reads second
-  return arrivals.sort(
+  arrivals.sort(
     (a, b) =>
       a.ply - b.ply ||
       a.node.opening.ply - b.node.opening.ply ||
       a.node.opening.name.localeCompare(b.node.opening.name),
   )
+
+  // in route order, so an ancestor is spelled out by the first arrival that needs it
+  const said = new Set(arrivals.map(arrival => arrival.node.opening.id))
+  return arrivals.map(arrival => {
+    const under = findPath(nodes, arrival.node.opening.id)
+      .slice(0, -1)
+      .filter(above => !said.has(above.opening.id))
+
+    for (const above of under) said.add(above.opening.id)
+    return { ...arrival, under }
+  })
 }
 
 export interface RouteStep {
   name: string
   /** Reached from the step before it by a move order that is not its own. */
   transposed: boolean
+  /**
+   * A line the game never stood in, carried along to spell out the one it did.
+   *
+   * Part of the name *after* an arrow rather than a step of the route, which is what
+   * lets the sentence on hover say the whole destination: the run of a transposition is
+   * its arrow step and every `under` step up to the first one that is not.
+   */
+  under: boolean
 }
 
 /**
@@ -292,15 +333,48 @@ export interface RouteStep {
  * saved in front of it to have come *from*, and an arrow with one end is a claim the
  * route cannot support. So the arrow always sits between two names and always means
  * "from this, into that".
+ *
+ * **The arrow fires once per divergence, at the front of the name it landed in.** An
+ * arrival that skipped its parents brings them with it, and those are not jumps of their
+ * own — they are the rest of one destination, so they read `›` and the arrow sits before
+ * the first of them: `Caro Kann › Exchange Variation › 4.c3 → with 4.Nf3 › 5. c3`.
+ *
+ * Nor is *carrying on down* a jump. Once a game has transposed into a line, every deeper
+ * line on the same chain is also one it did not play in its own order — so the route
+ * drew an arrow at each of them and said "transposed" three times about one move order.
+ * A line whose own parent is the step before it, with nothing unsaid in between, reads
+ * `›`: the divergence already has its arrow, further up.
+ *
+ * Two *unrelated* transpositions still get an arrow each, which is the point of hanging
+ * this off the chain rather than off a flag saying the route has gone astray.
  */
 export function routeSteps(
   arrivals: Arrival[],
   label: (opening: OpeningLine) => string = openingLabel,
 ): RouteStep[] {
-  return arrivals.map((arrival, index) => ({
-    name: label(arrival.node.opening),
-    transposed: index > 0 && !arrival.played,
-  }))
+  const steps: RouteStep[] = []
+  let previous: Arrival | null = null
+
+  for (const arrival of arrivals) {
+    const carries = arrival.under.length > 0
+    const onwards =
+      previous !== null &&
+      !carries &&
+      isParentLine(previous.node.opening.moves, arrival.node.opening.moves)
+
+    const names = [...arrival.under, arrival.node].map(node => label(node.opening))
+    for (const [at, name] of names.entries()) {
+      steps.push({
+        name,
+        transposed: steps.length > 0 && at === 0 && !arrival.played && !onwards,
+        under: at < arrival.under.length,
+      })
+    }
+
+    previous = arrival
+  }
+
+  return steps
 }
 
 /** Whether the game played its way into this part of the repertoire at all. */

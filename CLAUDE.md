@@ -2195,6 +2195,35 @@ src/
   transposition against 5 by its own move order — a line that is, in practice, almost
   never played the way it is written down.
 
+- **A transposition names the line it landed in, not just its last word.** `5. c3` is a
+  child of `with 4.Nf3`, and a game that plays 4.c3 and only then Nf3 lands in it without
+  ever standing in its parent. The route had nothing to say about that, so it read
+  `Caro Kann › Exchange Variation → 5. c3` — and the arrow was in the wrong place twice
+  over: the Caro-Kann and the Exchange were played perfectly normally, and what followed
+  the arrow was half a name. *Which* 5.c3? The one under 4.Nf3, which is the only part of
+  the whole line that is different.
+
+  So an arrival carries `under`: the lines it is nested under that the game never stood
+  in. They are the rest of its name rather than places it went, and they are spelled out
+  once — an ancestor already on the route, or already written under an earlier arrival, is
+  not repeated. An arrival the game *played* into always carries none, because playing a
+  line's own moves means standing in every position above it.
+
+  **The arrow fires once per divergence, at the front of the name it landed in**:
+  `Caro Kann › Exchange Variation › 4.c3 → with 4.Nf3 › 5. c3`. Carrying on down is not a
+  second jump either — once the move order has parted company every deeper line on the
+  chain is also one you did not play in its own order, and the route drew an arrow at each
+  of them, saying "transposed" three times about one divergence. A line whose own parent is
+  the step before it, with nothing unsaid in between, reads `›`. Two *unrelated*
+  transpositions still get an arrow each, which is why this hangs off the chain rather than
+  off a flag saying the route has gone astray.
+
+  On the real games: 81 of 1,083 routed games carry a skipped parent and read differently,
+  and the arrows fell from 164 to 98 — the 66 that went were the same divergence repeated
+  further down. Exactly one game in the account diverges twice, and it still says so:
+  `English Opening → Queen's Pawn Game › Queen's Gambit Declined › Three Knights Variation
+  → Modern Variation › Tartakower Defense`.
+
 - **The Arrived chips appear only once a line is picked.** "Played into" says nothing
   about every game you have ever played, so the row is hidden at `All games` — the habit
   the mistakes page's Square row already follows. It is asked of the **whole subtree**
