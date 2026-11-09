@@ -82,6 +82,27 @@ export type Breadth = 'sharp' | 'tight' | 'stable'
 
 export const BREADTHS: Breadth[] = ['sharp', 'tight', 'stable']
 
+/**
+ * How many candidates holding falls in each bucket, in words.
+ *
+ * `narrow` and `lines` are two numbers whose whole meaning is the three buckets they cut
+ * the search into, and the only place that said so was a column heading in the table at
+ * the bottom of the settings screen — a long way from the two boxes that set it. One
+ * function now, read by that heading and by the strip under the boxes, so the screen
+ * that sets the rule shows what the rule produces and the two cannot drift.
+ *
+ * `stable` is "all of them" rather than a number because the rule is measured against
+ * what the search actually *looked at*: three legal moves with three holding forgave
+ * everything, whatever `lines` was asked for.
+ */
+export function breadthSpan(breadth: Breadth, config = settings()): string {
+  if (breadth === 'sharp') return `${config.narrow} or fewer held`
+  if (breadth === 'stable') return 'all of them held'
+  return config.narrow + 1 > config.lines - 1
+    ? 'nothing in between'
+    : `${config.narrow + 1} to ${config.lines - 1}`
+}
+
 export const BREADTH_LABEL: Record<Breadth, string> = {
   sharp: 'sharp',
   tight: 'tight',
@@ -106,6 +127,15 @@ export interface Fall {
   /** Every landing this row covers. */
   to: Standing[]
   severity: Severity
+  /**
+   * The account field that grades this row instead, where it is a matter of taste.
+   *
+   * One cell has ever been one: `winning -> better` is a one-band fall the table softens
+   * to an inaccuracy on the grounds that you were on top and still are. That is an
+   * opinion, and an opinion belongs on the user document — so the row says which switch
+   * decides it rather than the grader carrying an `if` about it.
+   */
+  setting?: keyof Slips
   sharp: string
   tight: string
   stable: string
@@ -136,7 +166,8 @@ export interface Fall {
  * move, and `lost a won game` where what was lost was already won.
  */
 export const TRANSITIONS: Fall[] = [
-  { from: 'winning', to: ['winning', 'better'], severity: 'inaccuracy', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
+  { from: 'winning', to: ['winning'], severity: 'inaccuracy', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
+  { from: 'winning', to: ['better'], severity: 'inaccuracy', setting: 'winningSlip', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
   { from: 'winning', to: ['level'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'let-it-slip', stable: 'threw-it' },
   { from: 'winning', to: ['worse'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'turned-it-around', stable: 'threw-it-away' },
   { from: 'winning', to: ['losing'], severity: 'blunder', sharp: 'lost-a-won-game', tight: 'lost-a-won-game', stable: 'handed-over-a-won-game' },
@@ -166,6 +197,24 @@ export const TRANSITIONS: Fall[] = [
   { from: 'mate', to: ['winning', 'better', 'level', 'worse', 'losing', 'mate'], severity: 'inaccuracy', sharp: 'already-lost', tight: 'already-lost', stable: 'already-lost' },
 ]
 
+/**
+ * A row's severity as this account grades it.
+ *
+ * `setting` names the account field that overrides the row, so the override lives in the
+ * table with everything else rather than as an `if` beside it — and a second switchable
+ * cell is a second marker rather than a second special case.
+ */
+function graded(fall: Fall, config: Slips): Severity {
+  return fall.setting ? config[fall.setting] : fall.severity
+}
+
+/** The table as this account grades it, for the screen that draws it. */
+export function transitions(config: Slips = settings()): Fall[] {
+  return TRANSITIONS.map(fall =>
+    fall.setting ? { ...fall, severity: graded(fall, config) } : fall,
+  )
+}
+
 export function fallBetween(from: Standing, to: Standing): Fall {
   return (
     TRANSITIONS.find(entry => entry.from === from && entry.to.includes(to)) ??
@@ -174,12 +223,15 @@ export function fallBetween(from: Standing, to: Standing): Fall {
 }
 
 /** What a fall costs, which is now the only thing that grades a move. */
-export function severityOf(from: Standing, to: Standing): Severity {
-  return fallBetween(from, to).severity
+export function severityOf(from: Standing, to: Standing, config: Slips = settings()): Severity {
+  return graded(fallBetween(from, to), config)
 }
 
+/** The cells of the table the account decides for itself. */
+export type Slips = Pick<AnalysisSettings, 'winningSlip'>
+
 /** What the grader needs off the account. */
-export type Grading = Bands & { mistake: number }
+export type Grading = Bands & Slips & { mistake: number }
 
 /**
  * What a move cost, or null when it cost too little to be worth saying.
@@ -200,7 +252,7 @@ export function gradeOf(
   config: Grading,
 ): Severity | null {
   if (cpBefore - cpAfter <= config.mistake) return null
-  return severityOf(standingOf(cpBefore, config), standingOf(cpAfter, config))
+  return severityOf(standingOf(cpBefore, config), standingOf(cpAfter, config), config)
 }
 
 /** Whether a move keeps you where you were: it cost nothing, or no more than an inaccuracy. */

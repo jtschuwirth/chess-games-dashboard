@@ -5,12 +5,18 @@ import {
   STANDINGS,
   STANDING_BADGE,
   STANDING_LABEL,
-  TRANSITIONS,
   VERDICT_LABEL,
   type Standing,
 } from '@/lib/verdict'
 import { saveSettings } from '@/lib/firestore'
-import { BREADTHS, BREADTH_LABEL, SEVERITY_LABEL, SEVERITY_MARK } from '@/lib/bands'
+import {
+  BREADTHS,
+  BREADTH_LABEL,
+  SEVERITY_LABEL,
+  SEVERITY_MARK,
+  breadthSpan,
+  transitions,
+} from '@/lib/bands'
 import {
   MAX_PHASES,
   SETTING_RANGE,
@@ -34,46 +40,127 @@ function pawnText(cp: number): string {
   return `${value} pawn${value === '1' ? '' : 's'}`
 }
 
+/**
+ * One setting: its name, its box, and what the number in the box means.
+ *
+ * Three cells of the group's own grid rather than a self-contained field, so the three
+ * line up down the panel — the same reason `FilterRow` is a row of the filter's grid and
+ * not a stack of its own. They were five boxes in a two-column grid, each with a
+ * paragraph under it, and the reading you actually wanted — `± 0.8 pawns` against a
+ * stored `80` — was the smallest grey thing on the row.
+ *
+ * The range comes off `SETTING_RANGE` rather than being passed in. There is one table of
+ * what each of these may be and five call sites repeating two numbers out of it is five
+ * chances to disagree with it.
+ *
+ * The sentence that used to sit underneath is the label's `title`, which is the rule the
+ * rest of the app follows: text earns its place only if it says something the control
+ * cannot — and for the two pairs below, the control now says it, in a strip.
+ */
 function Field({
+  name,
   label,
-  hint,
+  title,
+  reading,
   value,
-  unit,
-  onChange,
-  min,
-  max,
   step = 1,
+  onChange,
 }: {
+  name: NumberSetting
   label: string
-  hint: string
+  /** What it does, for the one thing the number and its strip cannot say. */
+  title: string
+  /** What the number means, in the unit the rest of the app reads it in. */
+  reading: string
   value: number
-  unit: string
-  onChange: (next: number) => void
-  min: number
-  max: number
   step?: number
+  onChange: (next: number) => void
+}) {
+  const { min, max } = SETTING_RANGE[name]
+
+  return (
+    <>
+      <label htmlFor={`setting-${name}`} title={title} className="text-sm text-zinc-300 cursor-help">
+        {label}
+      </label>
+      <input
+        id={`setting-${name}`}
+        type="number"
+        value={value}
+        min={min}
+        max={max}
+        step={step}
+        onChange={event => onChange(Number(event.target.value))}
+        className="w-20 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-zinc-100 outline-none focus:border-zinc-600 tabular-nums"
+      />
+      <span className="text-sm text-zinc-400 tabular-nums">{reading}</span>
+    </>
+  )
+}
+
+/**
+ * A few settings and the picture of what they come out as.
+ *
+ * `below` is the point of the thing: every group here sets numbers whose meaning is a
+ * shape — the bands a move can fall between, the buckets a candidate count is cut into,
+ * the marks that reach a screen — and that shape, drawn directly under the boxes, says
+ * what five paragraphs were trying to.
+ */
+function SettingGroup({
+  title,
+  below,
+  children,
+}: {
+  title: string
+  below?: React.ReactNode
+  children: React.ReactNode
 }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-xs uppercase tracking-wide text-zinc-500">{label}</span>
-      <span className="flex items-center gap-2">
-        <input
-          type="number"
-          value={value}
-          min={min}
-          max={max}
-          step={step}
-          onChange={event => onChange(Number(event.target.value))}
-          className="w-24 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-sm text-zinc-100 outline-none focus:border-zinc-600 tabular-nums"
-        />
-        <span className="text-xs text-zinc-600">{unit}</span>
-      </span>
-      <span className="text-xs text-zinc-600">{hint}</span>
-    </label>
+    <div className="flex flex-col gap-2">
+      <span className="text-xs uppercase tracking-wide text-zinc-500">{title}</span>
+      <div className="grid grid-cols-[auto_5rem_1fr] items-center gap-x-3 gap-y-2">
+        {children}
+      </div>
+      {below}
+    </div>
   )
 }
 
 
+
+/**
+ * A mark as a chip, in the one style the panel gives them.
+ *
+ * Two rows press these now — which marks reach a screen, and what one disputed fall
+ * counts as — and a chip that looked different in the second would read as a different
+ * kind of control rather than the same word being chosen.
+ */
+function MarkChip({
+  severity,
+  on,
+  title,
+  onClick,
+}: {
+  severity: Severity
+  on: boolean
+  title?: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      className={`px-2 py-1 rounded-md border text-xs transition-colors ${
+        on
+          ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
+          : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'
+      }`}
+    >
+      <span className="font-mono">{SEVERITY_MARK[severity]}</span> {SEVERITY_LABEL[severity]}
+    </button>
+  )
+}
 
 /** The same scale the marks use everywhere else. */
 const MARK_TONE: Record<Severity, string> = {
@@ -85,15 +172,18 @@ const MARK_TONE: Record<Severity, string> = {
 /**
  * The landings worth showing for a row.
  *
- * A fault never leaves you winning — `classifyMove` will not mark one that does — and
- * never lands above where it started, so those cells exist only to keep the table total
- * and would read as nonsense here.
+ * One rule: a marked move never leaves you better off than you were, so a landing above
+ * where it started exists only to keep the table total and would read as nonsense here.
+ *
+ * It also said `to !== 'winning'`, which was a second rule doing the first one's job
+ * badly — it dropped the only landing that is *not* above where it started when the
+ * fall begins in `winning`. Every other band had its own row for staying put and that
+ * one did not, which is exactly how it looked: a table where `better → better` and
+ * `level → level` were listed and `winning → winning` was not.
  */
 function landings(fall: { from: Standing; to: Standing[] }): Standing[] {
   const ceiling = STANDINGS.indexOf(fall.from)
-  const shown = fall.to.filter(
-    to => to !== 'winning' && STANDINGS.indexOf(to) <= ceiling,
-  )
+  const shown = fall.to.filter(to => STANDINGS.indexOf(to) <= ceiling)
   return shown.length > 0 ? shown : [fall.from]
 }
 
@@ -185,87 +275,126 @@ export default function AnalysisSettingsPanel({
     <section className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-5">
       <h2 className="font-semibold">Analysis</h2>
 
-      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {/*
+        Three groups, each one a couple of numbers and the shape they come out as.
+
+        It was five boxes in one grid with a paragraph under each, and the paragraphs
+        were doing a job the screen could do itself: `level` and `winning` *are* the
+        band strip, `narrow` and `lines` *are* the three buckets, and both were already
+        drawn elsewhere on this page — the strip below all five boxes, the buckets in a
+        column heading at the very bottom. Reading either meant holding a number in your
+        head while you looked somewhere else for what it did.
+      */}
+      <SettingGroup
+        title="The bands"
+        below={
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {STANDINGS.slice()
+              .reverse()
+              .map(standing => (
+                <span
+                  key={standing}
+                  className={`px-2 py-1 rounded border ${STANDING_BADGE[standing]}`}
+                >
+                  {STANDING_LABEL[standing]}{' '}
+                  <span className="opacity-60 font-mono">
+                    {standing === 'winning' && `≥ +${pawns(ready.winning)}`}
+                    {standing === 'better' && `+${pawns(ready.level)} … +${pawns(ready.winning)}`}
+                    {standing === 'level' && `± ${pawns(ready.level)}`}
+                    {standing === 'worse' && `−${pawns(ready.winning)} … −${pawns(ready.level)}`}
+                    {standing === 'losing' && `≤ −${pawns(ready.winning)}`}
+                  </span>
+                </span>
+              ))}
+          </div>
+        }
+      >
         <Field
+          name="level"
           label="Level within"
-          hint="Inside this, the position is even."
+          title="Inside this the position is even — and it is the band a move has to fall out of before it is marked at all."
           value={draft.level}
-          unit={`± ${pawnText(draft.level)}`}
+          reading={`± ${pawnText(draft.level)}`}
           onChange={set('level')}
-          min={SETTING_RANGE.level.min}
-          max={SETTING_RANGE.level.max}
           step={10}
         />
         <Field
+          name="winning"
           label="Winning from"
-          hint="Past this it is won — and past its negative, lost, where a move is no longer marked at all."
+          title="Past this it is won, and past its negative it is lost — where a move is no longer marked, because a position already gone has no better move to point at."
           value={draft.winning}
-          unit={pawnText(draft.winning)}
+          reading={`± ${pawnText(draft.winning)}`}
           onChange={set('winning')}
-          min={SETTING_RANGE.winning.min}
-          max={SETTING_RANGE.winning.max}
           step={10}
         />
+      </SettingGroup>
+
+      <SettingGroup
+        title="What gets marked"
+        below={
+          /* the one thing the chips cannot say: the ones you turn off are still counted */
+          <span className="text-xs text-zinc-600">
+            Everything is recorded either way; this is what reaches a screen, a count and
+            a review.
+          </span>
+        }
+      >
         <Field
-          label="Concrete at most"
-          hint="Up to this many moves holding means the position had a line in it."
-          value={draft.narrow}
-          unit="moves"
-          onChange={set('narrow')}
-          min={SETTING_RANGE.narrow.min}
-          max={SETTING_RANGE.narrow.max}
-        />
-        <Field
+          name="mistake"
           label="Mark from"
-          hint="Below this a move is left alone. How bad a marked one is comes from the band it fell out of, not from this."
+          title="Below this a move is left alone. How bad a marked one is comes from the band it fell out of, not from this."
           value={draft.mistake}
-          unit={pawnText(draft.mistake)}
+          reading={pawnText(draft.mistake)}
           onChange={set('mistake')}
-          min={SETTING_RANGE.mistake.min}
-          max={SETTING_RANGE.mistake.max}
           step={10}
         />
-        <Field
-          label="Candidates"
-          hint="How many moves the second pass asks the engine for. Each one costs search."
-          value={draft.lines}
-          unit="lines"
-          onChange={set('lines')}
-          min={SETTING_RANGE.lines.min}
-          max={SETTING_RANGE.lines.max}
-        />
-      </div>
 
-      {/* the bands as they will actually fall, so the numbers can be read as a board */}
-      <div className="flex flex-wrap gap-1.5 text-xs">
-        {STANDINGS.slice()
-          .reverse()
-          .map(standing => (
-            <span
-              key={standing}
-              className={`px-2 py-1 rounded border ${STANDING_BADGE[standing]}`}
-            >
-              {STANDING_LABEL[standing]}{' '}
-              <span className="opacity-60 font-mono">
-                {standing === 'winning' && `≥ +${pawns(ready.winning)}`}
-                {standing === 'better' && `+${pawns(ready.level)} … +${pawns(ready.winning)}`}
-                {standing === 'level' && `± ${pawns(ready.level)}`}
-                {standing === 'worse' && `−${pawns(ready.winning)} … −${pawns(ready.level)}`}
-                {standing === 'losing' && `≤ −${pawns(ready.winning)}`}
-              </span>
-            </span>
+        {/*
+          The one cell of the table below that is a matter of taste rather than of
+          arithmetic, so it is a control rather than a constant — the same move every
+          number on this screen has already made. It spans the box and the reading
+          because the choice is the reading.
+        */}
+        <label
+          className="text-sm text-zinc-300 cursor-help"
+          title="Every other one-band fall is a mistake; this one is softened because you were on top and still are. It grades the engine's candidates too — above an inaccuracy, a move that only drops you to better stops counting as having held."
+        >
+          Winning → better
+        </label>
+        <div className="col-span-2 flex gap-1.5 flex-wrap">
+          {SEVERITIES.map(severity => (
+            <MarkChip
+              key={severity}
+              severity={severity}
+              on={draft.winningSlip === severity}
+              onClick={() => {
+                setDraft(prev => ({ ...prev, winningSlip: severity }))
+                setSaved(false)
+              }}
+            />
           ))}
-      </div>
+        </div>
 
-      <div className="flex flex-col gap-1.5">
-        <span className="text-xs uppercase tracking-wide text-zinc-500">Show</span>
-        <div className="flex gap-1.5 flex-wrap">
+        {/*
+          A row of the same grid rather than a block under it. It had its own heading
+          while it was its own section, and inside this group that heading was dropped —
+          which left two chip rows one above the other, the second of them saying nothing
+          about itself and reading as more of the first.
+        */}
+        <label
+          className="text-sm text-zinc-300 cursor-help"
+          title="Which of the three reach a screen, a count and a review. The rest are still recorded."
+        >
+          Show
+        </label>
+        <div className="col-span-2 flex gap-1.5 flex-wrap">
           {SEVERITIES.map(severity => {
             const on = draft.marks.includes(severity)
             return (
-              <button
+              <MarkChip
                 key={severity}
-                type="button"
+                severity={severity}
+                on={on}
                 onClick={() => {
                   // never all off: a screen with nothing on it is not a setting anyone wants
                   const next = on
@@ -275,23 +404,45 @@ export default function AnalysisSettingsPanel({
                   setDraft(prev => ({ ...prev, marks: next }))
                   setSaved(false)
                 }}
-                className={`px-2 py-1 rounded-md border text-xs transition-colors ${
-                  on
-                    ? 'bg-zinc-800 border-zinc-600 text-zinc-100'
-                    : 'border-zinc-800 text-zinc-600 hover:border-zinc-700'
-                }`}
-              >
-                <span className="font-mono">{SEVERITY_MARK[severity]}</span>{' '}
-                {SEVERITY_LABEL[severity]}
-              </button>
+              />
             )
           })}
         </div>
-        <span className="text-xs text-zinc-600">
-          Everything is recorded either way; this is what reaches a screen, a count and a
-          review.
-        </span>
-      </div>
+      </SettingGroup>
+
+      <SettingGroup
+        title="The second pass"
+        below={
+          <div className="flex flex-wrap gap-1.5 text-xs">
+            {BREADTHS.map(breadth => (
+              <span
+                key={breadth}
+                className="px-2 py-1 rounded border border-zinc-800 text-zinc-400"
+              >
+                {BREADTH_LABEL[breadth]}{' '}
+                <span className="text-zinc-600 font-mono">{breadthSpan(breadth, ready)}</span>
+              </span>
+            ))}
+          </div>
+        }
+      >
+        <Field
+          name="lines"
+          label="Candidates"
+          title="How many moves the second pass asks the engine for. Each one costs search: a five-line search is five times a plain one."
+          value={draft.lines}
+          reading="lines"
+          onChange={set('lines')}
+        />
+        <Field
+          name="narrow"
+          label="Concrete at most"
+          title="Holding on this many or fewer means the position had a line in it — the same idea often has two move orders, so one answer written twice is still one answer."
+          value={draft.narrow}
+          reading="moves"
+          onChange={set('narrow')}
+        />
+      </SettingGroup>
 
       {/*
         The stretches a game is read in. Only where each one begins is set: a phase
@@ -429,16 +580,18 @@ export default function AnalysisSettingsPanel({
                   <th key={breadth} className="text-left font-normal px-3 py-2">
                     {BREADTH_LABEL[breadth]}
                     <span className="normal-case tracking-normal text-zinc-700">
-                      {breadth === 'sharp' && ` — ${draft.narrow} or fewer held`}
-                      {breadth === 'tight' && ` — ${draft.narrow + 1} to ${draft.lines - 1}`}
-                      {breadth === 'stable' && ' — all of them held'}
+                      {' — '}
+                      {breadthSpan(breadth, ready)}
                     </span>
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800/70">
-              {TRANSITIONS.filter(fall => REACHABLE.includes(fall.from)).map((fall, index) => (
+              {/* graded as this account grades it, so the switch above moves a row here */}
+              {transitions(ready)
+                .filter(fall => REACHABLE.includes(fall.from))
+                .map((fall, index) => (
                 <tr key={index}>
                   <td className="px-5 py-2 whitespace-nowrap">
                     <span

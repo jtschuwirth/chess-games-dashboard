@@ -37,6 +37,21 @@ export interface AnalysisSettings {
    * answers.
    */
   mistake: number
+  /**
+   * What a move that leaves you **still winning, one band lower** counts as.
+   *
+   * The one cell of the transition table that is a matter of taste rather than of
+   * arithmetic. Every other one-band fall is a mistake — you left the band you were in —
+   * and this one was softened to an inaccuracy on the grounds that you were on top and
+   * are still on top. That is an opinion about your own chess, which is the test every
+   * other number here had to pass to stop being a constant.
+   *
+   * It grades the engine's candidates too, because one function grades the move you
+   * played and the moves you did not: set it above `inaccuracy` and a candidate that
+   * only drops you to `better` stops counting as having held, so the breadth of every
+   * marked move is re-read under the stricter rule.
+   */
+  winningSlip: Severity
   /** Which marks to count as faults. The rest are recorded and left off the screen. */
   marks: Severity[]
   /** The stretches a game is read in, in your own move numbers. */
@@ -79,6 +94,8 @@ export const DEFAULT_SETTINGS: AnalysisSettings = {
   narrow: 2,
   lines: 5,
   mistake: 100,
+  // what the table has always said: from winning to better you are still winning
+  winningSlip: 'inaccuracy',
   // an inaccuracy is by definition a move the position excused; it is recorded, not shown
   marks: ['mistake', 'blunder'],
   phases: DEFAULT_PHASES,
@@ -117,6 +134,10 @@ export function normalizeSettings(raw: Partial<AnalysisSettings> | undefined): A
   if (raw) {
     for (const key of NUMBERS) {
       if (raw[key] !== undefined) next[key] = clamp(raw[key], key)
+    }
+
+    if (raw.winningSlip && SEVERITIES.includes(raw.winningSlip)) {
+      next.winningSlip = raw.winningSlip
     }
 
     if (Array.isArray(raw.marks)) {

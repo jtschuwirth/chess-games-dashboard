@@ -2246,8 +2246,29 @@ src/
   Black is two separate trees, and `canNest` keeps a line out of a parent saved for the other
   colour — the Panov Attack saved as White will not land under a Caro-Kann saved as Black. A
   colour-agnostic parent adopts either side; a colour-specific parent never adopts an agnostic
-  child, which would widen it. `openingLabel` appends "(as White)" / "(as Black)" so the two are
+  child, which would widen it. `openingLabel` appends "(White)" / "(Black)" so the two are
   distinguishable in the dropdown, breadcrumb and tables.
+
+- **A colour is one word, and `both` is a lie once there are three of something.**
+  `COLOR_LABEL` sits beside `SOURCE_LABEL` in `types/chess.ts` and is the only place the
+  three values are spelled, because they were spelled in nine: `as White` on a filter
+  chip, `As white` on a stat heading, `(as White)` on an opening's name, `White only` in
+  a form, `Either` in one dropdown and `Any colour` in another. None of them wrong and
+  no two the same, which is what makes a chip you press weekly stop reading as the same
+  control as the heading it narrows.
+
+  `as White` in particular is a preposition doing nothing: the row is already called
+  **Colour**, so the chip says `White`. The stat blocks keep their own phrasing — *As
+  White* is a sentence fragment above a figure rather than a value you pick — and that
+  is the line: a label on a control is the value, a heading over a number is prose.
+
+  **`both` became `any` because the Site row stopped being two things.** It was
+  chess.com and lichess when the word was chosen, and an uploaded game is a third, so
+  `both` had quietly become the word for "all three". `any` is the same word the Colour
+  row already needed for a line saved for neither side, so the two rows now answer "no
+  preference" identically. The **stored** value is untouched — `both` is still what the
+  query string carries and what `matchesCriteria` reads — because renaming it would
+  break every link anyone has saved for a cosmetic gain.
 - **`next.config.ts` pins `@opentelemetry/api` to its CommonJS build.** firebase-admin pulls it in
   transitively and its ESM entry has extensionless relative imports the bundler cannot resolve;
   Next's own tracer imports it, so `serverExternalPackages` alone does not help. Removing the
@@ -2409,6 +2430,57 @@ src/
   one changes, because the marks and the verdicts are derived as the games are read.
   `normalizeSettings` keeps the pairs in order — a level band wider than the winning one
   would make `better` an empty band.
+
+- **Each number is a row, and the paragraph under it is the shape it comes out as.** It
+  was five boxes in one grid, each with a sentence underneath explaining what it did —
+  which is the thing this codebase has a rule against, and the rule's own test says why:
+  text earns its place only if it says something the control cannot. Here the control
+  could say it, and already *was*, somewhere else on the same screen. `level` and
+  `winning` are the band strip, which was drawn below all five boxes; `narrow` and
+  `lines` are the three breadth buckets, which were spelled out in a column heading of
+  the table at the very bottom. Reading either meant holding a number in your head while
+  you looked somewhere else for what it did.
+
+  So: three groups — **the bands**, **what gets marked**, **the second pass** — each a
+  couple of numbers with the picture directly under them. `Field` is three cells of the
+  group's own grid rather than a self-contained box, the same reason `FilterRow` is a
+  row of the filter panel's grid, so the labels, the boxes and the readings line up down
+  the whole panel. The reading (`± 1 pawn`) went from the smallest grey thing on the row
+  to the same size as the label, because it is the half of the row you are actually
+  reading; the sentence became the label's `title`.
+
+  **The range comes off `SETTING_RANGE` rather than the call site.** There is one table
+  of what each of these may be, and five call sites repeating two numbers out of it are
+  five chances to disagree with it.
+
+  `breadthSpan` exists for the same reason the strip does: the heading at the bottom of
+  the page and the strip under the boxes were two copies of how `narrow` and `lines` cut
+  the search into three, and now they are one function read twice.
+
+- **`winning → better` is a switch, because it is an opinion.** Every other one-band
+  fall is a mistake — you left the band you were in — and this one is softened to an
+  inaccuracy on the grounds that you were on top and still are. That is a judgement
+  about your own chess, which is the exact test every other number on this screen had to
+  pass to stop being a constant. `winningSlip` on the account is the whole scale, so it
+  can be turned up to a mistake or a blunder, and it grades **the engine's candidates
+  too**: one function grades the move you played and the moves you did not, so above an
+  inaccuracy a candidate that only drops you to `better` stops counting as having held
+  and the breadth of every marked move is re-read under the stricter rule. Nothing is
+  re-analysed for it, like everything else here that is derived.
+
+  `setting` on a `Fall` names the account field that overrides the row, so the override
+  lives **in the table** with everything else rather than as an `if` beside it — a
+  second switchable cell is a second marker, not a second special case. `transitions()`
+  is the table as the account grades it, which is what the screen draws, so pressing a
+  chip moves the row in front of you.
+
+- **Splitting that row is what put the missing one on the screen.** `winning` was one
+  row covering `['winning', 'better']`, so the table listed `better → better` and
+  `level → level` and had nothing for `winning → winning` — the only band with no row
+  for staying in it. That was not the row's doing but the screen's: `landings` filtered
+  `to !== 'winning'`, a second rule doing the real one's job badly. The real rule is
+  that a marked move never leaves you better off than you were, and `winning → winning`
+  is not above where it started. One `to` per row now, and the filter is the one rule.
 - **The settings are a module value, set when the account's games are read.** Every pure
   function takes them as an argument defaulting to `settings()`, the same shape as the
   engine mode toggle. `getGames` awaits them before it normalises, because a mark derived
