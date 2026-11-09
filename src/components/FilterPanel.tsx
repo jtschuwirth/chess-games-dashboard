@@ -14,7 +14,14 @@ import { SINCE_OPTIONS } from '@/lib/game-filters'
 import { openingLabel } from '@/lib/opening'
 import { ARC_LABEL, gameNames } from '@/lib/shape'
 import { tagName } from '@/lib/tags'
-import { SOURCE_LABEL, type Color, type GameRecord, type OpeningLine, type Source } from '@/types/chess'
+import {
+  COLOR_LABEL,
+  SOURCE_LABEL,
+  type Color,
+  type GameRecord,
+  type OpeningLine,
+  type Source,
+} from '@/types/chess'
 import type { OpeningNode } from '@/lib/opening'
 
 /** Toggling one value in an array of them, which is every multi-select row here. */
@@ -24,8 +31,16 @@ function toggle<T>(values: T[], value: T): T[] {
 
 const SHAPE_OPTIONS = gameNames()
 
+/*
+  `any` rather than `both`, because there are three of them. The word was right when a
+  game came from one of two sites and stopped being right the day a pasted PGN became an
+  ordinary game — and `any` is what the Review row has always called the same state, so
+  this is the panel agreeing with itself rather than a new word. The stored value is
+  still `both`: it is in the query string of every link already written, and what a chip
+  is called is not what it is.
+*/
 const SOURCE_OPTIONS: { value: Source | 'both'; label: string }[] = [
-  { value: 'both', label: 'both' },
+  { value: 'both', label: 'any' },
   { value: 'chesscom', label: SOURCE_LABEL.chesscom },
   { value: 'lichess', label: SOURCE_LABEL.lichess },
   { value: 'upload', label: SOURCE_LABEL.upload },
@@ -43,9 +58,9 @@ const ARRIVAL_OPTIONS: { value: 'played' | 'transposed'; label: string }[] = [
 ]
 
 const COLOR_OPTIONS: { value: Color | 'both'; label: string }[] = [
-  { value: 'both', label: 'both' },
-  { value: 'white', label: 'as White' },
-  { value: 'black', label: 'as Black' },
+  { value: 'both', label: 'any' },
+  { value: 'white', label: COLOR_LABEL.white },
+  { value: 'black', label: COLOR_LABEL.black },
 ]
 
 function FilterLabel({ children, title }: { children: React.ReactNode; title?: string }) {

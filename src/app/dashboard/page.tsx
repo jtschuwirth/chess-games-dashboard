@@ -40,10 +40,11 @@ import {
 } from '@/lib/dashboard-filters'
 import { computeClockStats, computePhases, timeControlsIn } from '@/lib/clocks'
 import { computeSplit, computeStats } from '@/lib/stats'
-import type {
-  GameRecord,
-  OpeningLine,
-  UserProfile,
+import {
+  COLOR_LABEL,
+  type GameRecord,
+  type OpeningLine,
+  type UserProfile,
 } from '@/types/chess'
 
 /** Built once: the names are a table, not a reading of the games. */
@@ -344,8 +345,8 @@ function DashboardBody({ userId }: { userId: string }) {
       <Panel id="results" title="Results">
         <div className="grid gap-3 md:grid-cols-3">
           <StatBlockCard label="Overall" stats={split.overall} />
-          <StatBlockCard label="As White" stats={split.white} />
-          <StatBlockCard label="As Black" stats={split.black} />
+          <StatBlockCard label={COLOR_LABEL.white} stats={split.white} />
+          <StatBlockCard label={COLOR_LABEL.black} stats={split.black} />
         </div>
       </Panel>
 

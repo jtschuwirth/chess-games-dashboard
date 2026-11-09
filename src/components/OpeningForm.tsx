@@ -9,13 +9,11 @@ import {
   parseOpening,
   openingLabel,
 } from '@/lib/opening'
-import type { NewOpeningLine, OpeningColor, OpeningLine } from '@/types/chess'
+import { COLOR_LABEL, type NewOpeningLine, type OpeningColor, type OpeningLine } from '@/types/chess'
 
-const COLORS: { value: OpeningColor; label: string }[] = [
-  { value: 'any', label: 'Either colour' },
-  { value: 'white', label: 'As White' },
-  { value: 'black', label: 'As Black' },
-]
+const COLORS: { value: OpeningColor; label: string }[] = (
+  ['any', 'white', 'black'] as OpeningColor[]
+).map(value => ({ value, label: COLOR_LABEL[value] }))
 
 export default function OpeningForm({
   initial,

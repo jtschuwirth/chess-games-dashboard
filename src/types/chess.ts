@@ -20,6 +20,21 @@ export const SOURCE_LABEL: Record<Source, string> = {
   upload: 'Uploaded',
 }
 
+/**
+ * What a colour is called on screen, wherever one is named.
+ *
+ * `White`, not `As White`. The filter chips, the result cards under them and the badge
+ * on a saved line all answer "which colour", and three of them said it three ways — so
+ * narrowing to `as White` and then reading a card called `As White` was the same word
+ * twice in two spellings. A label names a thing; the sentence around it supplies the
+ * preposition, which is why nothing here reads as prose.
+ */
+export const COLOR_LABEL: Record<OpeningColor, string> = {
+  any: 'Either colour',
+  white: 'White',
+  black: 'Black',
+}
+
 /** A game as it comes back from a provider route — no id, no ignore flag yet. */
 export interface SyncedGame {
   source: Source

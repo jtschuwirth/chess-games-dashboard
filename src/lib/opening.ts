@@ -1,11 +1,12 @@
 import { Chess } from 'chess.js'
 import { normalizeStudy } from './study'
-import type {
-  AltLine,
-  GameRecord,
-  NewOpeningLine,
-  OpeningColor,
-  OpeningLine,
+import {
+  COLOR_LABEL,
+  type AltLine,
+  type GameRecord,
+  type NewOpeningLine,
+  type OpeningColor,
+  type OpeningLine,
 } from '@/types/chess'
 
 /**
@@ -136,11 +137,11 @@ export function isParentLine(parent: string[], child: string[]): boolean {
 
 const COLOR_SUFFIX: Record<OpeningColor, string> = {
   any: '',
-  white: ' (as White)',
-  black: ' (as Black)',
+  white: ` (${COLOR_LABEL.white})`,
+  black: ` (${COLOR_LABEL.black})`,
 }
 
-/** "Caro-Kann (as Black)" — what tells two same-line repertoires apart on screen. */
+/** "Caro-Kann (Black)" — what tells two same-line repertoires apart on screen. */
 export function openingLabel(opening: OpeningLine): string {
   return opening.name + COLOR_SUFFIX[opening.color]
 }

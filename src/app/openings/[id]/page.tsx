@@ -40,24 +40,18 @@ import {
   studyChanged,
 } from '@/lib/study'
 import type { StatBlock } from '@/lib/stats'
-import type {
-  Color,
-  GameRecord,
-  OpeningColor,
-  OpeningLine,
-  OpeningStudy,
-  PatternRecord,
-  StudyIdea,
+import {
+  COLOR_LABEL,
+  type Color,
+  type GameRecord,
+  type OpeningLine,
+  type OpeningStudy,
+  type PatternRecord,
+  type StudyIdea,
 } from '@/types/chess'
 
 /** How many games the panel lists before handing you to the dashboard for the rest. */
 const SHOWN_GAMES = 8
-
-const COLOR_BADGE: Record<OpeningColor, string> = {
-  any: 'Either colour',
-  white: 'As White',
-  black: 'As Black',
-}
 
 /** A shape that is not a study is not worth restoring, and must not throw later. */
 function isStudy(body: unknown): boolean {
@@ -375,7 +369,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
           <div className="flex items-baseline gap-2 flex-wrap">
             <h2 className="text-xl font-semibold text-zinc-100">{opening.name}</h2>
             <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400">
-              {COLOR_BADGE[opening.color]}
+              {COLOR_LABEL[opening.color]}
             </span>
           </div>
 
@@ -619,8 +613,8 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
           <>
             <div className="grid sm:grid-cols-3 gap-3">
               <StatBlockCard label="Overall" stats={split.overall} />
-              <StatBlockCard label="As White" stats={split.white} />
-              <StatBlockCard label="As Black" stats={split.black} />
+              <StatBlockCard label={COLOR_LABEL.white} stats={split.white} />
+              <StatBlockCard label={COLOR_LABEL.black} stats={split.black} />
             </div>
 
             <div className="-mx-5 flex flex-col divide-y divide-zinc-800 border-y border-zinc-800">
@@ -680,7 +674,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
         </Link>
         .{' '}
         {opening.color !== 'any' && openingLabel(opening) !== opening.name && (
-          <span>This one is saved {COLOR_BADGE[opening.color].toLowerCase()}.</span>
+          <span>This one is saved for {COLOR_LABEL[opening.color]}.</span>
         )}
       </p>
     </div>

@@ -15,13 +15,7 @@ import {
 } from '@/lib/opening'
 import { positionKeyMap } from '@/lib/scope'
 import { ideaCount } from '@/lib/study'
-import type { GameRecord, NewOpeningLine, OpeningColor, OpeningLine } from '@/types/chess'
-
-const COLOR_BADGE: Record<OpeningColor, string> = {
-  any: 'Either colour',
-  white: 'As White',
-  black: 'As Black',
-}
+import { COLOR_LABEL, type GameRecord, type NewOpeningLine, type OpeningLine } from '@/types/chess'
 
 function OpeningsBody({ userId }: { userId: string }) {
   const [openings, setOpenings] = useState<OpeningLine[] | null>(null)
@@ -163,7 +157,7 @@ function OpeningsBody({ userId }: { userId: string }) {
                   {depth > 0 && <span className="text-zinc-600 text-xs">↳</span>}
                   <span className="font-medium text-sm">{opening.name}</span>
                   <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400">
-                    {COLOR_BADGE[opening.color]}
+                    {COLOR_LABEL[opening.color]}
                   </span>
                   <span className="text-xs text-zinc-600">
                     {opening.ply} half-moves
