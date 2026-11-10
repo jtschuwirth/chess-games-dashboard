@@ -191,9 +191,17 @@ async function saveConfig(userId: string, patch: Partial<AccountConfig>): Promis
   const current = await getConfig(userId)
   const next: AccountConfig = { ...current, ...patch }
 
+  /*
+    `winningSlip` is cleared rather than left alone — the `main` trap one level down. A
+    merge write leaves a field nobody writes any more in the document, and
+    `normalizeSettings` reads that one forward into `grades`, so an override you had just
+    cleared would come straight back on the next read.
+  */
   await setDoc(
     doc(db, 'users', userId),
-    patch.analysis ? { analysis: next.analysis } : { tags: next.tags },
+    patch.analysis
+      ? { analysis: { ...next.analysis, winningSlip: deleteField() } }
+      : { tags: next.tags },
     { merge: true },
   )
 

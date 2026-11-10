@@ -2457,22 +2457,59 @@ src/
   the page and the strip under the boxes were two copies of how `narrow` and `lines` cut
   the search into three, and now they are one function read twice.
 
-- **`winning → better` is a switch, because it is an opinion.** Every other one-band
-  fall is a mistake — you left the band you were in — and this one is softened to an
-  inaccuracy on the grounds that you were on top and still are. That is a judgement
-  about your own chess, which is the exact test every other number on this screen had to
-  pass to stop being a constant. `winningSlip` on the account is the whole scale, so it
-  can be turned up to a mistake or a blunder, and it grades **the engine's candidates
-  too**: one function grades the move you played and the moves you did not, so above an
-  inaccuracy a candidate that only drops you to `better` stops counting as having held
-  and the breadth of every marked move is re-read under the stricter rule. Nothing is
-  re-analysed for it, like everything else here that is derived.
+- **Every cell of the transition table is the account's to grade, and the table is
+  where you grade it.** What a fall costs was the last judgement in the analysis that
+  was still a constant, and it is as much a matter of taste as any of the numbers above
+  it: whether letting a won game become merely better is a slip or a mistake is not a
+  fact about chess, it is what you want to be shown. It grades **the engine's candidates
+  too** — one function grades the move you played and the moves you did not — so raising
+  a cell above an inaccuracy means a candidate landing there stops counting as having
+  held, and the breadth of every marked move is re-read under the stricter rule. Nothing
+  is re-analysed for any of it.
 
-  `setting` on a `Fall` names the account field that overrides the row, so the override
-  lives **in the table** with everything else rather than as an `if` beside it — a
-  second switchable cell is a second marker, not a second special case. `transitions()`
-  is the table as the account grades it, which is what the screen draws, so pressing a
-  chip moves the row in front of you.
+  It began as one switch, `winningSlip`, for the one cell anyone had argued about out
+  loud. That was the wrong shape twice over: the rest of the table is exactly as
+  disputable, and a switch per disputed cell is a settings field per argument — fifteen
+  rows of chips in the group above, each a long way from the row it decides.
+
+  **So the table is the control.** It was already the one place every fall is written
+  down with what it counts as, and it is the only place that can show a choice in the
+  company of the fifteen others it is being weighed against. The screen that explains
+  the rule was already rendering the rule; now it sets it, which is the same principle
+  one step on. Fifteen rows of three chips would be forty-five buttons in a table meant
+  to be read, so it is one picker per row, drawn as the badge it replaced until you are
+  on it — the table is read far more often than it is changed. **Save moved below the
+  table** when the table became a control, because a form's button belongs after the
+  last thing it commits.
+
+- **A row has a key, and only the disagreements are stored.** `fallKey` is `from>to`,
+  the row's own name — the same split as a tag's id against its name, and for the same
+  reason: reword a descriptor, re-colour a badge or move the row up the table and what
+  you decided about it is still about it. `to` is written best landing first, so the
+  last entry is the deepest the row covers, which is both the landing the screen draws
+  and what the row is really about; a check asserts that ordering, because a row written
+  the other way round would key itself to a cell nobody can see.
+
+  `grades` holds only the cells you grade differently. The table is the app's own
+  opinion and it has moved before — an account holding all twenty-one rows would be a
+  frozen copy of an argument it never joined — so an empty list means "whatever the
+  table says". `withGrade` is where that lives: setting a row back to its own answer
+  **removes** the entry rather than writing it, which is why pressing the value a row
+  already has is not a no-op on disk.
+
+  It is a **list and not a map**, because a `merge` write replaces an array and merges a
+  map — a map would keep handing back the override you had just cleared. The same reason
+  the tag vocabulary is a list.
+
+- **`winningSlip` is read forward, and the gate is whether a list exists at all.** The
+  habit every stored shape here follows, with one trap that only shows on the second
+  save. Asking "does `grades` mention this fall" gets the wrong answer on the one case
+  that matters: an empty list is an account that absorbed the old field and then took
+  the override *off*, and reading the old field forward there puts the cleared cell back
+  on every read, for ever. So a document carrying a list is read by the list alone, and
+  only a document with no list at all has anything to say. It is also cleared with
+  `deleteField` on write, the `main` trap one level down — a merge leaves a field nobody
+  writes any more sitting in the document.
 
 - **Splitting that row is what put the missing one on the screen.** `winning` was one
   row covering `['winning', 'better']`, so the table listed `better → better` and
@@ -2481,6 +2518,8 @@ src/
   `to !== 'winning'`, a second rule doing the real one's job badly. The real rule is
   that a marked move never leaves you better off than you were, and `winning → winning`
   is not above where it started. One `to` per row now, and the filter is the one rule.
+  It also gave the two falls their own keys, without which neither could be graded on
+  its own.
 - **The settings are a module value, set when the account's games are read.** Every pure
   function takes them as an argument defaulting to `settings()`, the same shape as the
   engine mode toggle. `getGames` awaits them before it normalises, because a mark derived

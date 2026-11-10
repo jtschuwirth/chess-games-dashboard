@@ -1,5 +1,5 @@
 import { MATE_SCORE } from './engine-protocol'
-import { settings, type AnalysisSettings } from './settings'
+import { settings, type AnalysisSettings, type GradeOverride } from './settings'
 
 /**
  * Where a position stands, and what it means to fall out of it.
@@ -126,16 +126,11 @@ export interface Fall {
   from: Standing
   /** Every landing this row covers. */
   to: Standing[]
-  severity: Severity
   /**
-   * The account field that grades this row instead, where it is a matter of taste.
-   *
-   * One cell has ever been one: `winning -> better` is a one-band fall the table softens
-   * to an inaccuracy on the grounds that you were on top and still are. That is an
-   * opinion, and an opinion belongs on the user document — so the row says which switch
-   * decides it rather than the grader carrying an `if` about it.
+   * What the table says this costs — the app's own opinion, which an account may differ
+   * with. Read it through `graded` or `transitions`, never straight off the row.
    */
-  setting?: keyof Slips
+  severity: Severity
   sharp: string
   tight: string
   stable: string
@@ -167,7 +162,7 @@ export interface Fall {
  */
 export const TRANSITIONS: Fall[] = [
   { from: 'winning', to: ['winning'], severity: 'inaccuracy', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
-  { from: 'winning', to: ['better'], severity: 'inaccuracy', setting: 'winningSlip', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
+  { from: 'winning', to: ['better'], severity: 'inaccuracy', sharp: 'missed-the-kill', tight: 'slowed-it-down', stable: 'let-the-win-go' },
   { from: 'winning', to: ['level'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'let-it-slip', stable: 'threw-it' },
   { from: 'winning', to: ['worse'], severity: 'blunder', sharp: 'lost-the-thread', tight: 'turned-it-around', stable: 'threw-it-away' },
   { from: 'winning', to: ['losing'], severity: 'blunder', sharp: 'lost-a-won-game', tight: 'lost-a-won-game', stable: 'handed-over-a-won-game' },
@@ -198,21 +193,59 @@ export const TRANSITIONS: Fall[] = [
 ]
 
 /**
+ * A row's own name, which is the one thing about it that must not change.
+ *
+ * An override is stored against this, so it is to a row what an id is to a tag: reword a
+ * descriptor, re-colour a badge, move the row up the table, and what you decided about it
+ * is still about it. `to` is written best landing first, so the last entry is the deepest
+ * one the row covers — which is both the landing the screen draws and the one the row is
+ * really about, `better -> ['winning', 'better']` being a row about staying put.
+ */
+export function fallKey(fall: Pick<Fall, 'from' | 'to'>): string {
+  return `${fall.from}>${fall.to[fall.to.length - 1]}`
+}
+
+/**
  * A row's severity as this account grades it.
  *
- * `setting` names the account field that overrides the row, so the override lives in the
- * table with everything else rather than as an `if` beside it — and a second switchable
- * cell is a second marker rather than a second special case.
+ * Every cell is the account's to decide. It began as one — `winning -> better` is the
+ * one-band fall the table softens because you were on top and still are — and that was
+ * the wrong shape twice over: the rest of the table is exactly as much a matter of taste,
+ * and a switch per disputed cell is a settings field per argument.
+ *
+ * A key naming no row matches nothing, which is how a hand-edited document saying
+ * something about a fall that does not exist comes to no harm.
  */
 function graded(fall: Fall, config: Slips): Severity {
-  return fall.setting ? config[fall.setting] : fall.severity
+  const key = fallKey(fall)
+  return config.grades.find(entry => entry.fall === key)?.severity ?? fall.severity
 }
 
 /** The table as this account grades it, for the screen that draws it. */
 export function transitions(config: Slips = settings()): Fall[] {
-  return TRANSITIONS.map(fall =>
-    fall.setting ? { ...fall, severity: graded(fall, config) } : fall,
-  )
+  return TRANSITIONS.map(fall => ({ ...fall, severity: graded(fall, config) }))
+}
+
+/**
+ * The list with one fall set, which is where "only the disagreements are stored" lives.
+ *
+ * A cell put back to the table's own answer is **removed** rather than written, so an
+ * account that has changed nothing holds an empty list and goes on following the table
+ * wherever it moves. Pressing the value a row already has is therefore not a no-op on
+ * disk: it is what clears an override.
+ */
+export function withGrade(
+  grades: GradeOverride[],
+  fall: Fall,
+  severity: Severity,
+): GradeOverride[] {
+  const key = fallKey(fall)
+  const rest = grades.filter(entry => entry.fall !== key)
+  const table = TRANSITIONS.find(entry => fallKey(entry) === key)
+
+  return severity === (table?.severity ?? fall.severity)
+    ? rest
+    : [...rest, { fall: key, severity }]
 }
 
 export function fallBetween(from: Standing, to: Standing): Fall {
@@ -228,7 +261,7 @@ export function severityOf(from: Standing, to: Standing, config: Slips = setting
 }
 
 /** The cells of the table the account decides for itself. */
-export type Slips = Pick<AnalysisSettings, 'winningSlip'>
+export type Slips = Pick<AnalysisSettings, 'grades'>
 
 /** What the grader needs off the account. */
 export type Grading = Bands & Slips & { mistake: number }

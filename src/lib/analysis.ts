@@ -9,7 +9,7 @@ import type { GameRecord, StoredAnalysis } from '@/types/chess'
 export type MoveTag = '??' | '?' | '?!' | '!' | '!!'
 
 /** What the classifier reads off the account — see `lib/settings.ts`. */
-export type Thresholds = Pick<AnalysisSettings, 'mistake' | 'winning' | 'level' | 'winningSlip'>
+export type Thresholds = Pick<AnalysisSettings, 'mistake' | 'winning' | 'level' | 'grades'>
 
 /**
  * One depth for everything the app evaluates itself: a single game's analysis, the

@@ -14,8 +14,12 @@ import {
   BREADTH_LABEL,
   SEVERITY_LABEL,
   SEVERITY_MARK,
+  TRANSITIONS,
   breadthSpan,
+  fallKey,
   transitions,
+  withGrade,
+  type Fall,
 } from '@/lib/bands'
 import {
   MAX_PHASES,
@@ -167,6 +171,66 @@ const MARK_TONE: Record<Severity, string> = {
   blunder: 'text-red-400',
   mistake: 'text-amber-400',
   inaccuracy: 'text-zinc-500',
+}
+
+/**
+ * What a fall costs, as the control that sets it.
+ *
+ * The table was already the one place every fall is written down with what it counts as,
+ * so when every cell became the account's to decide there was nowhere better to put the
+ * choice — and nowhere else that could show it in the company of the fifteen others it
+ * is being weighed against. Fifteen rows of three chips would be forty-five buttons in a
+ * table you are meant to read, so it is one control per row, showing what it is set to.
+ *
+ * `appearance-none` and no border until you are on it: at rest this has to read as the
+ * badge it replaced, because the table is read far more often than it is changed.
+ */
+function SeverityPicker({
+  fall,
+  value,
+  shown,
+  onPick,
+}: {
+  fall: Fall
+  value: Severity
+  /** Whether this mark reaches a screen, which is the other half of what the cell says. */
+  shown: boolean
+  onPick: (severity: Severity) => void
+}) {
+  const table = TRANSITIONS.find(entry => fallKey(entry) === fallKey(fall))?.severity
+  const changed = table !== undefined && table !== value
+
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <select
+        value={value}
+        onChange={event => onPick(event.target.value as Severity)}
+        title={
+          changed
+            ? `You grade this one differently — the table's own answer is ${SEVERITY_LABEL[table]}`
+            : shown
+              ? 'shown'
+              : 'recorded, but left off the screen'
+        }
+        className={`appearance-none bg-transparent border border-transparent rounded-md -ml-1.5 px-1.5 py-0.5 cursor-pointer outline-none transition-colors hover:border-zinc-700 hover:bg-zinc-950 focus:border-zinc-600 focus:bg-zinc-950 ${
+          shown ? MARK_TONE[value] : 'text-zinc-600'
+        }`}
+      >
+        {SEVERITIES.map(severity => (
+          <option key={severity} value={severity} className="bg-zinc-900 text-zinc-200">
+            {SEVERITY_MARK[severity]} {SEVERITY_LABEL[severity]}
+          </option>
+        ))}
+      </select>
+      {/* a dot rather than a word: on a column of fifteen, "changed" fifteen times is noise */}
+      {changed && (
+        <span
+          className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0"
+          title={`Yours. The table says ${SEVERITY_LABEL[table]}.`}
+        />
+      )}
+    </span>
+  )
 }
 
 /**
@@ -350,36 +414,10 @@ export default function AnalysisSettingsPanel({
         />
 
         {/*
-          The one cell of the table below that is a matter of taste rather than of
-          arithmetic, so it is a control rather than a constant — the same move every
-          number on this screen has already made. It spans the box and the reading
-          because the choice is the reading.
-        */}
-        <label
-          className="text-sm text-zinc-300 cursor-help"
-          title="Every other one-band fall is a mistake; this one is softened because you were on top and still are. It grades the engine's candidates too — above an inaccuracy, a move that only drops you to better stops counting as having held."
-        >
-          Winning → better
-        </label>
-        <div className="col-span-2 flex gap-1.5 flex-wrap">
-          {SEVERITIES.map(severity => (
-            <MarkChip
-              key={severity}
-              severity={severity}
-              on={draft.winningSlip === severity}
-              onClick={() => {
-                setDraft(prev => ({ ...prev, winningSlip: severity }))
-                setSaved(false)
-              }}
-            />
-          ))}
-        </div>
-
-        {/*
-          A row of the same grid rather than a block under it. It had its own heading
-          while it was its own section, and inside this group that heading was dropped —
-          which left two chip rows one above the other, the second of them saying nothing
-          about itself and reading as more of the first.
+          `Winning → better` was a row here while it was the only disputed cell, and it
+          stopped being one the moment the whole column became a control: a setting for
+          one row of a table you can edit is a second way to say the same thing, and the
+          one further from the thing it sets.
         */}
         <label
           className="text-sm text-zinc-300 cursor-help"
@@ -544,31 +582,29 @@ export default function AnalysisSettingsPanel({
         )}
       </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40"
-        >
-          {saving ? 'Saving…' : 'Save settings'}
-        </button>
-        {saved && <span className="text-xs text-emerald-400">Saved</span>}
-        {error && <span className="text-xs text-red-400">{error}</span>}
-        <button
-          onClick={() => {
-            setDraft(normalizeSettings(undefined))
-            setSaved(false)
-          }}
-          className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors ml-auto"
-        >
-          Back to the defaults
-        </button>
-      </div>
-
       <div className="flex flex-col gap-2 border-t border-zinc-800 pt-4">
-        <h3 className="text-xs uppercase tracking-wide text-zinc-500">
-          What each marked move is called
-        </h3>
+        <div className="flex items-baseline gap-3">
+          <h3 className="text-xs uppercase tracking-wide text-zinc-500">
+            What each fall costs, and what it is called
+          </h3>
+          {/*
+            Only once something is yours, the rule every Reset here follows — and it says
+            how many rather than just offering, since an override is a thing you made and
+            not a filter you can see the effect of at a glance.
+          */}
+          {draft.grades.length > 0 && (
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(prev => ({ ...prev, grades: [] }))
+                setSaved(false)
+              }}
+              className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+            >
+              Back to the table on {draft.grades.length === 1 ? 'one row' : `${draft.grades.length} rows`}
+            </button>
+          )}
+        </div>
 
         <div className="overflow-x-auto -mx-5">
           <table className="w-full text-sm min-w-[36rem]">
@@ -605,23 +641,18 @@ export default function AnalysisSettingsPanel({
                     </span>
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <span
-                      className={`font-mono ${MARK_TONE[fall.severity]}`}
-                      title={
-                        draft.marks.includes(fall.severity)
-                          ? 'shown'
-                          : 'recorded, but left off the screen'
-                      }
-                    >
-                      {SEVERITY_MARK[fall.severity]}
-                    </span>{' '}
-                    <span
-                      className={
-                        draft.marks.includes(fall.severity) ? 'text-zinc-300' : 'text-zinc-600'
-                      }
-                    >
-                      {SEVERITY_LABEL[fall.severity]}
-                    </span>
+                    <SeverityPicker
+                      fall={fall}
+                      value={fall.severity}
+                      shown={draft.marks.includes(fall.severity)}
+                      onPick={severity => {
+                        setDraft(prev => ({
+                          ...prev,
+                          grades: withGrade(prev.grades, fall, severity),
+                        }))
+                        setSaved(false)
+                      }}
+                    />
                   </td>
                   {BREADTHS.map(breadth => (
                     <td key={breadth} className="px-3 py-2 text-zinc-300">
@@ -636,9 +667,30 @@ export default function AnalysisSettingsPanel({
 
         <p className="text-xs text-zinc-600">
           A move holds when it costs no more than an inaccuracy, which is the same rule
-          that grades the move you played — so a move can no longer be flagged while the
-          second pass counts it as having held.
+          that grades the move you played — so raising a row above that takes its landing
+          out of what the second pass counts as having held.
         </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <button
+          onClick={save}
+          disabled={saving}
+          className="px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40"
+        >
+          {saving ? 'Saving…' : 'Save settings'}
+        </button>
+        {saved && <span className="text-xs text-emerald-400">Saved</span>}
+        {error && <span className="text-xs text-red-400">{error}</span>}
+        <button
+          onClick={() => {
+            setDraft(normalizeSettings(undefined))
+            setSaved(false)
+          }}
+          className="text-xs text-zinc-600 hover:text-zinc-300 transition-colors ml-auto"
+        >
+          Back to the defaults
+        </button>
       </div>
 
     </section>
