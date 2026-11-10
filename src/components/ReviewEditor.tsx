@@ -12,6 +12,7 @@ import TagPicker from '@/components/TagPicker'
 import { parseLine, plyLabel, sanFromUci, type Ply } from '@/lib/board'
 import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
+import { queueBusy } from '@/lib/analysis-queue'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
   MAX_REVIEW_MISTAKES,
@@ -222,8 +223,21 @@ export default function ReviewEditor({
     ),
   )
 
-  /** The worker holds a few megabytes of wasm; nothing needs it once you leave. */
-  useEffect(() => () => terminateEngine(), [])
+  /**
+   * The worker holds a few megabytes of wasm; nothing needs it once you leave — unless
+   * the queue is mid-game, which is the whole point of the queue living in a module.
+   *
+   * Unguarded, this did not merely stop the run: `terminateEngine` rejects the position
+   * in flight with a plain error, so the queue recorded the game as **failed** and moved
+   * on to kill the next one. Reading a game while its neighbours are analysing is the
+   * normal thing to do while waiting, and in development it never even got that far —
+   * StrictMode fires this cleanup on mount, so merely opening a game was enough.
+   */
+  useEffect(() => {
+    return () => {
+      if (!queueBusy()) terminateEngine()
+    }
+  }, [])
 
   const plyByIndex = useMemo(() => new Map(plies.map(ply => [ply.index, ply])), [plies])
   const yourPlies = useMemo(

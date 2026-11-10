@@ -1992,8 +1992,17 @@ src/
   Reaching the control from a list is what made that reachable, since a list invites
   pressing twice. `lib/analysis-queue.ts` is therefore the only caller of `analyzeGame`:
   the row's button and the game page's both enqueue, the second press shows its place in
-  the line, and the panels that run the *second* pass check `queueBusy` before terminating
-  anything. It lives in a module rather than a page's state because the work is not the
+  the line, and **every** screen that lets go of the engine checks `queueBusy` before
+  terminating it.
+
+  Every screen, which it was not: `EnginePanel` and `VerdictPanel` had the guard and
+  `ReviewEditor` and `/learn` tore the worker down on unmount unconditionally. So
+  reading a game while its neighbours analysed — the exact thing the queue exists to
+  allow, and exactly what you do while waiting — killed the run, and did not merely stop
+  it: `terminateEngine` rejects the position in flight with a plain error, so the game
+  was recorded as **failed** and the next one was started and killed in turn. In
+  development it never even got as far as leaving the page, because StrictMode fires that
+  cleanup on mount. Found by queueing two games on a fresh account and opening a third. It lives in a module rather than a page's state because the work is not the
   page's — a run started from a list has to survive opening one of those games to read it,
   which is exactly what you do while waiting, and a loop left in an unmounted component
   would go on writing to Firestore with nothing on screen to say so. The engine is left
@@ -2786,8 +2795,33 @@ src/
 - **Dashboard filters live in the query string** (`readFilters` / `writeFilters`), seeded from
   `useSearchParams` and mirrored with `history.replaceState` so chip clicks stay instant and the
   back button is not flooded.
+
+  **A value the panel can set and the reader cannot parse is worse than no filter at
+  all**, and `source` was one for as long as uploads have existed. `readFilters` spelled
+  the sites out as `chesscom || lichess`, written when there were two; the chip set
+  `source=upload`, `writeFilters` duly put it in the address, and the reader handed back
+  `both`. So the filter worked until the page was reloaded, linked to, or returned to
+  from a game — and uploads are the one source whose games are *invisible* without it, so
+  the slice did not widen on the way back, it emptied. `readSource` reads the vocabulary
+  off `SOURCE_LABEL` instead, so a fourth source arrives readable rather than silently
+  unreadable, with `Object.hasOwn` and not `in` — the first version of the fix used `in`,
+  and a check caught that `?source=toString` was therefore a site.
 - **A variation's games include its sub-variations** (`gameMatchesNode` unions the subtree), so a
   parent's totals always cover its children even when a game transposed straight into a child.
+
+## Checking the app on a throwaway account
+`scripts/dev-games.mjs` writes a sheet of games to paste into **Upload a game** on the
+profile page, for a fresh account with nothing in it. Every move is played through
+chess.js, so the file cannot hold an illegal one — which is the point of generating
+rather than typing a famous game from memory — and the opponents are a crude heuristic
+that likes captures, which is what makes them worth analysing: they are full of the kind
+of mistake the engine is there to find. Seeded, so re-running it produces the same games
+and a re-upload lands on the same document ids rather than near-duplicates. Both colours,
+four controls, half of them carrying move times.
+
+Remember that an uploaded game is deliberately **out of every slice** unless the Site
+filter names it, so a dashboard reading `0 of 12 games` after an upload is the rule
+working rather than a fault.
 
 ## Analysing the games
 `.claude/skills/game-analysis` answers questions about the stored games, and its one rule

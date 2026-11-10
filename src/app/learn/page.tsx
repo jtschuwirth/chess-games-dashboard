@@ -8,6 +8,7 @@ import DrillCardView from '@/components/DrillCard'
 import EngineModeToggle from '@/components/EngineMode'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { terminateEngine } from '@/lib/engine'
+import { queueBusy } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
 import { getGames, getGuides, getOpenings } from '@/lib/firestore'
 import { buildOpeningTree } from '@/lib/opening'
@@ -73,8 +74,21 @@ function LearnBody({ userId }: { userId: string }) {
     window.history.replaceState(null, '', window.location.pathname + search)
   }, [search])
 
-  /** The worker holds a few megabytes of wasm; nothing needs it once you leave. */
-  useEffect(() => () => terminateEngine(), [])
+  /**
+   * The worker holds a few megabytes of wasm; nothing needs it once you leave — unless
+   * the queue is mid-game, which is the whole point of the queue living in a module.
+   *
+   * Unguarded, this did not merely stop the run: `terminateEngine` rejects the position
+   * in flight with a plain error, so the queue recorded the game as **failed** and moved
+   * on to kill the next one. Reading a game while its neighbours are analysing is the
+   * normal thing to do while waiting, and in development it never even got that far —
+   * StrictMode fires this cleanup on mount, so merely opening a game was enough.
+   */
+  useEffect(() => {
+    return () => {
+      if (!queueBusy()) terminateEngine()
+    }
+  }, [])
 
   const load = useCallback(
     (options?: { fresh: true }) =>

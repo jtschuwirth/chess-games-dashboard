@@ -1,4 +1,5 @@
 import { isSinceKey, type GameCriteria, type SinceKey } from '@/lib/game-filters'
+import { SOURCE_LABEL, type Source } from '@/types/chess'
 import { ARCS, GAME_NAMES, OFF_BOARD, TEXTURES, type Arc } from '@/lib/shape'
 
 /** Dropdown value meaning "every game", not a saved opening id. */
@@ -71,9 +72,25 @@ function readShape(raw: string | null): string | null {
   return known ? raw : null
 }
 
+/**
+ * The sites a slice can be narrowed to, read off the one list of them.
+ *
+ * It was spelled out here as `chesscom || lichess` and went stale the day uploads became
+ * a third source: the chip set `source=upload`, `writeFilters` put it in the address, and
+ * this read it straight back out as `both`. So the filter worked until the page was
+ * reloaded, linked to, or returned to from a game — and uploads are the one source whose
+ * games are *invisible* without it, so the whole slice emptied rather than widening.
+ *
+ * `SOURCE_LABEL` is the vocabulary, so a fourth source arrives readable rather than
+ * silently unreadable. `Object.hasOwn` and not `in`, which walks the prototype — with
+ * `in`, `?source=toString` is a site.
+ */
+function readSource(raw: string | null): Filters['source'] {
+  return raw !== null && Object.hasOwn(SOURCE_LABEL, raw) ? (raw as Source) : 'both'
+}
+
 export function readFilters(params: { get: (key: string) => string | null }): Filters {
   const color = params.get('color')
-  const source = params.get('source')
   const since = params.get('since')
   // canonical control ids, e.g. "180+2"
   const controls = (params.get('tc') ?? '')
@@ -89,7 +106,7 @@ export function readFilters(params: { get: (key: string) => string | null }): Fi
     minRating: readRating(params.get('minElo')),
     maxRating: readRating(params.get('maxElo')),
     color: color === 'white' || color === 'black' ? color : 'both',
-    source: source === 'chesscom' || source === 'lichess' ? source : 'both',
+    source: readSource(params.get('source')),
     endedIn: params.get('phase') || null,
     mistakes: readMistakes(params.get('mistakes')),
     shape: readShape(params.get('shape')),
