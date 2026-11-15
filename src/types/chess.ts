@@ -691,6 +691,24 @@ export interface PlanTask {
   target: number
   /** How many are done, from 0 to `target`. */
   done: number
+  /**
+   * How this one went — a score, a chapter, what went wrong.
+   *
+   * A count says you did the thing and cannot say what came of it: "solve the Yusupov
+   * test ×1" is ticked the same whether you scored 6 or 22. The day's own note is the
+   * wrong place for it, because a day holds several tasks and the figure belongs to one
+   * of them.
+   *
+   * It belongs to **this day's instance** of the task, not to the task as the plan
+   * states it, so a new week built from the template starts without one — the same reset
+   * `done` gets, and for the same reason. It travels with the task when it is dragged to
+   * another day, because it is the task's.
+   *
+   * Optional and absent rather than empty: an `undefined` field rejects the whole
+   * document, and an empty string on every task of every day of twelve weeks is a
+   * thousand keys saying nothing.
+   */
+  note?: string
 }
 
 /** A day of a study plan: what to do, how it went, and what you wrote up. */

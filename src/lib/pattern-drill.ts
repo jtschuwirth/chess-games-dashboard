@@ -146,14 +146,34 @@ export function cardsOf(pattern: PatternRecord): PatternCard[] {
  * drill follows, for the same reason: a boundary you have never been asked about is the
  * one most likely to be the gap.
  *
+ * **Then one write-up at a time, round the houses.** Every unanswered card is due at 0,
+ * so the due order alone left them tied and the tie-break was the key — which begins
+ * with the pattern id, so all nine of one write-up's boundaries arrived in a block.
+ * Taking a write-up apart therefore *punished* you with a run of nine cards about one
+ * idea, which is both the dullest way to meet them and the worst: the second card tells
+ * you what the first was about. Interleaving by rank inside each pattern deals them
+ * round instead, so every pattern's first boundary comes before any pattern's second.
+ *
+ * It only ever reorders cards that fall due **together**. A card genuinely due earlier
+ * still leads, because the schedule is the point of the ladder.
+ *
  * Nothing re-sorts mid-session. The queue is taken once and answered in that order, or
  * the next card would move while you were looking at it.
  */
 export function dueCards(patterns: PatternRecord[], now: number): PatternCard[] {
+  const seen = new Map<string, number>()
+
   return patterns
     .flatMap(cardsOf)
     .filter(card => card.due <= now)
     .sort((a, b) => a.due - b.due || a.key.localeCompare(b.key))
+    .map(card => {
+      const rank = seen.get(card.patternId) ?? 0
+      seen.set(card.patternId, rank + 1)
+      return { card, rank }
+    })
+    .sort((a, b) => a.card.due - b.card.due || a.rank - b.rank || a.card.key.localeCompare(b.card.key))
+    .map(entry => entry.card)
 }
 
 /** Everything a pattern could ask, and how much of it is waiting. */

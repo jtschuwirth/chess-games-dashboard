@@ -28,20 +28,55 @@ export const MAX_PLAN_WEEKS = 26
 
 /* ------------------------------------------------------------------- reading */
 
+/**
+ * A note on a task, set or removed — never assigned empty.
+ *
+ * The one rule the field has, in the one place that can enforce it. Firestore rejects a
+ * document carrying `undefined` anywhere in it, and `planBody` writes `plan.weeks`
+ * straight through, so a task must never be handed an undefined note; and an empty
+ * string is not a note, so it is deleted rather than stored on every task of every day.
+ *
+ * It matters for a second reason the exercise sheet already found: `dayChanged` compares
+ * the working copy against the server's by value, so a writer that stripped empties
+ * while the screen kept them would leave a day reading as unsaved for ever.
+ */
+export function withTaskNote(task: PlanTask, note: string): PlanTask {
+  const next = { ...task }
+  if (note.trim().length > 0) next.note = note
+  else delete next.note
+  return next
+}
+
+/**
+ * A task as a new day should start it: nothing done, nothing written.
+ *
+ * Both halves are about the *instance* rather than the task. A template says what to do;
+ * how many you got through and how it went are what this particular day has to report,
+ * so copying either into next week would be putting words in your mouth — and a score
+ * from March sitting on an untouched day in April is worse than no score at all.
+ */
+export function blankTask(task: PlanTask): PlanTask {
+  return withTaskNote({ ...task, done: 0 }, '')
+}
+
 /** A task from either shape: `done: true` was one of one, `done: false` none of one. */
 function normalizeTask(raw: PlanTask): PlanTask {
   const legacy = raw as PlanTask & { done: number | boolean }
+  const note = typeof raw.note === 'string' ? raw.note : ''
 
   if (typeof legacy.done === 'boolean') {
-    return { text: raw.text ?? '', target: 1, done: legacy.done ? 1 : 0 }
+    return withTaskNote({ text: raw.text ?? '', target: 1, done: legacy.done ? 1 : 0 }, note)
   }
 
   const target = Math.max(1, Math.round(raw.target ?? 1))
-  return {
-    text: raw.text ?? '',
-    target,
-    done: Math.max(0, Math.min(Math.round(legacy.done ?? 0), target)),
-  }
+  return withTaskNote(
+    {
+      text: raw.text ?? '',
+      target,
+      done: Math.max(0, Math.min(Math.round(legacy.done ?? 0), target)),
+    },
+    note,
+  )
 }
 
 /**
@@ -321,7 +356,7 @@ export function buildWeek(tasks: PlanTask[], days = DAYS_PER_WEEK): PlanWeek {
   return {
     name: '',
     days: Array.from({ length: Math.max(1, days) }, () => ({
-      tasks: tasks.map(task => ({ ...task, done: 0 })),
+      tasks: tasks.map(blankTask),
       note: '',
     })),
   }
@@ -353,7 +388,7 @@ export function buildPlan(input: {
 export function templateFrom(plan: Pick<StudyPlan, 'weeks'>): PlanTask[] {
   const last = plan.weeks[plan.weeks.length - 1]
   const day = last?.days.find(entry => entry.tasks.length > 0)
-  return (day?.tasks ?? []).map(task => ({ ...task, done: 0 }))
+  return (day?.tasks ?? []).map(blankTask)
 }
 
 /* ------------------------------------------------------------------- editing */

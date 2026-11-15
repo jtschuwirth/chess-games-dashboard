@@ -49,6 +49,15 @@ function DrillBody({ userId }: { userId: string }) {
   const [said, setSaid] = useState<PatternAnswer | null>(null)
   /** Answers from this session, layered over the queue rather than written back into it. */
   const [answered, setAnswered] = useState<Record<string, boolean>>({})
+  /**
+   * Cards passed over, counted and otherwise forgotten.
+   *
+   * A skip writes **nothing**: it is not a miss, which would drop the card to the bottom
+   * of the ladder, and it is not a pass, which would push it out — it is "not this one",
+   * and the card stays exactly as due as it was. So this is a count for the end of the
+   * session and nothing else.
+   */
+  const [skipped, setSkipped] = useState<string[]>([])
   /** Moves played on the card in front of you, thrown away when it goes. */
   const [scratch, setScratch] = useState<Scratch | null>(null)
   const [now] = useState(() => Date.now())
@@ -134,8 +143,32 @@ function DrillBody({ userId }: { userId: string }) {
     }
   }
 
+  /**
+   * On past this card. One place, because answering and skipping both do it and a second
+   * copy is a second chance to forget to clear the reveal.
+   */
+  function next() {
+    setSaid(null)
+    setIndex(current => current + 1)
+  }
+
+  function skip() {
+    if (!card) return
+    setSkipped(current => (current.includes(card.key) ? current : [...current, card.key]))
+    next()
+  }
+
   const done = Object.keys(answered).length
   const got = Object.values(answered).filter(Boolean).length
+
+  /*
+    What a skip costs, which is nothing, said once. Worth saying at all because a drill
+    that stayed silent about them would read as having quietly marked them wrong.
+  */
+  const one = skipped.length === 1
+  const skippedLine = `You passed over ${one ? 'one card' : `${skipped.length} cards`}; nothing was written about ${
+    one ? 'it' : 'them'
+  }, so ${one ? 'it is' : 'they are'} still due.`
 
   return (
     <div className="flex flex-col gap-5">
@@ -154,7 +187,11 @@ function DrillBody({ userId }: { userId: string }) {
       {!card ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 flex flex-col gap-3">
           <h2 className="text-lg font-semibold text-zinc-100">
-            {done > 0 ? `${got} of ${done} right` : 'Nothing due'}
+            {done > 0
+              ? `${got} of ${done} right`
+              : skipped.length > 0
+                ? 'Nothing answered'
+                : 'Nothing due'}
           </h2>
           <p className="text-sm text-zinc-400 max-w-prose">
             {summary && summary.total === 0 ? (
@@ -167,7 +204,10 @@ function DrillBody({ userId }: { userId: string }) {
               <>
                 That is everything due. Each right answer pushes a card further out along{' '}
                 {LADDER.join(', ')} days; a miss brings it back to tomorrow.
+                {skipped.length > 0 && <> {skippedLine} </>}
               </>
+            ) : skipped.length > 0 ? (
+              <>{skippedLine}</>
             ) : (
               <>
                 Everything is scheduled ahead. Come back when something falls due, or add
@@ -192,6 +232,9 @@ function DrillBody({ userId }: { userId: string }) {
               <span className="text-zinc-600">
                 · {got}/{done} right
               </span>
+            )}
+            {skipped.length > 0 && (
+              <span className="text-zinc-600">· {skipped.length} skipped</span>
             )}
           </div>
 
@@ -254,7 +297,7 @@ function DrillBody({ userId }: { userId: string }) {
             )}
 
             {said === null ? (
-              <div className="flex gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <button
                   type="button"
                   onClick={() => answer('works')}
@@ -268,6 +311,21 @@ function DrillBody({ userId }: { userId: string }) {
                   className="px-4 py-2 text-sm rounded-lg border border-rose-800/60 bg-rose-950/30 text-rose-200 hover:bg-rose-900/30 transition-colors"
                 >
                   Breaks it
+                </button>
+
+                {/*
+                  Plain text rather than a third button, because it is not a third
+                  answer. A boundary you are not ready to be asked about is usually a
+                  write-up still being written, and guessing at it would put a real miss
+                  in the record and drag the card back to tomorrow.
+                */}
+                <button
+                  type="button"
+                  onClick={skip}
+                  title="Pass over this one. Nothing is written and it stays due."
+                  className="ml-auto text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+                >
+                  Skip
                 </button>
               </div>
             ) : (
@@ -313,10 +371,7 @@ function DrillBody({ userId }: { userId: string }) {
                 <div className="flex items-center gap-3 flex-wrap">
                   <button
                     type="button"
-                    onClick={() => {
-                      setSaid(null)
-                      setIndex(current => current + 1)
-                    }}
+                    onClick={next}
                     className="px-4 py-2 text-xs rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white transition-colors"
                   >
                     {index + 1 < queue.length ? 'Next' : 'Finish'}

@@ -1467,6 +1467,29 @@ src/
   that matters. The queue is taken once per session and never re-sorts, the rule the game
   drill already follows — the next card must not move while you are looking at this one.
 
+- **A card can be skipped, and a skip writes nothing.** It is not a miss, which would
+  drop the card to the bottom of the ladder, and not a pass, which would push it out: it
+  is *not this one*, usually about a write-up still being written, and the card stays
+  exactly as due as it was. Guessing instead would put a real miss in the record and drag
+  it back to tomorrow, which is the opposite of what was wanted.
+
+  It is plain text beside the two answers rather than a third button, because it is not a
+  third answer. The session counts them and says so at the end — a drill that went silent
+  about them would read as having quietly marked them wrong.
+
+- **The queue deals round the write-ups, and the clump is why skip was asked for.** Every
+  unanswered card is due at 0, so the due order left them all tied and the tie-break was
+  the key — which begins with the pattern id, so all nine of one write-up's boundaries
+  arrived in a block. Taking a pattern apart therefore *punished* you with a run of nine
+  cards about one idea, which is both the dullest way to meet them and the worst, since
+  the second card tells you what the first was about.
+
+  `dueCards` ranks each card within its own pattern and sorts by `due`, then that rank:
+  every pattern's first boundary comes before any pattern's second. It only ever reorders
+  cards that fall **due together** — a card genuinely due earlier still leads, because the
+  schedule is the point of the ladder. Measured on three write-ups of 5, 4 and 4 cards, the
+  queue reads `C A B` four times over and then the one write-up with a fifth.
+
   `drills` lives on the pattern document keyed by point id, like `verdicts` and `drills`
   on a game: a `merge` write on a map field merges keys, so answering one boundary never
   clears the rest.
@@ -2658,6 +2681,31 @@ src/
   day of "5 puzzles" and "1 game" reads 3/6 — counting lines instead would leave a day looking
   untouched until a whole task was finished. A template line ending `×5` sets the count, which is
   why the count has to be at the end: "play 2 rapid 15+10 games" keeps its numbers.
+
+- **A task can also say how it went, which a count cannot.** "Solve the chapter test" is
+  ticked the same whether you scored 6 or 22, and the figure is the whole reason you did
+  it. The day's own note is the wrong home for it: a day holds several tasks and the score
+  belongs to one of them. So `note` is an optional field on the task, and the split is
+  worth stating — **the day's note is the paragraph about the evening, a task's note is a
+  line about that task**, which is why it is a one-line input and not a second textarea.
+
+  **It belongs to this day's instance, not to the task the plan states**, so `blankTask`
+  drops it exactly where `done` is reset: `templateFrom` and `buildWeek`. A score from
+  March sitting on an untouched day in April is worse than no score at all. It *does*
+  travel when a task is dragged to another day, for the same reason — it is the task's.
+
+  `withTaskNote` is the only writer, and it **deletes rather than assigns an empty
+  string**. Two things need that. Firestore rejects a whole document over one `undefined`
+  and `planBody` writes `plan.weeks` straight through; and `dayChanged` compares the
+  working copy against the server's by value, so a writer that stripped empties while the
+  screen kept them would leave a day reading as unsaved for ever — the shape of trap the
+  exercise sheet found when `dirty` became derived.
+
+  The field is revealed by a ✎ beside the ✕, drawn like it and for the same reason: it is
+  something you do to the row occasionally. Whether it starts open is decided **once**, in
+  a lazy initialiser, or it would vanish under your hands as you cleared the last
+  character — the rule a finished week and the review form's tag picker both already
+  follow.
 - **Every plan edit is a function of the current value, at every level.** The page, the week, the
   day and the task all take an updater rather than a finished object. This was got wrong twice and
   each time the symptom was the same: handlers in one React batch all read from the same rendered

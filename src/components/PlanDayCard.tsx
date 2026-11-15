@@ -10,6 +10,7 @@ import {
   isDayComplete,
   reviewedCount,
   taskComplete,
+  withTaskNote,
   type TaskAt,
 } from '@/lib/plan'
 import { hasReview } from '@/lib/review'
@@ -150,15 +151,31 @@ function TaskRow({
   const counted = task.target > 1
   const carried = drag.isCarrying(at)
 
+  /*
+    Open where something is written, and decided once rather than derived every render.
+    Derived, the field would vanish under your hands the moment you cleared the last
+    character of it — which is the rule a finished week and the review form's tag picker
+    both already follow, written down twice because it has been got wrong twice.
+  */
+  const [noting, setNoting] = useState(() => (task.note ?? '').length > 0)
+
   return (
+    /*
+      A column, so the note sits under the row rather than inside it. The drop slot stays
+      on the outside: a task and what you wrote about it are one thing to drag, and
+      `gapAt` measures this element's own middle, so a row with a note is simply a taller
+      target rather than a second one.
+    */
     <div
       {...dropSlot(at.index)}
-      className={`relative flex items-center gap-2.5 group/task transition-opacity ${
+      className={`relative flex flex-col gap-1 group/task transition-opacity ${
         carried ? 'opacity-30' : ''
       }`}
     >
       {insertBefore && <Gap edge="top" />}
       {insertAfter && <Gap edge="bottom" />}
+
+      <div className="flex items-center gap-2.5">
 
       {/*
         The grip is its own control because the row cannot be one: the middle of it is a
@@ -276,6 +293,29 @@ function TaskRow({
         />
       </label>
 
+      {/*
+        Beside the ✕ and drawn like it, because they are the same kind of control: a
+        thing you do to the row occasionally. It stays visible while a note is open, or
+        the one control that closes it would disappear as soon as the pointer left.
+      */}
+      <button
+        type="button"
+        onClick={() => {
+          if (noting) onPatch(current => withTaskNote(current, ''))
+          setNoting(open => !open)
+        }}
+        title={noting ? 'Drop the note' : 'Write how this one went'}
+        aria-label={noting ? 'Drop the note' : 'Write how this one went'}
+        aria-expanded={noting}
+        className={`text-xs transition-colors shrink-0 focus:opacity-100 ${
+          noting
+            ? 'text-zinc-500 hover:text-zinc-200'
+            : 'text-zinc-700 hover:text-zinc-300 opacity-0 group-hover/task:opacity-100'
+        }`}
+      >
+        ✎
+      </button>
+
       <button
         type="button"
         onClick={onRemove}
@@ -285,6 +325,30 @@ function TaskRow({
       >
         ✕
       </button>
+      </div>
+
+      {/*
+        One line, not a box. The day's note is where a paragraph about the evening goes;
+        this is a figure or a phrase about one task — "14/24, missed the rook endings" —
+        and a textarea here would both invite the wrong thing and make a day of five
+        tasks a page.
+
+        Indented to the task's own text rather than the card's edge, so it reads as
+        belonging to the row above it instead of to the day.
+      */}
+      {noting && (
+        <input
+          value={task.note ?? ''}
+          onChange={event => {
+            const note = event.target.value
+            onPatch(current => withTaskNote(current, note))
+          }}
+          autoFocus={(task.note ?? '').length === 0}
+          placeholder="how it went — a score, a chapter, what went wrong"
+          aria-label={`A note on ${task.text.trim() || 'this task'}`}
+          className="ml-[1.625rem] mr-6 bg-transparent outline-none text-xs text-zinc-400 placeholder:text-zinc-700 border-b border-zinc-800 focus:border-zinc-600 transition-colors py-0.5"
+        />
+      )}
     </div>
   )
 }
