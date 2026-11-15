@@ -2685,9 +2685,15 @@ src/
 - **A task can also say how it went, which a count cannot.** "Solve the chapter test" is
   ticked the same whether you scored 6 or 22, and the figure is the whole reason you did
   it. The day's own note is the wrong home for it: a day holds several tasks and the score
-  belongs to one of them. So `note` is an optional field on the task, and the split is
-  worth stating — **the day's note is the paragraph about the evening, a task's note is a
-  line about that task**, which is why it is a one-line input and not a second textarea.
+  belongs to one of them. So `note` is an optional field on the task.
+
+  **It is the day's own box, one level in.** It started as a single line, on the
+  reasoning that a task's note is a figure where the day's is the paragraph — a
+  distinction the writing does not have. What you want to say about the chapter test you
+  just failed is as long as what you want to say about the evening, and a one-line field
+  quietly asks you not to say it. Same control, same `resize-y`; it opens at one row
+  rather than the day's two, which is the only part of that distinction worth keeping,
+  since several can be open on one card and the day has exactly one.
 
   **It belongs to this day's instance, not to the task the plan states**, so `blankTask`
   drops it exactly where `done` is reset: `templateFrom` and `buildWeek`. A score from

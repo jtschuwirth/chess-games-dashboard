@@ -692,12 +692,13 @@ export interface PlanTask {
   /** How many are done, from 0 to `target`. */
   done: number
   /**
-   * How this one went — a score, a chapter, what went wrong.
+   * How this one went.
    *
    * A count says you did the thing and cannot say what came of it: "solve the Yusupov
    * test ×1" is ticked the same whether you scored 6 or 22. The day's own note is the
-   * wrong place for it, because a day holds several tasks and the figure belongs to one
-   * of them.
+   * wrong place for it, because a day holds several tasks and what you have to say
+   * belongs to one of them — and it is as long as it needs to be, the same box the day
+   * gets rather than a line for a figure.
    *
    * It belongs to **this day's instance** of the task, not to the task as the plan
    * states it, so a new week built from the template starts without one — the same reset

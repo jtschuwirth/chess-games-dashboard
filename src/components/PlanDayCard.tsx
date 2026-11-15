@@ -328,25 +328,32 @@ function TaskRow({
       </div>
 
       {/*
-        One line, not a box. The day's note is where a paragraph about the evening goes;
-        this is a figure or a phrase about one task — "14/24, missed the rook endings" —
-        and a textarea here would both invite the wrong thing and make a day of five
-        tasks a page.
+        The day's own box, one level in. It was a single line on the reasoning that a
+        task's note is a figure and the day's is the paragraph — and that was drawing a
+        distinction the writing does not have: what you want to say about the chapter
+        test you just failed is as long as what you want to say about the evening, and a
+        one-line field quietly asks you not to say it.
+
+        So the same control, with the same `resize-y` for when two rows are not enough.
+        It opens at one row rather than the day's two, which is the only part of the
+        distinction worth keeping: several of these can be open on one card, and the day
+        has exactly one.
 
         Indented to the task's own text rather than the card's edge, so it reads as
         belonging to the row above it instead of to the day.
       */}
       {noting && (
-        <input
+        <textarea
           value={task.note ?? ''}
           onChange={event => {
             const note = event.target.value
             onPatch(current => withTaskNote(current, note))
           }}
+          rows={1}
           autoFocus={(task.note ?? '').length === 0}
-          placeholder="how it went — a score, a chapter, what went wrong"
+          placeholder="How this one went"
           aria-label={`A note on ${task.text.trim() || 'this task'}`}
-          className="ml-[1.625rem] mr-6 bg-transparent outline-none text-xs text-zinc-400 placeholder:text-zinc-700 border-b border-zinc-800 focus:border-zinc-600 transition-colors py-0.5"
+          className="ml-[1.625rem] mr-6 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-zinc-200 outline-none focus:border-zinc-600 placeholder:text-zinc-600 resize-y"
         />
       )}
     </div>
