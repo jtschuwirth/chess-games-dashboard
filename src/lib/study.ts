@@ -23,7 +23,7 @@ import type {
 } from '@/types/chess'
 
 export interface StudySection {
-  id: StudySectionId | 'variants' | 'games' | StudyLinkSectionId
+  id: StudySectionId | 'results' | 'patterns' | 'variants' | 'games' | StudyLinkSectionId
   title: string
   /** What belongs here, shown where the section is empty. The section's own prompt. */
   hint: string
@@ -57,6 +57,32 @@ export const STUDY_SECTIONS: StudySection[] = [
     holds: 'ideas',
     sided: true,
     ranked: true,
+  },
+  {
+    /*
+      The ideas themselves, which are not the same thing as a plan.
+
+      A plan is what this opening is trying to do and is only ever read here. A pattern is
+      a write-up with a board, boundaries and a drill behind it, and the whole value of
+      naming one here is that it is the *same* document the patterns finder lists — so
+      this section links rather than describing, and anything you want to train is one
+      press from where you wrote it down.
+    */
+    id: 'patterns',
+    title: 'Patterns here',
+    hint: 'Ideas written up on the patterns page. Link one and it can be drilled there.',
+    holds: 'derived',
+  },
+  {
+    /*
+      What the opening has actually been worth, above the breakdown rather than inside
+      the games list. It is the figure the variants below are each a share of, so it has
+      to be read before them — and it is the one line you fold the whole study down to.
+    */
+    id: 'results',
+    title: 'Results',
+    hint: 'How these games have gone, once any of them have.',
+    holds: 'derived',
   },
   {
     id: 'variants',

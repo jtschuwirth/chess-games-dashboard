@@ -19,10 +19,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    somewhere else, so the Panov is one entry with five routes rather than five entries
    called Panov nested inside each other.
    Each one opens as a **study** at `/openings/{id}`: what the opening is for, the plans on
-   both sides, and then three things read off what is already on disk — the sub-variations
-   under it, your games that reached it, and the patterns naming it. Under those, the
-   lichess studies where the lines are worked out, each playable on a board in the page,
-   and the references it came from. Writing is behind an Edit switch, saved by a button,
+   both sides, and the patterns you have written up for it — linked from here, so one press
+   opens the board and the drill behind it. Then what has actually happened, read off what
+   is already on disk: how the games have gone, with the same green/grey/red bar a
+   sub-variation carries, then the sub-variations under it and the games themselves. Under
+   those, the lichess studies where the lines are worked out, each playable on a board in
+   the page, and the references it came from. Writing is behind an Edit switch, saved by a button,
    and what is unsaved is kept on the device.
 4. `/dashboard` — results, openings, clock and rating; what went wrong moved to
    `/mistakes`, which the page links to carrying the slice. Sync games sits at the top, folded, so bringing in new games does not
@@ -1192,6 +1194,51 @@ src/
   what belongs in it. Adding one is a row plus a panel; it is deliberately short, because
   what makes a study standard is the *shape of an idea* — a side, a rank, the pattern it
   belongs to, the games showing it — rather than eight boxes left empty.
+
+  The order reads as three groups: what you know (overview, plans, patterns), what
+  happened (results, variants, games), and where it is written up elsewhere (lines,
+  references). A check asserts the whole list rather than leaving it to a diff, because
+  the order *is* the page.
+
+- **What the opening has been worth is its own section, above the breakdown.** The three
+  splits sat inside **Your games here**, under the list they are a summary of and below
+  the variants table that breaks the same figure down — so the parent's number was read
+  after its children's, and only by opening a panel that is folded by default.
+
+  **Results** carries it instead, and its `meta` is the whole point: a panel's meta stays
+  visible while it is folded, so the line the study folds down to is `12 games · 54%` and
+  the green/grey/red bar. It is **the variants' own bar**, the same four spans, because a
+  parent and its children drawn on two different scales is the one thing this panel must
+  not do — the row below says 2 games · 50% with a bar, and now the heading above says the
+  same about the whole line.
+
+  Your games here is then what its name says: the list, nothing else. Its meta drops the
+  score and keeps the count, since the score is upstairs and printing it twice invites the
+  question of whether the two are the same figure.
+
+- **Patterns are a section, and the link has one home.** They were pills in the **Plans**
+  panel's `meta`, which made the ideas you have actually written up a footnote to the ones
+  you have only described — and gave them nowhere to be edited from, so the only way to
+  name an opening on a pattern was to open the pattern.
+
+  Now a section under Plans, with a row each: the kind as a badge and `describedBy` in the
+  finder's own words via `DESCRIPTION_LABEL`, so a row here and a chip there say the same
+  thing. Every row opens the document the patterns page holds, which is the whole reason
+  this links rather than describing — the board, the boundaries and the drill are already
+  there.
+
+  **A study stores no list of patterns.** The link has always been `openingIds` on the
+  pattern, so this is the pattern form's own control reached from the other end; a field
+  here would be two answers to one question, on the one page whose whole design is that
+  nothing is stored twice. `setPatternOpenings` writes that one field — deliberately not
+  `updatePattern`, which takes a whole body and clears every optional field the body did
+  not set, so handing it a copy read when the page loaded would quietly drop whatever had
+  been written to that pattern since.
+
+  **It therefore saves at once**, which is the one control on this page that does not wait
+  for Save, and it says so in a line. The alternative was to hold pending links in the
+  draft and write N pattern documents on Save — which buys a consistency nobody asked for
+  and loses the one that matters, the screen agreeing with the pattern it is describing.
 
 - **References are cards; line studies are boards.** They are two sections rather than one
   because they are reached for at different moments. A reference is a video or an article:

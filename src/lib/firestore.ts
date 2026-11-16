@@ -640,6 +640,29 @@ export async function savePatternDrill(
   )
 }
 
+/**
+ * Which openings a pattern names, written from the opening's side.
+ *
+ * The link has always lived on the pattern — `openingIds` — and the pattern form has
+ * always been able to set it. The study page is the other end of the same link, and it
+ * must not become a second place that stores it: a study holding its own list of
+ * patterns would be two answers to one question, which is the thing this page exists to
+ * avoid.
+ *
+ * So it writes the pattern, and only this field. Not `updatePattern`, which takes a whole
+ * body and clears every optional field the body did not set — handing it a copy read when
+ * the page loaded would quietly drop whatever had been written to that pattern since. An
+ * array field is replaced wholesale by an update, which is what is wanted here and is the
+ * same bargain `saveTagGroups` states.
+ */
+export async function setPatternOpenings(
+  userId: string,
+  patternId: string,
+  openingIds: string[],
+): Promise<void> {
+  await updateDoc(doc(db, 'users', userId, PATTERNS, patternId), { openingIds })
+}
+
 export async function updatePattern(
   userId: string,
   patternId: string,

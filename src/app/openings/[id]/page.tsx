@@ -3,16 +3,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
+import Chip from '@/components/Chip'
 import GameRow from '@/components/GameRow'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import Panel from '@/components/Section'
 import StatBlockCard from '@/components/StatBlockCard'
 import StudyIdeaList from '@/components/StudyIdeaList'
 import StudyLinks from '@/components/StudyLinks'
+import { DESCRIPTION_LABEL, KIND_BADGE, KIND_LABEL, describedBy } from '@/lib/pattern'
 import { formatMoment } from '@/lib/days'
 import { DEFAULT_FILTERS } from '@/lib/dashboard-filters'
 import { clearDraft, draftSuperseded, readDraft, writeDraft } from '@/lib/draft'
-import { getGames, getOpenings, getPatterns, saveStudy } from '@/lib/firestore'
+import {
+  getGames,
+  getOpenings,
+  getPatterns,
+  setPatternOpenings,
+  saveStudy,
+} from '@/lib/firestore'
 import {
   buildOpeningTree,
   findPath,
@@ -315,6 +323,40 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
     [patterns, openingId],
   )
 
+  /**
+   * Link a pattern to this opening, or take the link off.
+   *
+   * It writes the **pattern** rather than the study, because that is where the link has
+   * always lived — so this is the pattern form's own control reached from the other end,
+   * and there is no second list to disagree with it.
+   *
+   * It therefore saves at once, which is the one way this page's Edit switch does not
+   * behave like the rest of it: everything else here is a draft until you press Save. The
+   * alternative was to hold pending links in the draft and write N pattern documents on
+   * Save, which buys a consistency nobody asked for and loses the one that matters — the
+   * screen agreeing with the pattern it is describing.
+   */
+  const [linking, setLinking] = useState<string | null>(null)
+
+  async function togglePattern(pattern: PatternRecord) {
+    const next = pattern.openingIds.includes(openingId)
+      ? pattern.openingIds.filter(id => id !== openingId)
+      : [...pattern.openingIds, openingId]
+
+    setLinking(pattern.id)
+    try {
+      await setPatternOpenings(userId, pattern.id, next)
+      // the page's own copy, so the list re-reads without a round trip
+      setPatterns(current =>
+        current.map(entry => (entry.id === pattern.id ? { ...entry, openingIds: next } : entry)),
+      )
+    } catch (caught) {
+      setError(errorText(caught, 'Could not change that link.'))
+    } finally {
+      setLinking(null)
+    }
+  }
+
   if (error && openings === null && !missing) {
     return <LoadError message={error} onRetry={() => setReload(n => n + 1)} />
   }
@@ -461,26 +503,13 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
         />
       </Panel>
 
-      <Panel
-        id={panelId('plans')}
-        title={section('plans').title}
-        meta={
-          patternsHere.length > 0 ? (
-            <span className="flex flex-wrap items-center gap-1">
-              {patternsHere.map(pattern => (
-                <Link
-                  key={pattern.id}
-                  href={`/patterns/${pattern.id}`}
-                  title="A pattern that names this opening"
-                  className="px-1.5 py-0.5 rounded border border-zinc-800 bg-zinc-950/60 text-[11px] text-zinc-400 hover:text-zinc-100 hover:border-zinc-600 transition-colors"
-                >
-                  {pattern.name}
-                </Link>
-              ))}
-            </span>
-          ) : undefined
-        }
-      >
+      {/*
+        The pattern pills used to hang off this panel's `meta`, which made them a
+        footnote to the plans and gave them nowhere to be edited from. They are a section
+        of their own below, where a row can say what kind of pattern it is and how far it
+        has been taken apart.
+      */}
+      <Panel id={panelId('plans')} title={section('plans').title}>
         <div className="grid lg:grid-cols-2 gap-x-6 gap-y-5">
           {sides.map(side => (
             <div key={side} className="flex flex-col gap-4">
@@ -526,6 +555,129 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
             </div>
           ))}
         </div>
+      </Panel>
+
+      {/*
+        The ideas themselves, under the plans because that is the order you write them in:
+        what the opening is trying to do, then the handful of patterns that do it.
+
+        Every row is the document the patterns page holds, so opening one gets the board,
+        the boundaries and the drill — which is the whole reason this links rather than
+        describing.
+      */}
+      <Panel
+        id={panelId('patterns')}
+        title={section('patterns').title}
+        meta={
+          patternsHere.length > 0
+            ? `${patternsHere.length} linked`
+            : undefined
+        }
+        actions={
+          <Link href="/patterns" className="text-xs text-zinc-500 hover:text-zinc-200">
+            All patterns →
+          </Link>
+        }
+      >
+        {patternsHere.length === 0 && !editing ? (
+          <p className="text-sm text-zinc-600">{section('patterns').hint}</p>
+        ) : (
+          patternsHere.length > 0 && (
+            <div className="flex flex-col divide-y divide-zinc-800 border border-zinc-800 rounded-xl overflow-hidden">
+              {patternsHere.map(pattern => (
+                <Link
+                  key={pattern.id}
+                  href={`/patterns/${pattern.id}`}
+                  className="flex items-center gap-3 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors"
+                >
+                  <span
+                    className={`shrink-0 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border ${KIND_BADGE[pattern.kind]}`}
+                  >
+                    {KIND_LABEL[pattern.kind]}
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm text-zinc-200 truncate">
+                    {pattern.name}
+                  </span>
+                  {/* the finder's own words, so a row here and a chip there match */}
+                  <span className="shrink-0 text-xs text-zinc-600">
+                    {DESCRIPTION_LABEL[describedBy(pattern)]}
+                  </span>
+                </Link>
+              ))}
+            </div>
+          )
+        )}
+
+        {editing && (
+          <div className="flex flex-col gap-2">
+            <span className="text-xs text-zinc-600">
+              Pressing one writes the pattern straight away, not with the study.
+            </span>
+            {patterns.length === 0 ? (
+              <p className="text-sm text-zinc-600">
+                Nothing written up yet — the patterns page is where one starts.
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {patterns.map(pattern => {
+                  const on = pattern.openingIds.includes(openingId)
+                  return (
+                    <Chip
+                      key={pattern.id}
+                      active={on}
+                      disabled={linking !== null}
+                      onClick={() => togglePattern(pattern)}
+                      title={on ? 'Take this link off' : 'Name this opening on that pattern'}
+                    >
+                      {pattern.name}
+                    </Chip>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
+      </Panel>
+
+      {/*
+        What the opening has been worth, above the breakdown rather than buried in the
+        games list. The variants below are each a share of this, so it has to be read
+        first — and folded, the line it leaves is the one thing you came to check.
+      */}
+      <Panel
+        id={panelId('results')}
+        title={section('results').title}
+        meta={
+          games === null ? (
+            'reading…'
+          ) : slice.length > 0 ? (
+            <span className="flex items-center gap-2">
+              <span className="tabular-nums">
+                {slice.length} game{slice.length === 1 ? '' : 's'} · {split.overall.score}%
+              </span>
+              {/* the variants' own bar, so the parent and its children read on one scale */}
+              <span className="flex h-1.5 w-20 rounded-full overflow-hidden bg-zinc-800">
+                <span className="bg-emerald-500" style={{ width: `${split.overall.winPct}%` }} />
+                <span className="bg-zinc-500" style={{ width: `${split.overall.drawPct}%` }} />
+                <span className="bg-red-500" style={{ width: `${split.overall.lossPct}%` }} />
+              </span>
+            </span>
+          ) : undefined
+        }
+      >
+        {games === null ? (
+          <p className="text-sm text-zinc-600 flex items-center gap-2">
+            <Spinner size="w-3.5 h-3.5" /> Reading your games…
+          </p>
+        ) : slice.length === 0 ? (
+          <p className="text-sm text-zinc-600">{section('results').hint}</p>
+        ) : (
+          <div className="grid sm:grid-cols-3 gap-3">
+            <StatBlockCard label="Overall" stats={split.overall} />
+            <StatBlockCard label={COLOR_LABEL.white} stats={split.white} />
+            <StatBlockCard label={COLOR_LABEL.black} stats={split.black} />
+          </div>
+        )}
       </Panel>
 
       <Panel
@@ -590,7 +742,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
           games === null
             ? 'reading…'
             : slice.length > 0
-              ? `${slice.length} game${slice.length === 1 ? '' : 's'} · ${split.overall.score}%`
+              ? `${slice.length} game${slice.length === 1 ? '' : 's'}`
               : undefined
         }
         actions={
@@ -610,25 +762,18 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
             Nothing here yet — {section('games').hint.toLowerCase()}
           </p>
         ) : (
-          <>
-            <div className="grid sm:grid-cols-3 gap-3">
-              <StatBlockCard label="Overall" stats={split.overall} />
-              <StatBlockCard label={COLOR_LABEL.white} stats={split.white} />
-              <StatBlockCard label={COLOR_LABEL.black} stats={split.black} />
-            </div>
-
-            <div className="-mx-5 flex flex-col divide-y divide-zinc-800 border-y border-zinc-800">
-              {shown.map(game => (
-                <GameRow
-                  key={game.id}
-                  userId={userId}
-                  game={game}
-                  route={routesByGame.get(game.id) ?? []}
-                  href={`/games/${game.id}?opening=${openingId}`}
-                />
-              ))}
-            </div>
-          </>
+          /* just the list: the three splits are the Results panel's, above the variants */
+          <div className="-mx-5 flex flex-col divide-y divide-zinc-800 border-y border-zinc-800">
+            {shown.map(game => (
+              <GameRow
+                key={game.id}
+                userId={userId}
+                game={game}
+                route={routesByGame.get(game.id) ?? []}
+                href={`/games/${game.id}?opening=${openingId}`}
+              />
+            ))}
+          </div>
         )}
       </Panel>
 
