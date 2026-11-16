@@ -7,7 +7,7 @@ import {
   dayProgress,
   formatDay,
   gamesOn,
-  isDayComplete,
+  isDaySettled,
   reviewedCount,
   taskComplete,
   taskMissed,
@@ -451,7 +451,17 @@ export default function PlanDayCard({
    * last box of a day would fold the card away under your hand, which is the same trap
    * the review form's tag picker fell into when it derived "open" from "has no tags yet".
    */
-  const [open, setOpen] = useState(() => isToday || !isDayComplete(day))
+  /*
+    Folded on arrival once there is nothing left to write down — which is *settled*
+    rather than complete. A day where you did three things and deliberately skipped the
+    fourth never reads `7/7`, so under completeness it stayed open for ever, sitting
+    among the days still asking something of you when it was the one day that was not.
+
+    Decided once, in a lazy initialiser: derived every render it would fold away under
+    your hands as you marked the last task, which is the rule the review form's tag
+    picker wrote down.
+  */
+  const [open, setOpen] = useState(() => isToday || !isDaySettled(day))
 
   const { done, total } = dayProgress(day)
   const played = useMemo(() => gamesOn(games, date), [games, date])

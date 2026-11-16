@@ -154,6 +154,7 @@ src/
 │                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanTemplateCard,
+│                               # TemplateEditor,
 │                               # PlanForm, PlanRatings,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
 │                               # GameShapePanel, ClockPanel, ThinkPanel, ConfigNotice,
@@ -2683,6 +2684,29 @@ src/
   anything. It is folded by default and sits **above** the weeks, because it is what they
   are made of: the thing you set up once, before there is anything to tick.
 
+  **A new plan is a template and nothing else.** The creation form used to take one list
+  of tasks and copy it onto every day of every week — which is precisely what the
+  template replaced, and a plan built that way arrived with all eighty-four days already
+  written, nothing inheriting and the template with nothing left to do. It sets the
+  template up instead, so a new plan starts in the state a plan should start in: the week
+  says what to do and not one day has been said anything about.
+
+  `TemplateEditor` is **one component used at both moments**, by the form and by the
+  plan's own card, because they are the same job before and after the plan exists — two
+  copies would be two places for the `×5` rule and the JSON shape to drift. It is also
+  what puts the JSON box in the form, so a week can be pasted in before there is a plan
+  to paste it into.
+
+  The weekday labels follow whatever start date is in force rather than being fixed:
+  the template is by *position*, and position 0 is only reliably the same weekday
+  because the weeks are consecutive seven-day blocks from `startDate` — so a plan
+  starting on a Wednesday has to be set up against its own Wednesday.
+
+  `templateFrom` returns **nothing** on a templated plan, so `+ Add a week` adds seven
+  empty days. Copying the last week's tasks in would materialise all seven days of a
+  week nobody has reached yet, and the template would stop reaching them. A plan with no
+  template keeps the old answer and behaves exactly as it did.
+
   `normalizeTemplate` pads a short one to seven and **drops an empty one entirely**, so a
   plan with nothing in its template has no field — which is what lets days stop
   inheriting the moment the last task goes, and what keeps `planBody` from writing seven
@@ -2746,6 +2770,16 @@ src/
   It still counts against the day's progress, because it was still asked for, and
   `blankTask` drops it where `done` is reset: a week copied from the template starts with
   nothing said about it.
+
+  **A day you have said everything about folds on arrival**, which is `isDaySettled` and
+  not `isDayComplete`. The two answer different questions and the distinction is the
+  whole point of having both: a Tuesday where you did three things and deliberately
+  skipped the fourth will never read `7/7`, so under completeness it stayed open for
+  ever — sitting among the days still asking something of you when it was the one day
+  that was not. Progress goes on meaning how much of the plan you did; the fold asks
+  whether there is anything left to write down. Decided once in a lazy initialiser, like
+  every other fold here, or the card would close under your hand as you marked the last
+  task.
 
 - **A plan is weeks of days, and the weeks are the unit you work in.** One plan covers months —
   "ChessGoals Yusupov Intermediate" is a dozen weeks — so a flat list of days is a page you scroll

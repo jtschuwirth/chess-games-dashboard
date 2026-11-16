@@ -2,7 +2,10 @@
 
 import { useState } from 'react'
 import Chip from '@/components/Chip'
-import { buildPlan, startOfDay } from '@/lib/plan'
+import TemplateEditor from '@/components/TemplateEditor'
+import { formatDay } from '@/lib/days'
+import { buildPlan, dateAt, parseTaskLine, startOfDay } from '@/lib/plan'
+import type { PlanTask, PlanTemplateDay } from '@/types/chess'
 
 const INPUT =
   'bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600'
@@ -17,11 +20,27 @@ function dateValue(ms: number): string {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+/** The same four tasks every day, which is what a plan looked like before templates. */
+function startingWeek(): PlanTemplateDay[] {
+  const tasks = ['daily game', 'solve puzzles ×5', 'play rapid 15+10 games ×2', 'analyse the games']
+    .map(parseTaskLine)
+    .filter((task): task is PlanTask => task !== null)
+
+  return Array.from({ length: 7 }, () => ({ tasks: tasks.map(task => ({ ...task })) }))
+}
+
 /**
- * Starting a plan. The tasks are typed once and copied onto every day, because a week
- * of practice is nearly the same every day and filling four fields seven times is the
- * kind of friction that stops a plan being written at all. Every day is editable
- * afterwards.
+ * Starting a plan: a name, a start date, how long, and **the template week**.
+ *
+ * It used to be one list of tasks copied onto every day of every week, which is what
+ * the template replaced — and a plan built that way arrived with all eighty-four days
+ * already written, so nothing inherited and the template had nothing left to do.
+ * Setting the template up here instead means a new plan starts in the state a plan
+ * should start in: the week says what to do, and not one day has been said anything
+ * about.
+ *
+ * It is the same editor the plan's own card uses, so a week can be typed out or pasted
+ * in as JSON before the plan exists — which is the other half of why it belongs here.
  */
 export default function PlanForm({
   busy,
@@ -35,9 +54,7 @@ export default function PlanForm({
   const [name, setName] = useState('')
   const [start, setStart] = useState(() => dateValue(Date.now()))
   const [weeks, setWeeks] = useState(4)
-  const [tasks, setTasks] = useState(
-    'daily game\nsolve puzzles ×5\nplay rapid 15+10 games ×2\nanalyse the games',
-  )
+  const [template, setTemplate] = useState<PlanTemplateDay[] | undefined>(startingWeek)
   const [error, setError] = useState<string | null>(null)
 
   function submit() {
@@ -60,9 +77,24 @@ export default function PlanForm({
         name: trimmed,
         startDate: startOfDay(new Date(year, month - 1, day).getTime()),
         weeks,
-        tasks: tasks.split('\n'),
+        template,
       }),
     )
+  }
+
+  /**
+   * What to call each position in the week, read off the date as it is picked.
+   *
+   * The whole point of the template being by position is that position 0 is always the
+   * same weekday — so the labels follow the start date rather than being fixed, or a
+   * plan starting on a Wednesday would be set up against somebody else's Monday.
+   */
+  function labelFor(index: number): string {
+    const [year, month, day] = start.split('-').map(Number)
+    if (!year || !month || !day) return ['1st', '2nd', '3rd', '4th', '5th', '6th', '7th'][index]
+
+    const first = startOfDay(new Date(year, month - 1, day).getTime())
+    return formatDay(dateAt({ startDate: first }, index)).split(' ')[0]
   }
 
   return (
@@ -108,14 +140,13 @@ export default function PlanForm({
 
       <div className="flex flex-col gap-1.5">
         <span className="text-xs uppercase tracking-wide text-zinc-500">
-          Each day, to start with
+          The template week
+          <span className="normal-case tracking-normal text-zinc-700">
+            {' '}
+            — what each day asks for, on every week
+          </span>
         </span>
-        <textarea
-          value={tasks}
-          onChange={event => setTasks(event.target.value)}
-          rows={5}
-          className={`${INPUT} resize-y`}
-        />
+        <TemplateEditor template={template} labelFor={labelFor} onChange={setTemplate} />
       </div>
 
       {error && <p className="text-xs text-red-400">{error}</p>}

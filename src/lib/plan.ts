@@ -508,6 +508,24 @@ export function isDayComplete(day: PlanDay): boolean {
   return total > 0 && done === total
 }
 
+/**
+ * A day you have finished *with*: everything on it is either done or marked not done.
+ *
+ * Distinct from complete, and the distinction is the point. A Tuesday where you did
+ * three things and deliberately skipped the fourth will never read `7/7`, so under the
+ * completeness rule it stayed open for ever — among the days still asking something of
+ * you, which it is not. Marking a task is a thing you *said*, and a day you have said
+ * everything about is done with whatever its figure reads.
+ *
+ * It is what the card folds on, while `isDayComplete` goes on meaning what it says,
+ * because the two answer different questions: one is how much of the plan you did, the
+ * other is whether there is anything left to write down.
+ */
+export function isDaySettled(day: PlanDay): boolean {
+  if (day.tasks.length === 0) return false
+  return day.tasks.every(task => taskComplete(task) || taskMissed(task))
+}
+
 /* --------------------------------------------------------------------- today */
 
 export interface PlanPosition {
@@ -591,29 +609,50 @@ export function buildWeek(tasks: PlanTask[], days = DAYS_PER_WEEK): PlanWeek {
 }
 
 /**
- * A plan from a template: the same tasks on every day of every week, to be edited from
- * there. Typing four tasks across twenty-one days by hand is the kind of friction that
- * stops a plan being written at all.
+ * A new plan: a template week, and weeks of days with nothing on them.
+ *
+ * It used to copy one list of tasks onto all eighty-four days, which is what the
+ * template replaced — so a plan written that way arrived already materialised, every
+ * day of it stored and none of them inheriting. Now the days are empty and the template
+ * is what they are shown through, which is the state a plan should start in: nothing
+ * has been said about any of it yet.
+ *
+ * A plan created with no template is perfectly legal and is simply empty. That is the
+ * honest reading of having typed nothing in, and the template can be filled in later.
  */
 export function buildPlan(input: {
   name: string
   startDate: number
   weeks: number
-  tasks: string[]
+  template?: PlanTemplateDay[]
 }): NewStudyPlan {
-  const tasks = input.tasks.map(parseTaskLine).filter((task): task is PlanTask => task !== null)
   const weeks = Math.max(1, Math.min(Math.round(input.weeks), MAX_PLAN_WEEKS))
+  const template = normalizeTemplate(input.template)
 
-  return {
+  const plan: NewStudyPlan = {
     name: input.name.trim(),
     startDate: startOfDay(input.startDate),
-    weeks: Array.from({ length: weeks }, () => buildWeek(tasks)),
+    weeks: Array.from({ length: weeks }, () => buildWeek([])),
     createdAt: Date.now(),
   }
+
+  if (template) plan.template = template
+  return plan
 }
 
-/** What a new week should start with: whatever the last one asks for, uncounted. */
-export function templateFrom(plan: Pick<StudyPlan, 'weeks'>): PlanTask[] {
+/**
+ * What a new week should start with.
+ *
+ * Nothing at all where the plan has a template, because a day with nothing of its own
+ * is shown through it — so copying the last week's tasks in would materialise all seven
+ * days of a week nobody has reached yet, and the template would stop reaching them.
+ *
+ * Without one it is the old answer: whatever the last week asks for, uncounted. A plan
+ * written before templates existed goes on behaving exactly as it did.
+ */
+export function templateFrom(plan: Pick<StudyPlan, 'weeks' | 'template'>): PlanTask[] {
+  if (plan.template) return []
+
   const last = plan.weeks[plan.weeks.length - 1]
   const day = last?.days.find(entry => entry.tasks.length > 0)
   return (day?.tasks ?? []).map(blankTask)
