@@ -56,7 +56,32 @@ export function withTaskNote(task: PlanTask, note: string): PlanTask {
  * from March sitting on an untouched day in April is worse than no score at all.
  */
 export function blankTask(task: PlanTask): PlanTask {
-  return withTaskNote({ ...task, done: 0 }, '')
+  const next = withTaskNote({ ...task, done: 0 }, '')
+  delete next.missed
+  return next
+}
+
+/**
+ * Said not to have happened, or no longer said so.
+ *
+ * Deleted rather than set false, the rule every optional field here follows — and it
+ * clears `done` on the way, because a task cannot be both finished and skipped and the
+ * screen would have to pick one to draw.
+ */
+export function withMissed(task: PlanTask, missed: boolean): PlanTask {
+  const next = { ...task }
+  if (missed) {
+    next.missed = true
+    next.done = 0
+  } else {
+    delete next.missed
+  }
+  return next
+}
+
+/** Marked as not done — distinct from a task nobody has touched. */
+export function taskMissed(task: PlanTask): boolean {
+  return task.missed === true
 }
 
 /** A task from either shape: `done: true` was one of one, `done: false` none of one. */
@@ -69,14 +94,36 @@ function normalizeTask(raw: PlanTask): PlanTask {
   }
 
   const target = Math.max(1, Math.round(raw.target ?? 1))
-  return withTaskNote(
-    {
-      text: raw.text ?? '',
-      target,
-      done: Math.max(0, Math.min(Math.round(legacy.done ?? 0), target)),
-    },
-    note,
+  return withMissed(
+    withTaskNote(
+      {
+        text: raw.text ?? '',
+        target,
+        done: Math.max(0, Math.min(Math.round(legacy.done ?? 0), target)),
+      },
+      note,
+    ),
+    raw.missed === true,
   )
+}
+
+/**
+ * The template in the shape the code expects: one list per day, however short.
+ *
+ * Padded to a full week rather than refused, so the editor always draws seven rows and
+ * a plan whose template was written when a week was shorter does not lose the days it
+ * did have. A template of nothing at all is dropped entirely — the field is absent
+ * rather than seven empty lists, which is what `planBody` must be able to leave out.
+ */
+export function normalizeTemplate(raw: unknown): PlanTask[][] | null {
+  if (!Array.isArray(raw)) return null
+
+  const days = Array.from({ length: DAYS_PER_WEEK }, (unused, index) => {
+    const entry = raw[index]
+    return Array.isArray(entry) ? entry.map(normalizeTask).filter(task => task.text.trim()) : []
+  })
+
+  return days.some(day => day.length > 0) ? days : null
 }
 
 /**
@@ -94,7 +141,8 @@ export function normalizePlan(raw: StudyPlan): StudyPlan {
     ? raw.weeks
     : [{ name: '', days: Array.isArray(legacy.days) ? legacy.days : [] }]
 
-  return {
+  const template = normalizeTemplate(raw.template)
+  const next: StudyPlan = {
     ...raw,
     weeks: weeks.map(week => ({
       name: week.name ?? '',
@@ -104,16 +152,26 @@ export function normalizePlan(raw: StudyPlan): StudyPlan {
       })),
     })),
   }
+
+  // absent rather than seven empty lists, so `planBody` has nothing to write
+  if (template) next.template = template
+  else delete next.template
+
+  return next
 }
 
 /** The stored shape of a plan, without the document id Firestore keeps separately. */
 export function planBody(plan: StudyPlan): NewStudyPlan {
-  return {
+  const body: NewStudyPlan = {
     name: plan.name,
     startDate: plan.startDate,
     weeks: plan.weeks,
     createdAt: plan.createdAt,
   }
+
+  // set or left out, never assigned undefined — one of those rejects the whole document
+  if (plan.template) body.template = plan.template
+  return body
 }
 
 /* --------------------------------------------------------------------- dates */
@@ -237,6 +295,59 @@ export function weekRatingWindow(
 export interface Progress {
   done: number
   total: number
+}
+
+/* ------------------------------------------------------------- the template */
+
+/** What the template asks for at this position in a week, which may be nothing. */
+export function templateFor(
+  plan: Pick<StudyPlan, 'template'>,
+  dayIndex: number,
+): PlanTask[] {
+  return plan.template?.[dayIndex] ?? []
+}
+
+/**
+ * Whether a day is still being shown through the template rather than its own tasks.
+ *
+ * One rule, and it is the whole mechanism: **a day with no tasks of its own inherits**.
+ * No flag, no tombstones, nothing stored to say which of the two a day is — so a day
+ * cannot get into a state where the screen and the document disagree about whether it
+ * has been filled in.
+ *
+ * The honest consequence is that clearing every task off a real day puts the template
+ * back. That is the right answer far more often than it is the wrong one: a day you
+ * have emptied is a day you have nothing to say about, which is exactly what an
+ * untouched day is.
+ */
+export function inheritsTemplate(day: PlanDay, template: PlanTask[]): boolean {
+  return day.tasks.length === 0 && template.length > 0
+}
+
+/**
+ * A day as the screen shows it: its own tasks, or the template's where it has none.
+ *
+ * This is also where a day becomes real, which is why there is no separate step for it.
+ * Every edit is applied to the **resolved** day and written back, so the first thing you
+ * say about a Monday writes that Monday — the template's tasks and your change together
+ * — and every control the card already had goes on working on an ordinary day.
+ */
+export function resolveDay(day: PlanDay, template: PlanTask[]): PlanDay {
+  if (!inheritsTemplate(day, template)) return day
+  return { ...day, tasks: template.map(blankTask) }
+}
+
+/** The plan with every day of it resolved, for the readers that measure the whole thing. */
+export function resolvePlan(plan: StudyPlan): StudyPlan {
+  if (!plan.template) return plan
+
+  return {
+    ...plan,
+    weeks: plan.weeks.map(week => ({
+      ...week,
+      days: week.days.map((day, index) => resolveDay(day, templateFor(plan, index))),
+    })),
+  }
 }
 
 /** A task is finished when every one of it is. */
@@ -444,10 +555,28 @@ export function wouldMoveTask(from: TaskAt, to: TaskAt): boolean {
 export function moveTask(plan: StudyPlan, from: TaskAt, to: TaskAt): StudyPlan {
   if (!wouldMoveTask(from, to)) return plan
 
-  const source = plan.weeks[from.week]?.days[from.day]
-  const target = plan.weeks[to.week]?.days[to.day]
-  const task = source?.tasks[from.index]
-  if (!source || !target || !task) return plan
+  /*
+    Both days are read **resolved**, because the rows the pointer was aimed at are the
+    ones the screen drew — and on a day still showing the template those are not in the
+    document at all. Unresolved, dragging out of such a day would find no task at the
+    index and dragging into one would append to an empty list, dropping everything the
+    template was putting there.
+
+    Resolving them is also what makes both days real, which is correct: a task moved off
+    Monday and onto Tuesday is something said about each of them.
+  */
+  const source = resolveDay(
+    plan.weeks[from.week]?.days[from.day] ?? { tasks: [], note: '' },
+    templateFor(plan, from.day),
+  )
+  const target = resolveDay(
+    plan.weeks[to.week]?.days[to.day] ?? { tasks: [], note: '' },
+    templateFor(plan, to.day),
+  )
+
+  const task = source.tasks[from.index]
+  if (!plan.weeks[from.week]?.days[from.day] || !plan.weeks[to.week]?.days[to.day]) return plan
+  if (!task) return plan
 
   const sameDay = from.week === to.week && from.day === to.day
   const gap = Math.max(0, Math.min(to.index, target.tasks.length))
@@ -466,7 +595,8 @@ export function moveTask(plan: StudyPlan, from: TaskAt, to: TaskAt): StudyPlan {
           const giveTo = w === to.week && d === to.day
           if (!takeFrom && !giveTo) return day
 
-          let tasks = day.tasks
+          // the resolved copies, so a day that was showing the template is written whole
+          let tasks = (takeFrom ? source : target).tasks
           if (takeFrom) tasks = tasks.filter((_, i) => i !== from.index)
           if (giveTo) tasks = [...tasks.slice(0, at), task, ...tasks.slice(at)]
           return { ...day, tasks }

@@ -79,8 +79,13 @@ win/draw/loss splits for all games or for the games that followed one of those l
    soonest. The board says whose move it is and you can push the pieces around on it to
    work the answer out.
 8. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
-   of days carrying the same tasks, editable from there. Count things off — three of five
-   puzzles — write a note on the day, and see the games you played that day beside it. A
+   of days carrying the same tasks, editable from there. Above the weeks sits a **template
+   week**: what each weekday asks for, shown on every day at that position and stored on
+   none of them until you touch one — tick, change or mark a task and that day is written
+   with the template's tasks as they stand, so a plan is built over the template rather
+   than typed out eighty-four times. Count things off — three of five
+   puzzles — mark one as **not done** when the evening disappeared, write a note on the
+   day, and see the games you played that day beside it. A
    task can be picked up by the grip beside it and dropped somewhere else: further up its
    own day, or onto another day entirely, including a folded one and one in another open
    week.
@@ -148,7 +153,8 @@ src/
 │                               # EnginePanel, EngineMode, PatternForm, TagGroupsPanel,
 │                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
-│                               # PlanDayCard, PlanWeekCard, PlanForm, PlanRatings,
+│                               # PlanDayCard, PlanWeekCard, PlanTemplateCard,
+│                               # PlanForm, PlanRatings,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
 │                               # GameShapePanel, ClockPanel, ThinkPanel, ConfigNotice,
 │                               # HomeNav, RatingPanel, SignInButton
@@ -2639,6 +2645,64 @@ src/
   removes the question of which number is which. (`GameRow` still uses the locale version and is
   the one place left that could trip on this — it only renders after a client-side read, so the
   server never emits those rows.)
+- **One week says what every week asks for, and no day stores it until it is touched.**
+  A plan is the same handful of tasks on most days — two rapid games on a Monday, a
+  chapter on a Tuesday — and typing them into eighty-four days is why a plan does not get
+  written down. `template` on the plan is one list per **position in a week**, and every
+  day draws its tasks from the entry at its own index.
+
+  By position rather than by calendar weekday, because a plan's weeks are consecutive
+  seven-day blocks from `startDate`, so position 0 is always the same weekday and the
+  position is what the plan's shape is already counted in. The editor reads the weekday
+  off `startDate` and prints `MON`, which is how you think about it without the data
+  having to know.
+
+  **One rule carries the whole thing: a day with no tasks of its own inherits.** No flag,
+  no tombstones, nothing stored to say which of the two a day is — so the screen and the
+  document cannot get into a state where they disagree about whether a day has been
+  filled in. The honest consequence is that clearing the last task off a real day puts
+  the template back, and that is right far more often than it is wrong: a day you have
+  emptied is a day you have nothing to say about, which is what an untouched day is.
+
+  **A day becomes real by being edited, and there is no separate step for it.**
+  `PlanWeekCard` hands the card `resolveDay(day, template)` and applies whatever comes
+  back *to that same resolved day* — so the first thing you say about a Monday writes the
+  Monday, the template's other tasks included, and every control the card already had
+  goes on working on an ordinary day. Nothing in `PlanDayCard` knows about any of it
+  except the word `template` in the header, which is the one thing the controls cannot
+  say, since they behave identically either way.
+
+  **`moveTask` resolves both ends**, because the rows the pointer was aimed at are the
+  ones the screen drew. Unresolved, dragging out of an inheriting day finds no task at
+  that index and dragging into one appends to an empty list, dropping everything the
+  template was putting there.
+
+  The template editor is deliberately thinner than a day: a text box, how many there are,
+  and a way to remove one. No tick, no stepper, no note, no grip — a template says what
+  to do, and drawing a day's row here would offer four controls that cannot answer
+  anything. It is folded by default and sits **above** the weeks, because it is what they
+  are made of: the thing you set up once, before there is anything to tick.
+
+  `normalizeTemplate` pads a short one to seven and **drops an empty one entirely**, so a
+  plan with nothing in its template has no field — which is what lets days stop
+  inheriting the moment the last task goes, and what keeps `planBody` from writing seven
+  empty lists.
+
+- **A task can be marked as not done, which is a thing you say rather than one left
+  unsaid.** An untouched task and an evening that disappeared read identically — both
+  `0 of 2` — so there was no way to record the second. `missed` is the mark, drawn in red
+  on the box and the text, and ticking the task clears it because a task cannot be both
+  finished and skipped.
+
+  It is also **what makes a template day real**: saying "I did not do this" is as much a
+  thing to say about a Monday as having done it, and the day is written either way. That
+  is the half the feature needed — without it the only way to commit a day you skipped
+  would be to tick something that did not happen.
+
+  It still counts against the day's progress, because it was still asked for, and
+  `blankTask` drops it where `done` is reset: a week copied from the template starts with
+  nothing said about it.
+
 - **A plan is weeks of days, and the weeks are the unit you work in.** One plan covers months —
   "ChessGoals Yusupov Intermediate" is a dozen weeks — so a flat list of days is a page you scroll
   past rather than read. Weeks fold, the one holding today opens on arrival, and `+ Add a week`

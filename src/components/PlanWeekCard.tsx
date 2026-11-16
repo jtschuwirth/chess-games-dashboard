@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import PlanDayCard, { type DaySave } from '@/components/PlanDayCard'
 import { WeekRatings } from '@/components/PlanRatings'
-import { dayDate, weekLabel, weekProgress, weekRange, type PlanPosition } from '@/lib/plan'
+import { dayDate, inheritsTemplate, resolveDay, templateFor, weekLabel, weekProgress, weekRange, type PlanPosition } from '@/lib/plan'
 import type { RatingHistory } from '@/lib/rating-history'
 import type { TaskDragController } from '@/lib/use-task-drag'
 import type { GameRecord, PlanWeek, StudyPlan } from '@/types/chess'
@@ -105,25 +105,39 @@ export default function PlanWeekCard({
         <div className="px-3 pb-3 flex flex-col gap-3">
           <WeekRatings plan={plan} index={index} today={today} history={history} />
 
-          {week.days.map((day, dayIndex) => (
-            <PlanDayCard
-              key={dayIndex}
-              week={index}
-              index={dayIndex}
-              day={day}
-              date={dayDate(plan, index, dayIndex)}
-              isToday={today?.week === index && today.day === dayIndex}
-              games={games}
-              drag={drag}
-              save={save}
-              onChange={update =>
-                onChange(current => ({
-                  ...current,
-                  days: current.days.map((entry, i) => (i === dayIndex ? update(entry) : entry)),
-                }))
-              }
-            />
-          ))}
+          {week.days.map((day, dayIndex) => {
+            /*
+              Drawn through the template, and written through it too. The card is handed
+              a day that already carries the template's tasks, and whatever it hands back
+              is applied to that same resolved day — so the first thing said about a
+              Monday writes the Monday, and nothing else needed a materialise step.
+            */
+            const template = templateFor(plan, dayIndex)
+            const inherited = inheritsTemplate(day, template)
+
+            return (
+              <PlanDayCard
+                key={dayIndex}
+                week={index}
+                index={dayIndex}
+                day={resolveDay(day, template)}
+                fromTemplate={inherited}
+                date={dayDate(plan, index, dayIndex)}
+                isToday={today?.week === index && today.day === dayIndex}
+                games={games}
+                drag={drag}
+                save={save}
+                onChange={update =>
+                  onChange(current => ({
+                    ...current,
+                    days: current.days.map((entry, i) =>
+                      i === dayIndex ? update(resolveDay(entry, template)) : entry,
+                    ),
+                  }))
+                }
+              />
+            )
+          })}
         </div>
       )}
     </section>

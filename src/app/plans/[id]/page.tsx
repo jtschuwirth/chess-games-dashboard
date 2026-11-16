@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import { PlanRatings } from '@/components/PlanRatings'
 import type { DaySave } from '@/components/PlanDayCard'
+import PlanTemplateCard from '@/components/PlanTemplateCard'
 import PlanWeekCard from '@/components/PlanWeekCard'
 import { formatMoment } from '@/lib/days'
 import { deletePlan, getGames, getPlans, getRatingHistory, updatePlan } from '@/lib/firestore'
@@ -364,6 +365,12 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
       {error && <p className="text-xs text-red-400">{error}</p>}
 
       <PlanRatings plan={plan} history={history} />
+
+      {/*
+        Above the weeks because it is what they are made of — the thing you set up once,
+        before there is anything to tick.
+      */}
+      <PlanTemplateCard plan={plan} onChange={save} />
 
       <div className="flex flex-col gap-2">
         {plan.weeks.map((week, index) => (

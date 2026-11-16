@@ -710,6 +710,18 @@ export interface PlanTask {
    * thousand keys saying nothing.
    */
   note?: string
+  /**
+   * Said not to have happened, rather than merely not ticked.
+   *
+   * An untouched task and one you deliberately skipped look identical on a day you have
+   * not opened — both read `0 of 2` — so there was no way to write down the evening that
+   * disappeared. Marking it is also what makes a template day **real**: a day reaches the
+   * document once something on it has been said, and "I did not do this" is as much a
+   * thing to say as having done it.
+   *
+   * Absent rather than false, the rule every optional field here follows.
+   */
+  missed?: boolean
 }
 
 /** A day of a study plan: what to do, how it went, and what you wrote up. */
@@ -746,6 +758,26 @@ export interface StudyPlan {
   /** Local midnight of day one, as epoch ms. */
   startDate: number
   weeks: PlanWeek[]
+  /**
+   * The week every other week is shown through, which is a screen and not a stretch of
+   * days.
+   *
+   * A plan is the same handful of tasks on most days — two rapid games on a Monday, a
+   * chapter on a Tuesday — and typing them into eighty-four days is why a plan does not
+   * get written down. So one week says what each weekday asks for, every day is drawn
+   * from the entry at its own position, and **none of it is stored on a day** until that
+   * day is touched.
+   *
+   * By position, not by calendar weekday: a plan's weeks are consecutive seven-day
+   * blocks from `startDate`, so position 0 is always the same weekday, and the position
+   * is what the plan's own shape is already counted in. The screen reads the weekday off
+   * `startDate` and prints it, which is how you think about it without the data having
+   * to know.
+   *
+   * One list per day. Absent on every plan written before it existed, and absent rather
+   * than empty when nothing is in it.
+   */
+  template?: PlanTask[][]
   createdAt: number
   /**
    * When any device last saved it. Stamped by the write, not carried in `planBody`, so a

@@ -10,6 +10,8 @@ import {
   isDayComplete,
   reviewedCount,
   taskComplete,
+  taskMissed,
+  withMissed,
   withTaskNote,
   type TaskAt,
 } from '@/lib/plan'
@@ -148,6 +150,7 @@ function TaskRow({
   onRemove: () => void
 }) {
   const complete = taskComplete(task)
+  const missed = taskMissed(task)
   const counted = task.target > 1
   const carried = drag.isCarrying(at)
 
@@ -220,17 +223,24 @@ function TaskRow({
         role="checkbox"
         aria-checked={complete}
         aria-label={task.text || 'Task'}
-        onClick={() => onPatch(current => ({ ...current, done: taskComplete(current) ? 0 : current.target }))}
+        onClick={() =>
+          // ticking it says it happened, so it cannot still be marked as not having
+          onPatch(current =>
+            withMissed({ ...current, done: taskComplete(current) ? 0 : current.target }, false),
+          )
+        }
         title={counted ? (complete ? 'Clear all of them' : 'Mark them all done') : undefined}
         className={`w-4 h-4 shrink-0 rounded border flex items-center justify-center text-[10px] leading-none transition-colors ${
           complete
             ? 'bg-emerald-500/80 border-emerald-500/80 text-zinc-950'
-            : task.done > 0
-              ? 'border-emerald-600/60 text-emerald-500/80'
-              : 'border-zinc-700 hover:border-zinc-500'
+            : missed
+              ? 'border-red-600/70 text-red-400'
+              : task.done > 0
+                ? 'border-emerald-600/60 text-emerald-500/80'
+                : 'border-zinc-700 hover:border-zinc-500'
         }`}
       >
-        {complete ? '✓' : task.done > 0 ? '•' : ''}
+        {complete ? '✓' : missed ? '✕' : task.done > 0 ? '•' : ''}
       </button>
 
       <input
@@ -241,7 +251,7 @@ function TaskRow({
         }}
         placeholder="something to do"
         className={`flex-1 min-w-0 bg-transparent outline-none text-sm placeholder:text-zinc-700 ${
-          complete ? 'text-zinc-600 line-through' : 'text-zinc-200'
+          complete ? 'text-zinc-600 line-through' : missed ? 'text-red-400' : 'text-zinc-200'
         }`}
       />
 
@@ -292,6 +302,32 @@ function TaskRow({
           className="w-8 bg-transparent text-xs text-zinc-600 focus:text-zinc-200 outline-none text-right tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
         />
       </label>
+
+      {/*
+        Not done, which is a thing you say rather than a thing left unsaid.
+
+        An untouched task and a skipped one read the same — `0 of 2` — so the evening
+        that disappeared could not be written down. It is also what makes a day showing
+        the template real: saying "I did not do this" is as much a thing to say about a
+        Monday as having done it, and the day is written either way.
+
+        It stays visible once set, like the ✎, because the control that clears it must
+        not be the one that vanishes when the pointer leaves.
+      */}
+      <button
+        type="button"
+        onClick={() => onPatch(current => withMissed(current, !taskMissed(current)))}
+        title={missed ? 'No longer marked as missed' : 'Mark this one as not done'}
+        aria-label={missed ? 'No longer marked as missed' : 'Mark this one as not done'}
+        aria-pressed={missed}
+        className={`text-xs transition-colors shrink-0 focus:opacity-100 ${
+          missed
+            ? 'text-red-400 hover:text-red-300'
+            : 'text-zinc-700 hover:text-red-400 opacity-0 group-hover/task:opacity-100'
+        }`}
+      >
+        ⊘
+      </button>
 
       {/*
         Beside the ✕ and drawn like it, because they are the same kind of control: a
@@ -373,6 +409,7 @@ export default function PlanDayCard({
   week,
   index,
   day,
+  fromTemplate,
   date,
   isToday,
   games,
@@ -383,7 +420,16 @@ export default function PlanDayCard({
   /** Which week this day belongs to, since a task can be dragged out of it into another. */
   week: number
   index: number
+  /** Already resolved: the day's own tasks, or the template's where it has none. */
   day: PlanDay
+  /**
+   * Whether those tasks are the template's rather than this day's.
+   *
+   * Only the header says so. The controls are deliberately identical either way — a
+   * template day is a real day you have not said anything about yet, and the first
+   * thing you say writes it.
+   */
+  fromTemplate: boolean
   date: number
   isToday: boolean
   games: GameRecord[]
@@ -461,6 +507,19 @@ export default function PlanDayCard({
           {isToday && (
             <span className="text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded border bg-emerald-500/15 text-emerald-300 border-emerald-500/30 shrink-0">
               today
+            </span>
+          )}
+          {/*
+            The one thing the controls cannot say, since they behave identically either
+            way: these tasks are the template's and this day is not in the plan yet.
+            Quiet, because it is the normal state of most of a plan.
+          */}
+          {fromTemplate && (
+            <span
+              className="text-[10px] uppercase tracking-wide text-zinc-600 shrink-0"
+              title="Shown from the template week. Tick, change or mark one and this day is written."
+            >
+              template
             </span>
           )}
         </button>
