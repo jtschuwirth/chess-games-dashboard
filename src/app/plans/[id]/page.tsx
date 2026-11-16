@@ -12,14 +12,17 @@ import { formatMoment } from '@/lib/days'
 import { deletePlan, getGames, getPlans, getRatingHistory, updatePlan } from '@/lib/firestore'
 import { clearDraft, planChanged, readDraft, writeDraft } from '@/lib/plan-draft'
 import {
-  MAX_PLAN_WEEKS,
   buildWeek,
   dayChanged,
+  MAX_PLAN_WEEKS,
   moveTask,
+  normalizePlan,
   planBody,
-  planWithDay,
   planProgress,
   planRange,
+  planWithDay,
+  planWithTemplate,
+  templateChanged,
   templateFrom,
   todayPosition,
   weekLabel,
@@ -95,7 +98,15 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
           draft !== null && found?.updatedAt !== undefined && draft.editedAt < found.updatedAt
 
         if (found && draft && body && !superseded && planChanged(draft.plan, body)) {
-          setPlan({ ...found, ...draft.plan })
+          /*
+            Through the normaliser, like anything else read off a device. A draft is a
+            stored shape and carries whatever shape the screen was using when it was
+            written — which bit the moment `template` had to change from a list of lists
+            to a list of objects, because Firestore refuses an array inside an array. Put
+            into state raw, such a draft would read as having no template at all and the
+            week somebody had just typed out would quietly vanish on the next save.
+          */
+          setPlan(normalizePlan({ ...found, ...draft.plan }))
           setRestored(draft.editedAt)
         } else {
           if (draft) clearDraft(userId, planId)
@@ -215,6 +226,31 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
       setSavedDay(`${week}:${day}`)
     } catch (caught) {
       setError(errorText(caught, 'Could not save that day — your changes are still here.'))
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  /**
+   * The template, written by itself.
+   *
+   * The same bargain a day makes, one level up: a template is what you set up before
+   * there is anything to tick, so being made to commit a half-written week of days to
+   * keep it is the wrong unit. `planWithTemplate` takes the server's own copy and puts
+   * the one field into it, leaving every other edit on the device a draft.
+   */
+  async function saveTemplate() {
+    if (!plan || !stored || saving) return
+
+    const body = planWithTemplate(stored, plan.template)
+    setSaving('template')
+    setError(null)
+    try {
+      await updatePlan(userId, planId, body)
+      setStored(body)
+      setSavedDay('template')
+    } catch (caught) {
+      setError(errorText(caught, 'Could not save the template — your changes are still here.'))
     } finally {
       setSaving(null)
     }
@@ -370,7 +406,14 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
         Above the weeks because it is what they are made of — the thing you set up once,
         before there is anything to tick.
       */}
-      <PlanTemplateCard plan={plan} onChange={save} />
+      <PlanTemplateCard
+        plan={plan}
+        unsaved={stored !== null && templateChanged(plan.template, stored.template)}
+        saving={saving === 'template'}
+        justSaved={savedDay === 'template'}
+        onSave={saveTemplate}
+        onChange={save}
+      />
 
       <div className="flex flex-col gap-2">
         {plan.weeks.map((week, index) => (

@@ -1,7 +1,14 @@
 'use client'
 
 import { useState } from 'react'
-import { DAYS_PER_WEEK, dayDate, parseTaskLine, templateFor } from '@/lib/plan'
+import {
+  DAYS_PER_WEEK,
+  dayDate,
+  parseTaskLine,
+  templateFor,
+  templateFromJson,
+  templateToJson,
+} from '@/lib/plan'
 import { formatDay } from '@/lib/days'
 import type { PlanTask, StudyPlan } from '@/types/chess'
 
@@ -24,13 +31,27 @@ import type { PlanTask, StudyPlan } from '@/types/chess'
  */
 export default function PlanTemplateCard({
   plan,
+  unsaved,
+  saving,
+  justSaved,
+  onSave,
   onChange,
 }: {
   plan: StudyPlan
+  /** Whether the template differs from the copy Firestore has. */
+  unsaved: boolean
+  saving: boolean
+  justSaved: boolean
+  /** Writing the template by itself, the way a day of the plan is written by itself. */
+  onSave: () => void
   /** An updater, like every edit on this page, for the reason the day card states. */
   onChange: (update: (current: StudyPlan) => StudyPlan) => void
 }) {
   const [open, setOpen] = useState(false)
+  /** The JSON box, seeded when it is opened rather than bound to the template. */
+  const [json, setJson] = useState<string | null>(null)
+  const [jsonError, setJsonError] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false)
 
   /** The template as seven lists, whatever the stored one holds. */
   const days = Array.from({ length: DAYS_PER_WEEK }, (unused, index) => templateFor(plan, index))
@@ -45,19 +66,44 @@ export default function PlanTemplateCard({
    */
   function setDay(index: number, update: (current: PlanTask[]) => PlanTask[]) {
     onChange(current => {
-      const next = Array.from({ length: DAYS_PER_WEEK }, (unused, at) =>
-        at === index ? update(templateFor(current, at)) : templateFor(current, at),
-      )
+      // one object per day, never a list of lists: Firestore rejects the document over
+      // an array directly inside an array, which is how this shipped broken once
+      const next = Array.from({ length: DAYS_PER_WEEK }, (unused, at) => ({
+        tasks: at === index ? update(templateFor(current, at)) : templateFor(current, at),
+      }))
 
       const plan = { ...current }
-      if (next.some(day => day.length > 0)) plan.template = next
+      if (next.some(day => day.tasks.length > 0)) plan.template = next
       else delete plan.template
       return plan
     })
   }
 
+  /** Replace the template with what is in the box, or say why that cannot be done. */
+  function importJson() {
+    const read = templateFromJson(json ?? '')
+    if (typeof read === 'string') {
+      setJsonError(read)
+      return
+    }
+
+    onChange(current => {
+      const next = { ...current }
+      if (read.template) next.template = read.template
+      else delete next.template
+      return next
+    })
+
+    setJsonError(null)
+    setJson(null)
+  }
+
   return (
-    <section className="bg-zinc-900 border border-zinc-800 rounded-xl">
+    <section
+      className={`bg-zinc-900 border rounded-xl transition-colors ${
+        unsaved ? 'border-amber-500/40' : 'border-zinc-800'
+      }`}
+    >
       <div className="flex items-center gap-3 px-3 py-2.5">
         <button
           type="button"
@@ -71,6 +117,34 @@ export default function PlanTemplateCard({
               : `${total} task${total === 1 ? '' : 's'} across the week`}
           </span>
         </button>
+
+        {/*
+          A dot rather than a word, the sheet's rule — and it shows while the card is
+          folded, because that is when you need telling there is something here to save.
+        */}
+        {unsaved && (
+          <span
+            className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+            title="Only on this device"
+          />
+        )}
+
+        {/*
+          Saves the template and nothing else, the way a day of the plan does. Setting
+          one up is what you do before there is anything to tick, so being made to commit
+          a half-written week of days to keep it is the wrong unit.
+        */}
+        {(unsaved || saving) && (
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="px-2 py-1 text-xs rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-40 shrink-0"
+          >
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        )}
+        {justSaved && !unsaved && <span className="text-xs text-emerald-400 shrink-0">Saved</span>}
 
         <button
           type="button"
@@ -102,6 +176,77 @@ export default function PlanTemplateCard({
               onChange={update => setDay(index, update)}
             />
           ))}
+
+          {/*
+            A week as text, which is how one gets from a notebook into the app and from
+            one plan into the next. Seven lists of plain lines, with the `×5` the form
+            that creates a plan already understands — so the exported shape is the shape
+            you would type, and a week can be written by hand without knowing anything
+            about `target`.
+
+            One box for both directions, seeded when it is opened rather than bound to
+            the template: a box that rewrote itself as you typed into it could not be
+            edited at all.
+          */}
+          <div className="border-t border-zinc-800 pt-2 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setJson(json === null ? templateToJson(plan.template) : null)
+                setJsonError(null)
+                setCopied(false)
+              }}
+              className="self-start text-xs text-zinc-600 hover:text-zinc-200 transition-colors"
+            >
+              {json === null ? '+ As JSON' : '− As JSON'}
+            </button>
+
+            {json !== null && (
+              <>
+                <textarea
+                  value={json}
+                  onChange={event => {
+                    setJson(event.target.value)
+                    setJsonError(null)
+                  }}
+                  rows={8}
+                  spellCheck={false}
+                  aria-label="The template as JSON"
+                  className="bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-xs font-mono text-zinc-200 outline-none focus:border-zinc-600 resize-y"
+                />
+
+                <div className="flex items-center gap-3 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard?.writeText(json).then(
+                        () => setCopied(true),
+                        () => setCopied(false),
+                      )
+                    }}
+                    className="px-2 py-1 text-xs rounded-md border border-zinc-800 text-zinc-400 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+                  >
+                    {copied ? 'Copied' : 'Copy'}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={importJson}
+                    className="px-2 py-1 text-xs rounded-md border border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:text-zinc-100 transition-colors"
+                  >
+                    Replace the template
+                  </button>
+
+                  {/* the one thing the box cannot say: an import is a whole week */}
+                  <span className="text-xs text-zinc-600">
+                    Replacing puts the whole week in, and still has to be saved.
+                  </span>
+                </div>
+
+                {jsonError && <p className="text-xs text-red-400">{jsonError}</p>}
+              </>
+            )}
+          </div>
         </div>
       )}
     </section>

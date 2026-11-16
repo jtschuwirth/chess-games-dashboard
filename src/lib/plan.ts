@@ -5,6 +5,7 @@ import type {
   NewStudyPlan,
   PlanDay,
   PlanTask,
+  PlanTemplateDay,
   PlanWeek,
   StudyPlan,
 } from '@/types/chess'
@@ -108,22 +109,40 @@ function normalizeTask(raw: PlanTask): PlanTask {
 }
 
 /**
- * The template in the shape the code expects: one list per day, however short.
+ * The template in the shape the code expects: one entry per day, however short.
  *
  * Padded to a full week rather than refused, so the editor always draws seven rows and
- * a plan whose template was written when a week was shorter does not lose the days it
- * did have. A template of nothing at all is dropped entirely — the field is absent
- * rather than seven empty lists, which is what `planBody` must be able to leave out.
+ * a template written when a week was shorter does not lose the days it did have. A
+ * template of nothing at all is dropped entirely — absent rather than seven empty
+ * entries, which is what `planBody` must be able to leave out and what lets a day stop
+ * inheriting the moment the last task goes.
+ *
+ * **Two shapes are read.** It was built as `PlanTask[][]` and that cannot be stored:
+ * Firestore refuses an array directly inside an array and rejects the whole document,
+ * so the first save carrying a template failed with *"Nested arrays are not
+ * supported"*. The bare list is still read because a draft on the device holds the
+ * shape the screen was using when it was written — the same habit every stored shape
+ * here follows, and in this case it is what saves a template somebody had just typed
+ * out from being thrown away by the fix for it.
  */
-export function normalizeTemplate(raw: unknown): PlanTask[][] | null {
+export function normalizeTemplate(raw: unknown): PlanTemplateDay[] | null {
   if (!Array.isArray(raw)) return null
 
   const days = Array.from({ length: DAYS_PER_WEEK }, (unused, index) => {
     const entry = raw[index]
-    return Array.isArray(entry) ? entry.map(normalizeTask).filter(task => task.text.trim()) : []
+    // the stored shape is `{ tasks }`; a bare list is a draft from before that
+    const tasks = Array.isArray(entry)
+      ? entry
+      : Array.isArray((entry as PlanTemplateDay | undefined)?.tasks)
+        ? (entry as PlanTemplateDay).tasks
+        : []
+
+    return {
+      tasks: (tasks as PlanTask[]).map(normalizeTask).filter(task => task.text.trim()),
+    }
   })
 
-  return days.some(day => day.length > 0) ? days : null
+  return days.some(day => day.tasks.length > 0) ? days : null
 }
 
 /**
@@ -299,12 +318,110 @@ export interface Progress {
 
 /* ------------------------------------------------------------- the template */
 
+/** Whether the template differs from the copy Firestore has. */
+export function templateChanged(
+  a: StudyPlan['template'],
+  b: StudyPlan['template'],
+): boolean {
+  return JSON.stringify(a ?? null) !== JSON.stringify(b ?? null)
+}
+
+/**
+ * The stored plan with the template replaced, for saving that and nothing else.
+ *
+ * The same bargain a day makes: the whole document still goes over the wire, and what
+ * makes it a *partial* save is what is in it — the server's own copy with one field put
+ * into it, so every other edit on the device stays a draft. A template is the thing you
+ * set up before there is anything to tick, so being made to commit a half-written week
+ * of days to keep it is exactly the wrong unit.
+ */
+export function planWithTemplate(
+  stored: NewStudyPlan,
+  template: StudyPlan['template'],
+): NewStudyPlan {
+  const next: NewStudyPlan = { ...stored }
+  if (template) next.template = template
+  else delete next.template
+  return next
+}
+
+/* ---------------------------------------------------------- the template as text */
+
+/**
+ * The template written out as JSON, and read back.
+ *
+ * Seven lists of plain strings, because the app already has one answer to what a
+ * template line means: `parseTaskLine`, where a trailing `×5` is how many of the thing
+ * there are. So the exported shape is the shape you would type into the form that
+ * creates a plan, and a week can be written by hand in a text editor without knowing
+ * anything about `target` or `done`.
+ *
+ * It is a whole week rather than a diff: an import **replaces** the template, which is
+ * the only rule that can be stated in one line and the only one where pasting the same
+ * thing twice does the same thing once.
+ */
+export interface TemplateJson {
+  template: string[][]
+}
+
+/** `solve puzzles ×5`, or just the text where there is one of it. */
+export function templateLine(task: PlanTask): string {
+  return task.target > 1 ? `${task.text} ×${task.target}` : task.text
+}
+
+export function templateToJson(template: StudyPlan['template']): string {
+  const days = Array.from({ length: DAYS_PER_WEEK }, (unused, index) =>
+    (template?.[index]?.tasks ?? []).map(templateLine),
+  )
+
+  return JSON.stringify({ template: days }, null, 2)
+}
+
+/**
+ * A template read out of pasted JSON, or a reason it cannot be.
+ *
+ * Deliberately forgiving about everything except the shape: a short week is padded, a
+ * long one is cut to seven, and an entry that is not a list of strings is read as an
+ * empty day rather than refusing the paste. What it will not do is guess — text that is
+ * not JSON, or JSON that is not an object with a `template` array, comes back as an
+ * error, because silently importing nothing looks exactly like importing an empty week.
+ */
+export function templateFromJson(text: string): { template: PlanTemplateDay[] | null } | string {
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(text)
+  } catch {
+    return 'That is not JSON.'
+  }
+
+  // a bare array of days is accepted too: it is what the field itself looks like
+  const raw = Array.isArray(parsed)
+    ? parsed
+    : (parsed as TemplateJson | null)?.template
+
+  if (!Array.isArray(raw)) return 'No `template` array in there.'
+
+  const days: PlanTemplateDay[] = Array.from({ length: DAYS_PER_WEEK }, (unused, index) => {
+    const entry = raw[index]
+    const lines = Array.isArray(entry) ? entry : []
+
+    return {
+      tasks: lines
+        .filter((line): line is string => typeof line === 'string')
+        .map(parseTaskLine)
+        .filter((task): task is PlanTask => task !== null),
+    }
+  })
+
+  return { template: days.some(day => day.tasks.length > 0) ? days : null }
+}
+
 /** What the template asks for at this position in a week, which may be nothing. */
 export function templateFor(
   plan: Pick<StudyPlan, 'template'>,
   dayIndex: number,
 ): PlanTask[] {
-  return plan.template?.[dayIndex] ?? []
+  return plan.template?.[dayIndex]?.tasks ?? []
 }
 
 /**

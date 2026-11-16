@@ -731,6 +731,11 @@ export interface PlanDay {
   note: string
 }
 
+/** One day of the template: what that position in a week asks for. */
+export interface PlanTemplateDay {
+  tasks: PlanTask[]
+}
+
 /** A week of one. Named when you want to; "week 3" when you do not. */
 export interface PlanWeek {
   name: string
@@ -774,10 +779,17 @@ export interface StudyPlan {
    * `startDate` and prints it, which is how you think about it without the data having
    * to know.
    *
-   * One list per day. Absent on every plan written before it existed, and absent rather
-   * than empty when nothing is in it.
+   * One entry per day, each an object holding that day's list — **not** a list of
+   * lists. Firestore refuses an array directly inside an array and rejects the whole
+   * document for it, which is what `PlanTask[][]` did on the first save that carried a
+   * template: *"Nested arrays are not supported"*. Wrapping each day in an object is
+   * the standard way round it and is the shape a week already has, where a day is an
+   * object with `tasks` on it.
+   *
+   * Absent on every plan written before it existed, and absent rather than empty when
+   * nothing is in it.
    */
-  template?: PlanTask[][]
+  template?: PlanTemplateDay[]
   createdAt: number
   /**
    * When any device last saved it. Stamped by the write, not carried in `planBody`, so a

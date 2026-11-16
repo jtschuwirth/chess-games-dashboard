@@ -2686,7 +2686,51 @@ src/
   `normalizeTemplate` pads a short one to seven and **drops an empty one entirely**, so a
   plan with nothing in its template has no field — which is what lets days stop
   inheriting the moment the last task goes, and what keeps `planBody` from writing seven
-  empty lists.
+  empty entries.
+
+- **Firestore refuses an array directly inside an array, and this shipped as one.** The
+  template was `PlanTask[][]`, the obvious shape and an unstorable one: the first save
+  that carried a template failed with *"Nested arrays are not supported"* and took the
+  **whole document** with it, so nothing on the page could be saved while a template was
+  in it. Each day is an object now — `PlanTemplateDay`, which is `{ tasks }`, the shape
+  a week already uses for a day.
+
+  Two things made it worse than a one-line fix, and both are the general lesson rather
+  than this field's.
+
+  **A draft on the device holds whatever shape the screen was using when it was
+  written.** `normalizeTemplate` therefore reads the bare list as well, which is the
+  habit every stored shape here follows — and here it is what keeps a week somebody had
+  just typed out from being thrown away by the fix for it.
+
+  **The restored draft was not going through the normaliser at all.** The page did
+  `setPlan({ ...found, ...draft.plan })`, trusting a device copy in a way it trusts
+  nothing off the server, so a draft in the old shape would have read as *no template*
+  and the next save would have quietly written the week away. It goes through
+  `normalizePlan` now, which is what it should always have done: a draft is a stored
+  shape.
+
+  A check asserts the thing that actually failed, rather than the symptom — it walks
+  `planBody` looking for an array whose parent is an array, and confirms the old shape
+  is exactly what it catches.
+
+- **The template saves by itself, and travels as JSON.** Two halves of the same point:
+  it is what you set up *before* there is anything to tick, so it must not be hostage to
+  the days.
+
+  `planWithTemplate` is the day's own bargain one level up — the server's copy with one
+  field put into it, so every other edit on the device stays a draft — and the card
+  carries the same amber dot and Save a day does.
+
+  The JSON is **seven lists of plain lines**, with the `×5` suffix `parseTaskLine`
+  already understands, so the exported shape is the shape you would type into the form
+  that creates a plan and a week can be written by hand without knowing anything about
+  `target`. One box for both directions, seeded when it is opened rather than bound to
+  the template, because a box that rewrote itself as you typed could not be edited. An
+  import **replaces** the week — the only rule statable in one line, and the only one
+  where pasting the same thing twice does the same thing once — and a paste that is not
+  JSON, or carries no `template` array, is refused rather than imported as nothing,
+  since importing an empty week looks exactly like importing nothing.
 
 - **A task can be marked as not done, which is a thing you say rather than one left
   unsaid.** An untouched task and an evening that disappeared read identically — both
