@@ -1,10 +1,10 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import ExerciseCard from '@/components/ExerciseCard'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
+import BackLink from '@/components/BackLink'
 import { clearDraft, readDraft, writeDraft } from '@/lib/draft'
 import {
   MAX_EXERCISES,
@@ -221,9 +221,7 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
     return (
       <div className="flex flex-col gap-3">
         <p className="text-sm text-zinc-400">That guide is not here any more.</p>
-        <Link href="/guides" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
-          ← All guides
-        </Link>
+        <BackLink fallback={{ href: '/guides', label: 'All guides' }} />
       </div>
     )
   }
@@ -231,9 +229,7 @@ function GuideBody({ userId, guideId }: { userId: string; guideId: string }) {
 
   return (
     <div className="flex flex-col gap-5">
-      <Link href="/guides" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
-        ← All guides
-      </Link>
+      <BackLink fallback={{ href: '/guides', label: 'All guides' }} />
 
       <div className="flex flex-col gap-3 border-b border-zinc-800 pb-5">
         <div className="flex items-start justify-between gap-3 flex-wrap">

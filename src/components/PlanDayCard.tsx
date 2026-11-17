@@ -2,7 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import StatusTag from '@/components/StatusTag'
+import { withFrom } from '@/lib/nav'
 import {
   dayProgress,
   formatDay,
@@ -463,6 +465,9 @@ export default function PlanDayCard({
   */
   const [open, setOpen] = useState(() => isToday || !isDaySettled(day))
 
+  /* the page this card is on, so a link out to a game knows the way back to this plan */
+  const here = usePathname() ?? ''
+
   const { done, total } = dayProgress(day)
   const played = useMemo(() => gamesOn(games, date), [games, date])
 
@@ -679,7 +684,7 @@ export default function PlanDayCard({
                 {played.map(game => (
                   <Link
                     key={game.id}
-                    href={`/games/${game.id}`}
+                    href={withFrom(`/games/${game.id}`, here)}
                     className="flex items-center gap-2 py-2 text-sm hover:bg-zinc-800/50 -mx-2 px-2 rounded transition-colors"
                   >
                     <span

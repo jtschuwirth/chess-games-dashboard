@@ -160,7 +160,7 @@ src/
 │                               # PlanForm, PlanRatings,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
 │                               # GameShapePanel, ClockPanel, ThinkPanel, ConfigNotice,
-│                               # HomeNav, RatingPanel, SignInButton
+│                               # HomeNav, NavMenu, BackLink, RatingPanel, SignInButton
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -205,6 +205,7 @@ src/
 │   ├── plan.ts                 # study plans: weeks, dates, counted tasks, progress
 │   ├── plan-draft.ts           # a plan edited and not yet saved, kept on the device
 │   ├── rating-history.ts       # daily closing ratings, the tracked pools, series
+│   ├── nav.ts                  # the sections, the `from` parameter, what Back says
 │   ├── version.ts              # which build this is, from Vercel's commit env var
 │   ├── stats.ts                # StatBlock / computeSplit
 │   └── providers/              # chesscom.ts, lichess.ts, shared.ts
@@ -2232,6 +2233,64 @@ src/
   the filters": `timeControlsIn` derives the row from the games, so setting the control on
   a game is the whole of adding it, and it appears on every screen that draws the filter
   panel at once.
+
+  **It is the dashboard's Control row, not a control of its own.** The first version was
+  a box with its own Set button wedged into the facts grid — a new way to pick a clock,
+  on a screen where picking a clock already has one, which is how an app ends up with a
+  bespoke widget per feature. It is `FilterRow` and the same `Chip` the filter panel is
+  made of, listing the clocks your games actually carry off the same `timeControlsIn`,
+  and pressing one is the whole of setting it. The typed box is what chips cannot cover:
+  the row is derived from the games, so until something carries 30+30 there is nothing to
+  press. The facts grid keeps an ordinary `Fact`, reading `no clock` in amber — the same
+  words the uploads list uses for the same absence.
+
+- **One list of sections, and Back goes where you came from.** Three screens were naming
+  the app's own parts: the home page had a table of nine cards, every detail page had its
+  way back written into it, and nothing anywhere knew what the others were called. So a
+  game opened from `/uploads` said `← Dashboard`, which is not where you came from, and
+  getting from a plan to the mistakes dashboard meant going through a page whose whole
+  job is to be left again.
+
+  `NAV_SECTIONS` in `lib/nav.ts` is the one table, read by all three: the menu, the home
+  page's cards, and the rule that works out what Back should say. A tenth section arrives
+  in all of them at once rather than in whichever somebody remembered.
+
+  **The link that opens a page says where it came from**, in one `from` parameter holding
+  a path and nothing else. What comes back out is **checked against the table rather than
+  trusted** — `readFrom` refuses anything that is not a path, that begins `//`, or that
+  names no section — so a hand-typed `?from=https://elsewhere` falls back to what the
+  page would have said on its own. That fallback is the old hardcoded link, which is why
+  an old bookmark still lands somewhere sensible.
+
+  **The filters go back with it, for the sections that read one.** `filtered` on a section
+  says so, and `backTarget` re-attaches the query — arriving at the dashboard with the
+  filters cleared is not returning to the slice you left, which is the whole reason the
+  game view carried them in the first place. Not onto a page *inside* a section: a plan
+  has its own address and no use for a colour filter.
+
+  **The slice walk carries it too.** Newer, Older and Next unreviewed stay inside one
+  visit, and `search` is rebuilt from the filters alone — so without `trail` the `from`
+  was dropped on the first of them and Back quietly became Dashboard half way along a
+  list opened from somewhere else.
+
+  `/games/{id}` is deliberately in no section: it is reached from six of them and belongs
+  to none. A check walks `src/app` and asserts that it and the sign-in page are the only
+  two routes the table does not own, so a new page cannot quietly draw a menu that cannot
+  say where it is.
+
+- **The menu replaces `← Home`, which was not a way back.** It was the only way out of
+  any page, and it led to a list of the sections — so moving between two of them was two
+  navigations through a page that exists to be left. The menu is that list where you
+  already are: a panel off the header, the current section marked, closing on a press, on
+  Escape and on the backdrop, which are the three ways anyone tries. A panel rather than a
+  dropdown because it has to work on a phone, where the header is the only chrome there
+  is.
+
+  The burger is **drawn rather than set as ☰**, the board's own lesson about glyphs: a
+  character renders differently per font and can render as nothing at all, and an empty
+  box on the one control that opens the navigation is the worst place for it. Sign out
+  moved into the panel's footer beside the build, since it is a thing you do once and was
+  taking header room from the page's own name.
 - **One depth or the number means nothing.** Centipawn loss and the think-time bands only count
   games analysed at `ENGINE_DEPTH`. A shallower engine finds fewer mistakes and scores them
   smaller, so mixing depths would have shown a step change at the moment the depth settled at 21

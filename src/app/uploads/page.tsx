@@ -8,6 +8,7 @@ import StatusTag from '@/components/StatusTag'
 import UploadPanel from '@/components/UploadPanel'
 import { formatTimeControl } from '@/lib/clocks'
 import { getGames, getProfile } from '@/lib/firestore'
+import { withFrom } from '@/lib/nav'
 import { hasReview } from '@/lib/review'
 import { endingOf } from '@/lib/termination'
 import type { GameRecord, UserProfile } from '@/types/chess'
@@ -105,7 +106,7 @@ function UploadsBody({ userId }: { userId: string }) {
             {uploaded.map(game => (
               <Link
                 key={game.id}
-                href={`/games/${game.id}?source=upload`}
+                href={withFrom(`/games/${game.id}?source=upload`, '/uploads')}
                 className="flex items-center gap-3 px-5 py-2.5 hover:bg-zinc-800/50 transition-colors"
               >
                 <span

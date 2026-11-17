@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 import Board from '@/components/Board'
+import { withFrom } from '@/lib/nav'
 import { tagName } from '@/lib/tags'
 import { Spinner } from '@/components/PageShell'
 import { formatLine, playMove, plyLabel, sanFromUci } from '@/lib/board'
@@ -108,6 +110,8 @@ export default function DrillCardView({
   onAnswered: (stat: DrillStat, correct: boolean) => void
   onNext: () => void
 }) {
+  /* the page this card is on, so a link out of it knows the way back to here */
+  const here = usePathname() ?? ''
   const [input, setInput] = useState('')
   /*
     Keyed by the position it was read for, and the reading in force is derived from that
@@ -536,7 +540,7 @@ export default function DrillCardView({
                 {card.from === 'exercise' && card.origin ? (
                   <>
                     <Link
-                      href={`/guides/${card.origin.guideId}`}
+                      href={withFrom(`/guides/${card.origin.guideId}`, here)}
                       className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
                     >
                       Open the sheet
@@ -546,7 +550,7 @@ export default function DrillCardView({
                 ) : (
                   <>
                     <Link
-                      href={`/games/${card.gameId}`}
+                      href={withFrom(`/games/${card.gameId}`, here)}
                       className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
                     >
                       Open the game

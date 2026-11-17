@@ -22,6 +22,7 @@ import {
   type Filters,
 } from '@/lib/dashboard-filters'
 import { getGames, getOpenings, getPatterns } from '@/lib/firestore'
+import { withFrom } from '@/lib/nav'
 import {
   BREADTHS_IN,
   NO_MISTAKE_FILTER,
@@ -517,7 +518,7 @@ function MistakesBody({ userId }: { userId: string }) {
         games={scoped}
         activeTag={filters.tag}
         onPickTag={value => patch({ tag: value })}
-        hrefFor={game => `/games/${game.id}${search}`}
+        hrefFor={game => withFrom(`/games/${game.id}${search}`, '/mistakes')}
         drillHref={`/learn${search}`}
       />
 
@@ -546,7 +547,7 @@ function MistakesBody({ userId }: { userId: string }) {
               {rows.slice(0, limit).map(row => (
                 <Link
                   key={`${row.game.id}:${row.ply}`}
-                  href={`/games/${row.game.id}${search}`}
+                  href={withFrom(`/games/${row.game.id}${search}`, '/mistakes')}
                   /*
                     A flex row with a fixed-width cluster on the left rather than a grid:
                     the columns still line up, because each of those is a fixed width, and

@@ -8,6 +8,7 @@ import { PlanRatings } from '@/components/PlanRatings'
 import type { DaySave } from '@/components/PlanDayCard'
 import PlanTemplateCard from '@/components/PlanTemplateCard'
 import PlanWeekCard from '@/components/PlanWeekCard'
+import BackLink from '@/components/BackLink'
 import { formatMoment } from '@/lib/days'
 import { deletePlan, getGames, getPlans, getRatingHistory, updatePlan } from '@/lib/firestore'
 import { clearDraft, planChanged, readDraft, writeDraft } from '@/lib/plan-draft'
@@ -331,9 +332,7 @@ function PlanBody({ userId, planId }: { userId: string; planId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/plans" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
-        ← All plans
-      </Link>
+      <BackLink fallback={{ href: '/plans', label: 'All plans' }} />
 
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">

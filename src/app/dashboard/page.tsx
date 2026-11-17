@@ -33,6 +33,7 @@ import {
   type RouteStep,
 } from '@/lib/opening'
 import { arrivalCounts, positionKeyMap, scopeGames } from '@/lib/scope'
+import { withFrom } from '@/lib/nav'
 import {
   ALL_OPENINGS,
   UNCLASSIFIED_OPENING,
@@ -191,7 +192,7 @@ function DashboardBody({ userId }: { userId: string }) {
   const search = useMemo(() => writeFilters(filters), [filters])
 
   const hrefFor = useCallback(
-    (game: GameRecord) => `/games/${game.id}${search}`,
+    (game: GameRecord) => withFrom(`/games/${game.id}${search}`, '/dashboard'),
     [search],
   )
 

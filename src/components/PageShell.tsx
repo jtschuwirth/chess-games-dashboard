@@ -6,6 +6,7 @@ import { useAuth } from '@/context/AuthContext'
 import { signOut } from '@/lib/auth'
 import { isFirebaseConfigured } from '@/lib/firebase'
 import ConfigNotice from '@/components/ConfigNotice'
+import NavMenu from '@/components/NavMenu'
 
 /**
  * A span, not a div, because half its uses sit inside a sentence — "elapsed", "reading
@@ -133,17 +134,15 @@ export default function PageShell({
   return (
     <main className="flex flex-col h-screen bg-zinc-950 text-zinc-100">
       {named}
-      <header className="px-6 py-4 border-b border-zinc-800 flex items-center gap-4 shrink-0">
-        <Link href="/" className="text-zinc-400 hover:text-zinc-200 transition-colors text-sm">
-          ← Home
-        </Link>
-        <h1 className="text-xl font-semibold flex-1">{title}</h1>
-        <button
-          onClick={() => signOut()}
-          className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors"
-        >
-          Sign out
-        </button>
+      {/*
+        The menu replaces `← Home`, which was the only way out of any page and was not a
+        way back: Home is a list of the sections, so reaching one from another meant
+        going through a page whose whole job is to be left again. The menu is that list
+        where you already are, and Home is still in it.
+      */}
+      <header className="px-6 py-4 border-b border-zinc-800 flex items-center gap-3 shrink-0">
+        <NavMenu onSignOut={() => signOut()} />
+        <h1 className="text-xl font-semibold flex-1 min-w-0 truncate">{title}</h1>
       </header>
 
       <div className="flex-1 overflow-y-auto">

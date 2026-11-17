@@ -10,6 +10,8 @@ import Panel from '@/components/Section'
 import StatBlockCard from '@/components/StatBlockCard'
 import StudyIdeaList from '@/components/StudyIdeaList'
 import StudyLinks from '@/components/StudyLinks'
+import BackLink from '@/components/BackLink'
+import { withFrom } from '@/lib/nav'
 import { DESCRIPTION_LABEL, KIND_BADGE, KIND_LABEL, describedBy } from '@/lib/pattern'
 import { formatMoment } from '@/lib/days'
 import { DEFAULT_FILTERS } from '@/lib/dashboard-filters'
@@ -386,9 +388,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
 
   return (
     <div className="flex flex-col gap-4">
-      <Link href="/openings" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
-        ← All openings
-      </Link>
+      <BackLink fallback={{ href: '/openings', label: 'All openings' }} />
 
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <div className="min-w-0">
@@ -587,7 +587,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
               {patternsHere.map(pattern => (
                 <Link
                   key={pattern.id}
-                  href={`/patterns/${pattern.id}`}
+                  href={withFrom(`/patterns/${pattern.id}`, `/openings/${openingId}`)}
                   className="flex items-center gap-3 px-4 py-3 bg-zinc-900 hover:bg-zinc-800 transition-colors"
                 >
                   <span
@@ -770,7 +770,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
                 userId={userId}
                 game={game}
                 route={routesByGame.get(game.id) ?? []}
-                href={`/games/${game.id}?opening=${openingId}`}
+                href={withFrom(`/games/${game.id}?opening=${openingId}`, `/openings/${openingId}`)}
               />
             ))}
           </div>

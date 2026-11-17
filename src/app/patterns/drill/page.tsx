@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import MoveTreeBoard from '@/components/MoveTreeBoard'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
+import BackLink from '@/components/BackLink'
+import { withFrom } from '@/lib/nav'
 import { playLabel, sideToMove } from '@/lib/board'
 import { getPatterns, savePatternDrill } from '@/lib/firestore'
 import { emptyTree, fenAt, type MoveTree, type Path } from '@/lib/movetree'
@@ -173,9 +175,7 @@ function DrillBody({ userId }: { userId: string }) {
   return (
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link href="/patterns" className="text-sm text-zinc-500 hover:text-zinc-300">
-          ← All patterns
-        </Link>
+        <BackLink fallback={{ href: '/patterns', label: 'All patterns' }} />
         {summary && (
           <span className="text-xs text-zinc-500">
             {summary.due} due of {summary.total}
@@ -377,7 +377,7 @@ function DrillBody({ userId }: { userId: string }) {
                     {index + 1 < queue.length ? 'Next' : 'Finish'}
                   </button>
                   <Link
-                    href={`/patterns/${card.patternId}`}
+                    href={withFrom(`/patterns/${card.patternId}`, '/patterns/drill')}
                     className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
                   >
                     Open the write-up →

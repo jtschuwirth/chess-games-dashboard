@@ -1,67 +1,15 @@
 'use client'
 
 import Link from 'next/link'
+import { NAV_SECTIONS } from '@/lib/nav'
 import { VERSION } from '@/lib/version'
 
-const NAV_ITEMS = [
-  {
-    icon: '🔗',
-    title: 'Profile',
-    description: 'Link your chess.com and lichess accounts, and set how games are read',
-    href: '/profile',
-  },
-  {
-    icon: '📖',
-    title: 'Openings',
-    description: 'Save the lines you play and name them',
-    href: '/openings',
-  },
-  {
-    icon: '🧩',
-    title: 'Patterns',
-    description: 'Write up the ideas you keep missing, and tag mistakes with them',
-    href: '/patterns',
-  },
-  {
-    icon: '📊',
-    title: 'Dashboard',
-    description: 'Win / draw / loss splits, overall or per saved line',
-    href: '/dashboard',
-  },
-  {
-    icon: '📥',
-    title: 'Uploaded games',
-    description: 'Paste a PGN in, and set the clock a brought-in game was played at',
-    href: '/uploads',
-  },
-  {
-    icon: '🗓️',
-    title: 'Study plans',
-    description: 'Weeks of practice, counted off, with that day’s games beside them',
-    href: '/plans',
-  },
-  {
-    icon: '⚠️',
-    title: 'Mistakes',
-    description: 'Every marked move, what kind it was, and where on the board they land',
-    href: '/mistakes',
-  },
-  {
-    icon: '📄',
-    title: 'Exercise guides',
-    description: 'A coach’s sheet of positions, solved on a board and written up',
-    href: '/guides',
-  },
-  {
-    icon: '🎯',
-    title: 'Learn from your mistakes',
-    description: 'Find the move again in the positions you got wrong',
-    href: '/learn',
-  },
-]
-
 /**
- * Where you land once signed in: the six things the app does, and which build this is.
+ * Where you land once signed in: the things the app does, and which build this is.
+ *
+ * Drawn from `NAV_SECTIONS`, the same table the header's menu and the back links read,
+ * so a new section arrives here, in the menu and in what Back says at once — rather than
+ * being added to whichever of the three somebody remembered.
  *
  * Two columns from `sm` up rather than one long list, because six rows of a single
  * column pushed the last one under the fold on a laptop — and the page scrolls rather
@@ -95,7 +43,7 @@ export default function HomeNav({
         </header>
 
         <nav className="grid gap-2 sm:grid-cols-2">
-          {NAV_ITEMS.map(item => (
+          {NAV_SECTIONS.map(item => (
             <Link
               key={item.href}
               href={item.href}

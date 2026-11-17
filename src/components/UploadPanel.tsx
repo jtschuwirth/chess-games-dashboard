@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Chip from '@/components/Chip'
 import { Spinner } from '@/components/PageShell'
 import { saveGames } from '@/lib/firestore'
+import { withFrom } from '@/lib/nav'
 import { parseUploads, type UploadSide } from '@/lib/upload'
 import type { GameRecord, UserProfile } from '@/types/chess'
 
@@ -145,7 +146,7 @@ export default function UploadPanel({
           {added.map(game => (
             <Link
               key={game.id}
-              href={`/games/${game.id}?source=upload`}
+              href={withFrom(`/games/${game.id}?source=upload`, '/uploads')}
               className="text-sm text-zinc-300 hover:text-white underline decoration-zinc-700 hover:decoration-zinc-400"
             >
               {game.color === 'white' ? 'White' : 'Black'} vs {game.opponent}

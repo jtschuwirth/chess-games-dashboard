@@ -6,6 +6,8 @@ import { useParams, useRouter } from 'next/navigation'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import PatternForm from '@/components/PatternForm'
 import PatternStudy from '@/components/PatternStudy'
+import BackLink from '@/components/BackLink'
+import { withFrom } from '@/lib/nav'
 import { deletePattern, getGames, getOpenings, getPatterns, updatePattern } from '@/lib/firestore'
 import { openingLabel } from '@/lib/opening'
 import {
@@ -134,9 +136,7 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
   if (editing) {
     return (
       <div className="flex flex-col gap-4">
-        <Link href="/patterns" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
-          ← All patterns
-        </Link>
+        <BackLink fallback={{ href: '/patterns', label: 'All patterns' }} />
         <PatternForm
           initial={pattern}
           openings={openings}
@@ -154,9 +154,7 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
 
   return (
     <div className="flex flex-col gap-6">
-      <Link href="/patterns" className="text-sm text-zinc-500 hover:text-zinc-300 self-start">
-        ← All patterns
-      </Link>
+      <BackLink fallback={{ href: '/patterns', label: 'All patterns' }} />
 
       {/*
         The whole identity of the write-up in one band: what it is called, what kind of
@@ -252,7 +250,7 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
               return (
                 <Link
                   key={game.id}
-                  href={`/games/${game.id}`}
+                  href={withFrom(`/games/${game.id}`, `/patterns/${patternId}`)}
                   className="flex items-center justify-between gap-3 py-2 text-sm hover:bg-zinc-800/50 -mx-2 px-2 rounded transition-colors"
                 >
                   <span className="text-zinc-300 min-w-0 truncate">

@@ -24,8 +24,12 @@ import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell
 import ReviewEditor from '@/components/ReviewEditor'
 import OpeningRoute from '@/components/OpeningRoute'
 import StatusTag from '@/components/StatusTag'
+import BackLink from '@/components/BackLink'
+import { readFrom, withFrom } from '@/lib/nav'
+import Chip from '@/components/Chip'
+import { FilterGrid, FilterRow } from '@/components/FilterPanel'
 import { replayGame } from '@/lib/board'
-import { alignClocks, formatClock, formatDuration, formatTimeControl, parseControlInput, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
+import { alignClocks, formatClock, formatDuration, formatTimeControl, parseControlInput, parseTimeControl, timeControlsIn, timeSpentPerPly } from '@/lib/clocks'
 import { opponentMoves } from '@/lib/analysis'
 import { onAnalysed } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
@@ -113,89 +117,117 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
  * games actually carry. There is nothing to look it up from, so this is the only place
  * the answer can come from.
  *
- * Typed the way it is spoken: `30+30` is thirty minutes and a thirty-second increment,
- * and `parseControlInput` does the conversion the app already does in the other
- * direction. A control it cannot read is refused rather than guessed at — one nobody
- * meant would put a chip in the filter row that nothing matches.
+ * **It is the dashboard's Control row, not a control of its own.** The first version was
+ * a bespoke box with its own Set button wedged into the facts grid — a new way to pick a
+ * clock, on a screen where picking a clock already has one. This is `FilterRow` and the
+ * same `Chip` the filter panel is made of, listing the clocks your games actually carry,
+ * off the same `timeControlsIn`. Pressing one is the whole of setting it.
+ *
+ * The box is for the clock you have never played, which is the only case chips cannot
+ * cover: the row is derived from the games, so until some game carries 30+30 there is
+ * nothing to press. Typed the way it is spoken — `30+30` is thirty minutes and a
+ * thirty-second increment — and `parseControlInput` does the conversion the app already
+ * does in the other direction. One it cannot read is refused rather than guessed at,
+ * since a control nobody meant would put a chip in the filter row that nothing matches.
  *
  * Shown only on an upload. A synced game's clock is what the site reported, and an
- * editable field there would invite correcting a fact rather than supplying a missing
- * one.
+ * editable row there would invite correcting a fact rather than supplying a missing one.
  */
-function ControlFact({
+function ControlRow({
   userId,
   game,
+  games,
   onSet,
 }: {
   userId: string
   game: GameRecord
+  /** Every game, for the clocks you already play — the dashboard's own list. */
+  games: GameRecord[]
   onSet: (timeControl: string, timeClass: TimeClass) => void
 }) {
-  const stored = game.timeControl ? formatTimeControl(game.timeControl) : ''
-  const [typed, setTyped] = useState(stored)
-  const [saving, setSaving] = useState(false)
+  const [typed, setTyped] = useState('')
+  const [typing, setTyping] = useState(false)
+  const [saving, setSaving] = useState<string | null>(null)
   const [error, setError] = useState(false)
 
-  if (game.source !== 'upload') {
-    return <Fact label="Control" value={`${game.timeControl} · ${game.timeClass}`} />
-  }
+  const controls = useMemo(() => timeControlsIn(games), [games])
 
-  async function set() {
-    const control = parseControlInput(typed)
-    if (!control) {
-      setError(true)
-      return
-    }
-
-    setSaving(true)
+  async function set(control: string) {
+    setSaving(control)
     setError(false)
     try {
       const timeClass = timeClassOf(control)
       await setGameControl(userId, game.id, control, timeClass)
       onSet(control, timeClass)
+      setTyping(false)
+      setTyped('')
     } finally {
-      setSaving(false)
+      setSaving(null)
     }
   }
 
+  function setTypedControl() {
+    const control = parseControlInput(typed)
+    if (!control) {
+      setError(true)
+      return
+    }
+    set(control)
+  }
+
   return (
-    <div className="flex flex-col">
-      <span className="text-xs uppercase tracking-wide text-zinc-500">Control</span>
-
-      <span className="flex items-center gap-1.5">
-        <input
-          value={typed}
-          onChange={event => {
-            setTyped(event.target.value)
-            setError(false)
-          }}
-          onKeyDown={event => {
-            if (event.key === 'Enter') set()
-          }}
-          placeholder="30+30"
-          aria-label="The clock this game was played at"
-          className={`w-20 bg-zinc-950 border rounded-md px-2 py-0.5 text-sm text-zinc-100 outline-none tabular-nums transition-colors ${
-            error ? 'border-red-500/60' : 'border-zinc-800 focus:border-zinc-600'
-          }`}
-        />
-
-        {/* only once it differs, the rule every Save on this app follows */}
-        {typed.trim() !== stored && (
-          <button
-            type="button"
-            onClick={set}
-            disabled={saving}
-            className="text-xs text-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-40"
+    <FilterGrid>
+      <FilterRow
+        label="Control"
+        title="The clock this game was played at, which a pasted PGN usually does not say"
+      >
+        {controls.map(option => (
+          <Chip
+            key={option.key}
+            active={game.timeControl === option.key}
+            disabled={saving !== null}
+            onClick={() => set(option.key)}
+            title={`${option.games} of your games`}
           >
-            {saving ? '…' : 'Set'}
-          </button>
-        )}
+            {saving === option.key ? '…' : option.label}
+          </Chip>
+        ))}
 
-        {typed.trim() === stored && stored !== '' && (
-          <span className="text-xs text-zinc-600">{game.timeClass}</span>
+        {typing ? (
+          <>
+            <input
+              value={typed}
+              autoFocus
+              onChange={event => {
+                setTyped(event.target.value)
+                setError(false)
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter') setTypedControl()
+                if (event.key === 'Escape') setTyping(false)
+              }}
+              placeholder="30+30"
+              aria-label="A clock you have not played yet"
+              className={`w-20 bg-zinc-950 border rounded-full px-3 py-1 text-xs text-zinc-100 outline-none tabular-nums transition-colors ${
+                error ? 'border-red-500/60' : 'border-zinc-700 focus:border-zinc-500'
+              }`}
+            />
+            <button
+              type="button"
+              onClick={setTypedControl}
+              disabled={saving !== null}
+              className="text-xs text-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-40"
+            >
+              {saving ? '…' : 'Set'}
+            </button>
+          </>
+        ) : (
+          <Chip active={false} onClick={() => setTyping(true)} title="A clock none of your games carries yet">
+            + another
+          </Chip>
         )}
-      </span>
-    </div>
+      </FilterRow>
+    </FilterGrid>
   )
 }
 
@@ -226,6 +258,16 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
   /** The dashboard's filters ride along in the URL, so Back lands where you left. */
   const search = useMemo(() => writeFilters(readFilters(searchParams)), [searchParams])
+  /*
+    The filters *and* where you came from, for the links that walk the slice. Newer,
+    Older and Next unreviewed stay inside the same visit, so dropping the `from` on one
+    of them would quietly turn Back into Dashboard half way along a list you opened from
+    the uploads page.
+  */
+  const trail = useMemo(() => {
+    const from = readFrom(searchParams.get('from'))
+    return from ? withFrom(search, from) : search
+  }, [search, searchParams])
   const filters = useMemo(() => readFilters(searchParams), [searchParams])
 
   /** State only moves in the callbacks: setting it synchronously here would cascade. */
@@ -613,12 +655,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
   return (
     <>
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <Link
-          href={`/dashboard${search}`}
-          className="text-sm text-zinc-400 hover:text-zinc-100 transition-colors"
-        >
-          ← Dashboard
-        </Link>
+        <BackLink fallback={{ href: `/dashboard${search}`, label: 'Dashboard' }} />
 
         <div className="flex items-center gap-3 text-xs">
           {neighbours.position && (
@@ -628,7 +665,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           )}
           {neighbours.previous && (
             <Link
-              href={`/games/${neighbours.previous.id}${search}`}
+              href={`/games/${neighbours.previous.id}${trail}`}
               className="text-zinc-400 hover:text-zinc-100 transition-colors"
             >
               ‹ Newer
@@ -636,7 +673,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           )}
           {neighbours.next && (
             <Link
-              href={`/games/${neighbours.next.id}${search}`}
+              href={`/games/${neighbours.next.id}${trail}`}
               className="text-zinc-400 hover:text-zinc-100 transition-colors"
             >
               Older ›
@@ -644,7 +681,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           )}
           {neighbours.nextUnreviewed && (
             <Link
-              href={`/games/${neighbours.nextUnreviewed.id}${search}`}
+              href={`/games/${neighbours.nextUnreviewed.id}${trail}`}
               className="text-zinc-200 hover:text-white transition-colors"
             >
               Next unreviewed ›
@@ -694,9 +731,26 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Fact label="Played" value={new Date(game.playedAt).toLocaleDateString()} />
-          <ControlFact
+          <Fact
+            label="Control"
+            value={
+              game.timeControl ? (
+                `${formatTimeControl(game.timeControl)} · ${game.timeClass}`
+              ) : (
+                /* a thing to go and set rather than a blank, as the uploads list says it */
+                <span className="text-amber-400">no clock</span>
+              )
+            }
+          />
+          <Fact label="Ended by" value={endingOf(game)} />
+        </div>
+
+        {/* only on a game you brought in: a synced one's clock is what the site reported */}
+        {game.source === 'upload' && (
+          <ControlRow
             userId={userId}
             game={game}
+            games={games ?? []}
             onSet={(timeControl, timeClass) =>
               // the page's own copy, so the readouts below follow without a round trip
               setGames(current =>
@@ -706,8 +760,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
               )
             }
           />
-          <Fact label="Ended by" value={endingOf(game)} />
-        </div>
+        )}
 
         <div className="text-xs">
           {route.length > 0 ? (
