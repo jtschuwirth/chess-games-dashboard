@@ -7,7 +7,7 @@ const NAV_ITEMS = [
   {
     icon: '🔗',
     title: 'Profile',
-    description: 'Link your chess.com and lichess accounts, upload a PGN',
+    description: 'Link your chess.com and lichess accounts, and set how games are read',
     href: '/profile',
   },
   {
@@ -27,6 +27,12 @@ const NAV_ITEMS = [
     title: 'Dashboard',
     description: 'Win / draw / loss splits, overall or per saved line',
     href: '/dashboard',
+  },
+  {
+    icon: '📥',
+    title: 'Uploaded games',
+    description: 'Paste a PGN in, and set the clock a brought-in game was played at',
+    href: '/uploads',
   },
   {
     icon: '🗓️',

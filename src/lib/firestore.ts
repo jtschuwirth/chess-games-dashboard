@@ -43,22 +43,23 @@ import {
 import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
   DrillStat,
-  GameRecord,
-  MoveVerdict,
   ExerciseGuide,
+  GameRecord,
   GameReview,
+  MoveVerdict,
   NewExerciseGuide,
-  PatternDrillStat,
-  StoredAnalysis,
   NewOpeningLine,
   NewPattern,
   NewStudyPlan,
   OpeningLine,
   OpeningStudy,
+  PatternDrillStat,
   PatternRecord,
-  StudyPlan,
   Source,
+  StoredAnalysis,
+  StudyPlan,
   SyncedGame,
+  TimeClass,
   UserProfile,
 } from '@/types/chess'
 
@@ -332,6 +333,35 @@ export async function saveAnalysis(
  * than in a subcollection is what lets the dashboard filter and count reviews without
  * a single extra read: the games are already loaded.
  */
+/**
+ * The clock an uploaded game was played at, set by hand.
+ *
+ * A pasted PGN often carries no `TimeControl` header — a game off a board, one out of a
+ * book, a position a friend sent — so it arrives with no control at all and falls out of
+ * every clock reading and out of the Control row, which is derived from the controls the
+ * games actually carry. There is nothing to look it up from, so the only place the answer
+ * exists is you.
+ *
+ * `timeClass` goes with it rather than being derived later, because it is stored on every
+ * game by both providers and a game carrying one without the other would be the only
+ * document in the collection where the two could disagree.
+ *
+ * Only the two fields: a `merge` write, so the analysis, the review and the drills on that
+ * game are untouched.
+ */
+export async function setGameControl(
+  userId: string,
+  gameId: string,
+  timeControl: string,
+  timeClass: TimeClass,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, 'games', gameId),
+    { timeControl, timeClass },
+    { merge: true },
+  )
+}
+
 export async function saveReview(
   userId: string,
   gameId: string,

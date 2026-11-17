@@ -90,7 +90,7 @@ function parsePgnDate(date: string | undefined, time: string | undefined): numbe
  * use. Only a rough bucket — the analysis filters by the control itself, because 10+0
  * and 15+10 are both "rapid" and behave nothing alike.
  */
-function timeClassOf(control: string): TimeClass {
+export function timeClassOf(control: string): TimeClass {
   const base = Number(control.split('+')[0])
   if (!Number.isFinite(base) || base <= 0) return 'classical'
   if (base < 180) return 'bullet'

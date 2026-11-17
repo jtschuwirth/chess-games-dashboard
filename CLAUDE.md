@@ -7,8 +7,9 @@ win/draw/loss splits for all games or for the games that followed one of those l
 
 ## Core User Flow
 1. Sign in with Google (`/`)
-2. `/profile` — save chess.com / lichess usernames, and paste in a PGN to study. Syncing
-   itself lives on the dashboard. The two screens that explain the analysis live here as
+2. `/profile` — save chess.com / lichess usernames. Syncing lives on the dashboard and
+   pasting a PGN in lives at `/uploads`, which also lists what you have brought in and is
+   where a game with no clock in its headers is told which one it was played at. The two screens that explain the analysis live here as
    well: the thresholds the move marks are a judgement about, and what a whole game's
    descriptor is read from. So does **your tag vocabulary** — the words the Mistake
    database counts, in groups you name, where renaming one renames it on every review
@@ -135,6 +136,7 @@ src/
 │   ├── guides/page.tsx         # Exercise guides: list + create
 │   ├── guides/[id]/page.tsx    # One sheet: the positions, solved on a board
 │   ├── patterns/[id]/page.tsx  # One write-up: the method or the conditions, lines, games
+│   ├── uploads/page.tsx        # Games you pasted in: the panel, and what it left you
 │   ├── plans/page.tsx          # Study plans: list + create
 │   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's games
 │   ├── learn/page.tsx          # Drill over the reviewed positions
@@ -2166,14 +2168,70 @@ src/
   on its spinner forever with nothing but an unhandled rejection in the console. Each page now
   catches, renders `LoadError` with a Try again, and clears the error inside the promise callback
   rather than synchronously in the effect, which would cascade renders.
-- **An uploaded game is a game, and is not your record.** A pasted PGN becomes an ordinary
-  document with `source: 'upload'`, so the board, the engine, the review, the drill and the
-  patterns all work on it without knowing where it came from — and `matchesCriteria` drops it
-  from every slice unless the Site filter asks for `upload` by name, because a game you brought
-  in to study would otherwise be answering a different question inside your win rate. Its id is
+- **An uploaded game is a game.** A pasted PGN becomes an ordinary document with
+  `source: 'upload'`, so the board, the engine, the review, the drill and the patterns all work
+  on it without knowing where it came from. Its id is
   an FNV-1a hash of the moves and the players, so re-uploading the same game merges onto the same
   document and a review written on it survives. `Source` splits into `ProviderSource` for this:
   syncing only ever speaks about the two sites, and an upload has no endpoint to fetch from.
+
+  **`any` means any, and for a while it did not.** `matchesCriteria` dropped an uploaded
+  game from every slice unless the Site row asked for `upload` by name, on the reasoning
+  that a game you brought in to study is not your record and would make every split
+  answer a different question from the one it claims to.
+
+  That reasoning is still true and it was the wrong place to act on it. The chip says
+  **any** and meant two of its three values — a control whose word and behaviour
+  disagree, which is worse than one that counts something you did not want: a figure you
+  disagree with can be seen and narrowed, where games that were never there cannot. It
+  was also a rule only `game-filters.ts` knew, so the row offered three values and
+  silently meant two.
+
+  So the filter is only the filter. Narrowing to Chess.com or Lichess is how your own
+  record is read, and both exclude uploads by simply not being `upload` — the ordinary
+  meaning of the row rather than a special case inside it. The **rating history** still
+  leaves them out and should: a pool is `source + timeClass`, your rating *on a site*,
+  and an uploaded game has no rating in one. That is the same word asking a different
+  question, which is why it stays where it is rather than following the filter.
+
+- **Uploads are a section, not a box at the bottom of the profile.** Pasting a PGN lived
+  among the linked accounts and the analysis settings — a page about who you are and how
+  the app reads your games, which an uploaded game is neither. `/uploads` is the panel
+  plus the list, and the list is half the point: an upload's id is hashed from its moves
+  so pasting the same game twice merges rather than duplicating, and until there was
+  somewhere to see them there was no way to know what that had left you with.
+
+  The row says the clock or says **no clock** in amber, and the heading counts the second
+  kind — because that is work left rather than a statistic, and it is the one field only
+  this page's game view can supply.
+
+- **A game you brought in can be told what clock it was played at.** A pasted PGN usually
+  carries no `TimeControl` — a game off a board, one out of a book — so it arrives with
+  none, and a game with none falls out of every clock reading *and* out of the Control
+  row, which is built from the controls the games actually carry. Nothing can look it up;
+  the only place the answer exists is you.
+
+  So the **Control** fact on an uploaded game is an input. Only on an upload: a synced
+  game's clock is what the site reported, and an editable field there would invite
+  correcting a fact rather than supplying a missing one.
+
+  **It is typed the way it is spoken.** `parseControlInput` is the inverse of
+  `formatTimeControl`, and it has to exist because the two are different units — a stored
+  id counts the base in seconds (`1800+30`) where every player writes minutes. Asking
+  someone to type `1800+30` would be asking them to do the conversion the app already
+  does in the other direction. A bare `30` is `30+0`, since a control with no increment
+  is written without one; anything it cannot read is refused rather than guessed at,
+  because a control nobody meant would put a chip in the Control row that nothing
+  matches.
+
+  `timeClass` is written beside it and comes from `timeClassOf`, the rule the upload path
+  already uses. A second answer here would make the game view the only place in the
+  collection where a control and its class could disagree.
+
+  **There is no list of controls to add one to**, which is the answer to "add 30+30 to
+  the filters": `timeControlsIn` derives the row from the games, so setting the control on
+  a game is the whole of adding it, and it appears on every screen that draws the filter
+  panel at once.
 - **One depth or the number means nothing.** Centipawn loss and the think-time bands only count
   games analysed at `ENGINE_DEPTH`. A shallower engine finds fewer mistakes and scores them
   smaller, so mixing depths would have shown a step change at the moment the depth settled at 21
@@ -3044,11 +3102,15 @@ src/
   the sites out as `chesscom || lichess`, written when there were two; the chip set
   `source=upload`, `writeFilters` duly put it in the address, and the reader handed back
   `both`. So the filter worked until the page was reloaded, linked to, or returned to
-  from a game — and uploads are the one source whose games are *invisible* without it, so
-  the slice did not widen on the way back, it emptied. `readSource` reads the vocabulary
+  from a game — and uploads were then invisible under `both`, so the slice did not widen
+  on the way back, it emptied. `readSource` reads the vocabulary
   off `SOURCE_LABEL` instead, so a fourth source arrives readable rather than silently
   unreadable, with `Object.hasOwn` and not `in` — the first version of the fix used `in`,
   and a check caught that `?source=toString` was therefore a site.
+
+  (Uploads were invisible under `any` at the time, which is what made a lost `source`
+  filter empty the slice rather than widen it. `any` includes them now, so the same bug
+  would merely show too much — still wrong, and no longer silent.)
 - **A variation's games include its sub-variations** (`gameMatchesNode` unions the subtree), so a
   parent's totals always cover its children even when a game transposed straight into a child.
 
@@ -3096,9 +3158,9 @@ of mistake the engine is there to find. Seeded, so re-running it produces the sa
 and a re-upload lands on the same document ids rather than near-duplicates. Both colours,
 four controls, half of them carrying move times.
 
-Remember that an uploaded game is deliberately **out of every slice** unless the Site
-filter names it, so a dashboard reading `0 of 12 games` after an upload is the rule
-working rather than a fault.
+Uploaded games are in every slice now — `any` means any — so a dashboard that has just
+taken a sheet in reads the count you expect. Narrowing to Chess.com or Lichess is how to
+read your own record without them.
 
 ## Analysing the games
 `.claude/skills/game-analysis` answers questions about the stored games, and its one rule

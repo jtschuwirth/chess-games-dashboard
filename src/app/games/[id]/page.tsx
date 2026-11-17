@@ -25,17 +25,11 @@ import ReviewEditor from '@/components/ReviewEditor'
 import OpeningRoute from '@/components/OpeningRoute'
 import StatusTag from '@/components/StatusTag'
 import { replayGame } from '@/lib/board'
-import {
-  alignClocks,
-  formatClock,
-  formatDuration,
-  parseTimeControl,
-  timeSpentPerPly,
-} from '@/lib/clocks'
+import { alignClocks, formatClock, formatDuration, formatTimeControl, parseControlInput, parseTimeControl, timeSpentPerPly } from '@/lib/clocks'
 import { opponentMoves } from '@/lib/analysis'
 import { onAnalysed } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
-import { getGames, getOpenings, getPatterns, getTagGroups, saveVariations } from '@/lib/firestore'
+import { getGames, getOpenings, getPatterns, getTagGroups, saveVariations, setGameControl } from '@/lib/firestore'
 import { buildOpeningTree, openingRoute, routeSteps } from '@/lib/opening'
 import { patternTags } from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
@@ -47,16 +41,10 @@ import {
   reviewedPlies,
 } from '@/lib/review'
 import { DEFAULT_TAG_GROUPS, type TagGroup } from '@/lib/tags'
+import { timeClassOf } from '@/lib/upload'
 import { endingOf } from '@/lib/termination'
 import { SOURCE_LABEL } from '@/types/chess'
-import type {
-  Color,
-  GameRecord,
-  GameResult,
-  GameReview,
-  OpeningLine,
-  PatternRecord,
-} from '@/types/chess'
+import type { Color, GameRecord, GameResult, GameReview, OpeningLine, PatternRecord, TimeClass } from '@/types/chess'
 
 const RESULT_COLOR: Record<GameResult, string> = {
   win: 'text-emerald-400',
@@ -112,6 +100,101 @@ function Fact({ label, value }: { label: string; value: React.ReactNode }) {
     <div className="flex flex-col">
       <span className="text-xs uppercase tracking-wide text-zinc-500">{label}</span>
       <span className="text-sm text-zinc-200">{value}</span>
+    </div>
+  )
+}
+
+/**
+ * The clock an uploaded game was played at, which only you can know.
+ *
+ * A pasted PGN usually carries no `TimeControl` — a game off a board, one out of a book —
+ * so it arrives with no control at all, and a game with none falls out of every clock
+ * reading *and* out of the dashboard's Control row, which is built from the controls the
+ * games actually carry. There is nothing to look it up from, so this is the only place
+ * the answer can come from.
+ *
+ * Typed the way it is spoken: `30+30` is thirty minutes and a thirty-second increment,
+ * and `parseControlInput` does the conversion the app already does in the other
+ * direction. A control it cannot read is refused rather than guessed at — one nobody
+ * meant would put a chip in the filter row that nothing matches.
+ *
+ * Shown only on an upload. A synced game's clock is what the site reported, and an
+ * editable field there would invite correcting a fact rather than supplying a missing
+ * one.
+ */
+function ControlFact({
+  userId,
+  game,
+  onSet,
+}: {
+  userId: string
+  game: GameRecord
+  onSet: (timeControl: string, timeClass: TimeClass) => void
+}) {
+  const stored = game.timeControl ? formatTimeControl(game.timeControl) : ''
+  const [typed, setTyped] = useState(stored)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState(false)
+
+  if (game.source !== 'upload') {
+    return <Fact label="Control" value={`${game.timeControl} · ${game.timeClass}`} />
+  }
+
+  async function set() {
+    const control = parseControlInput(typed)
+    if (!control) {
+      setError(true)
+      return
+    }
+
+    setSaving(true)
+    setError(false)
+    try {
+      const timeClass = timeClassOf(control)
+      await setGameControl(userId, game.id, control, timeClass)
+      onSet(control, timeClass)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="flex flex-col">
+      <span className="text-xs uppercase tracking-wide text-zinc-500">Control</span>
+
+      <span className="flex items-center gap-1.5">
+        <input
+          value={typed}
+          onChange={event => {
+            setTyped(event.target.value)
+            setError(false)
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Enter') set()
+          }}
+          placeholder="30+30"
+          aria-label="The clock this game was played at"
+          className={`w-20 bg-zinc-950 border rounded-md px-2 py-0.5 text-sm text-zinc-100 outline-none tabular-nums transition-colors ${
+            error ? 'border-red-500/60' : 'border-zinc-800 focus:border-zinc-600'
+          }`}
+        />
+
+        {/* only once it differs, the rule every Save on this app follows */}
+        {typed.trim() !== stored && (
+          <button
+            type="button"
+            onClick={set}
+            disabled={saving}
+            className="text-xs text-zinc-500 hover:text-zinc-100 transition-colors disabled:opacity-40"
+          >
+            {saving ? '…' : 'Set'}
+          </button>
+        )}
+
+        {typed.trim() === stored && stored !== '' && (
+          <span className="text-xs text-zinc-600">{game.timeClass}</span>
+        )}
+      </span>
     </div>
   )
 }
@@ -611,7 +694,18 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Fact label="Played" value={new Date(game.playedAt).toLocaleDateString()} />
-          <Fact label="Control" value={`${game.timeControl} · ${game.timeClass}`} />
+          <ControlFact
+            userId={userId}
+            game={game}
+            onSet={(timeControl, timeClass) =>
+              // the page's own copy, so the readouts below follow without a round trip
+              setGames(current =>
+                (current ?? []).map(entry =>
+                  entry.id === gameId ? { ...entry, timeControl, timeClass } : entry,
+                ),
+              )
+            }
+          />
           <Fact label="Ended by" value={endingOf(game)} />
         </div>
 

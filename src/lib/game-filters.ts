@@ -118,13 +118,22 @@ export function matchesCriteria(
   if (game.opponentIsBot) return false
 
   /*
-   * Uploaded games are not part of your record. They are games you brought in to study —
-   * someone else's, or one off a board — and counting them would make every split answer
-   * a different question from the one it claims to. They are still reachable by asking
-   * for them by name, which is what the Uploaded source is for.
-   */
-  if (game.source === 'upload' && criteria.source !== 'upload') return false
+    `any` means any, uploads included.
 
+    It used to drop them unless asked for by name, on the reasoning that a game you
+    brought in to study is not part of your record and would make every split answer a
+    different question from the one it claims to. That reasoning is still true and it
+    was the wrong place to act on it: the chip says **any**, and a control whose word
+    and behaviour disagree is worse than one that counts something you did not want —
+    you can see a figure you disagree with and narrow it, where you cannot see games
+    that were never there. It was also a rule only this file knew: the Site row offered
+    three values and silently meant two of them.
+
+    So the filter is now only the filter. Narrowing to Chess.com or Lichess is how you
+    read your own record, and both of those exclude uploads by simply not being
+    `upload` — which is the ordinary meaning of the row rather than a special case
+    inside it.
+  */
   if (criteria.source !== 'both' && game.source !== criteria.source) return false
   if (criteria.endedIn !== null && endingPhaseOf(game) !== criteria.endedIn) return false
 

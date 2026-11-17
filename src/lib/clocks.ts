@@ -84,6 +84,36 @@ export function formatTimeControl(raw: string): string {
   return `${shown}+${control.increment}`
 }
 
+/**
+ * A control typed the way it is spoken — `30+30` — as the id the app stores.
+ *
+ * The inverse of `formatTimeControl`, and it has to exist because the two are different
+ * units: a stored id counts the base in **seconds** (`1800+30`) while every chess player
+ * writes and says it in minutes. Asking someone to type `1800+30` would be asking them
+ * to do the conversion the app is already doing in the other direction.
+ *
+ * The increment stays in seconds, which is how it is written on both sides — nobody
+ * says a thirty-second increment in minutes.
+ *
+ * `30` alone is `30+0`, since a control with no increment is usually written without
+ * one. Anything else — a negative, a fraction of a second, something that is not two
+ * numbers — comes back null rather than guessed at, because a control nobody meant is
+ * worse than no control: it would put a chip in the filter row that nothing matches.
+ */
+export function parseControlInput(raw: string): string | null {
+  const match = raw.trim().match(/^(\d+(?:\.\d+)?)\s*(?:\+\s*(\d+))?$/)
+  if (!match) return null
+
+  const minutes = Number(match[1])
+  const increment = match[2] === undefined ? 0 : Number(match[2])
+  if (!Number.isFinite(minutes) || minutes <= 0) return null
+
+  const base = Math.round(minutes * 60)
+  if (!Number.isInteger(increment) || increment < 0) return null
+
+  return `${base}+${increment}`
+}
+
 /** Controls present in a set of games, fastest first, with how many games each has. */
 export function timeControlsIn(games: GameRecord[]): { key: string; label: string; games: number }[] {
   const counts = new Map<string, number>()

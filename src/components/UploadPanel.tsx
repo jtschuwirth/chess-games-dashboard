@@ -80,8 +80,9 @@ export default function UploadPanel({
         <h2 className="font-semibold">Upload a game</h2>
         <p className="text-sm text-zinc-500 mt-0.5">
           A game from over the board, a friend&apos;s, or one out of a book. It gets the board,
-          the engine and the review like any other — but stays out of your win/draw/loss splits,
-          since it is not your own record. Paste one game or a file of them.
+          the engine and the review like any other, and counts in your splits — narrow the
+          Site filter to a site to read your own record without them. Paste one game or a
+          file of them.
         </p>
       </div>
 
