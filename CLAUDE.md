@@ -3052,6 +3052,40 @@ src/
 - **A variation's games include its sub-variations** (`gameMatchesNode` unions the subtree), so a
   parent's totals always cover its children even when a game transposed straight into a child.
 
+- **Other lines was hiding the most interesting thing on the row.** The breakdown split a
+  line's games by sub-variation and swept the rest into one bucket, which read as
+  *nothing more is known about these* — when what is known is that they reached the
+  Modern Variation and then transposed into the Exchange. The destination is a saved line
+  with its own page, its own sub-variations and its own games, so burying it loses the
+  next question rather than answering it.
+
+  `departedTo` is the rule: **the first arrival after this one that is outside the
+  subtree**, which is literally where the game went next. Later arrivals are where it
+  went after *that* — the same question asked one line along, which is what clicking
+  through is for. Ancestors need no second rule, because a line this one is nested under
+  was reached *before* it and the ply comparison already drops it. A game that reached
+  the line and no other saved line afterwards has no departure and stays in Other lines,
+  which is the honest answer for it.
+
+  Each destination is a row of its own, named `→ Exchange Variation` — the same glyph
+  `OpeningRoute` draws on a game row, so the table and the row agree about what an arrow
+  means. Pressing one goes to that line **with Arrived set to `transposed`**, because
+  that is where those games are: they did not play its move order, they arrived from
+  here. The game rows there then say so themselves, since the route already spells out
+  `Queen's Gambit Declined › Modern Variation → Exchange Variation`.
+
+  **A line with no saved sub-variations used to show no table at all**, which is exactly
+  the place this matters most: the leaf of a repertoire is where "so where did these
+  games go" has no other way to be asked. The breakdown is built whatever the children
+  are and returns empty only when there is genuinely no row — and the panel is titled
+  **Out of X** rather than *Sub-variations of X* when none of its rows is one, since
+  naming rows after what they are not is how a table stops being readable.
+
+  It costs a route per game that reached the line and no sub-variation, which is the
+  expensive call on this page — the game list computes it only for the rows it draws.
+  Measured against the whole account rather than guessed: 1,156 games through the rule in
+  3ms, inside the memo the breakdown already lives in.
+
 ## Checking the app on a throwaway account
 `scripts/dev-games.mjs` writes a sheet of games to paste into **Upload a game** on the
 profile page, for a fresh account with nothing in it. Every move is played through

@@ -21,6 +21,7 @@ import { sinceTimestamp } from '@/lib/game-filters'
 import type { RatingHistory } from '@/lib/rating-history'
 import {
   buildOpeningTree,
+  departedTo,
   findPath,
   flattenTree,
   formatMoves,
@@ -28,6 +29,7 @@ import {
   openingLabel,
   openingRoute,
   routeSteps,
+  type OpeningNode,
   type RouteStep,
 } from '@/lib/opening'
 import { arrivalCounts, positionKeyMap, scopeGames } from '@/lib/scope'
@@ -214,8 +216,14 @@ function DashboardBody({ userId }: { userId: string }) {
   const breakdown = useMemo(() => {
     if (unclassifiedView) return []
 
+    /*
+      A line with no saved sub-variations used to return nothing at all, which is the one
+      place the departures matter most: it is precisely the leaf of your repertoire where
+      the question "so where did these games go" has no other way to be asked. The table
+      is built whatever the children are, and returns empty only when there is genuinely
+      no row to draw.
+    */
     const children = current ? current.children : tree
-    if (children.length === 0) return []
 
     const claimed = new Set<string>()
     const rows: VariationRow[] = children.map(node => {
@@ -239,17 +247,63 @@ function DashboardBody({ userId }: { userId: string }) {
     rows.sort((a, b) => b.stats.total - a.stats.total)
 
     const rest = scoped.filter(game => !claimed.has(game.id))
-    if (rest.length > 0) {
-      const restClock = computeClockStats(rest)
+
+    /*
+      The rest are not one bucket. A game that reached this line and no saved
+      sub-variation under it usually went *somewhere* — it transposed into another saved
+      line — and that is the most interesting thing about it, not the least. Swept into
+      **Other lines** it read as "nothing more is known", when the destination is a saved
+      line with its own page and its own sub-variations, which is the next question
+      rather than the end of this one.
+
+      So the departures are rows of their own, named after where the games went and
+      marked with the `→` the route already uses for a transposition. Pressing one goes
+      to that line **with the Arrived filter set to `transposed`**, which is where these
+      games are: they did not play its move order, they arrived from here.
+    */
+    const left = new Map<string, { node: OpeningNode; games: GameRecord[] }>()
+    const stayed: GameRecord[] = []
+
+    for (const game of rest) {
+      const to = current
+        ? departedTo(tree, current, game, positionKeys.get(game.id) ?? new Map())
+        : null
+
+      if (!to) {
+        stayed.push(game)
+        continue
+      }
+
+      const entry = left.get(to.opening.id) ?? { node: to, games: [] }
+      entry.games.push(game)
+      left.set(to.opening.id, entry)
+    }
+
+    const departures: VariationRow[] = [...left.values()].map(({ node, games }) => ({
+      key: `to:${node.opening.id}`,
+      // the one glyph that already means this, so a row here and a game row agree
+      name: `→ ${openingLabel(node.opening)}`,
+      note: `Transposed out of ${openingLabel(current!.opening)}`,
+      stats: computeStats(games),
+      think: computeClockStats(games).medianPerMove,
+      blundersPerGame: blunderRate(games),
+      onSelect: () => patch({ opening: node.opening.id, arrival: 'transposed' }),
+    }))
+
+    departures.sort((a, b) => b.stats.total - a.stats.total)
+    rows.push(...departures)
+
+    if (stayed.length > 0) {
+      const restClock = computeClockStats(stayed)
       rows.push({
         key: 'unclassified',
         name: current ? 'Other lines' : 'Not in a saved opening',
         note: current
-          ? 'Reached ' + openingLabel(current.opening) + ' but no saved sub-variation'
+          ? 'Reached ' + openingLabel(current.opening) + ' and no other saved line'
           : undefined,
-        stats: computeStats(rest),
+        stats: computeStats(stayed),
         think: restClock.medianPerMove,
-        blundersPerGame: blunderRate(rest),
+        blundersPerGame: blunderRate(stayed),
         onSelect: current ? undefined : () => patch({ opening: UNCLASSIFIED_OPENING }),
       })
     }
@@ -372,7 +426,15 @@ function DashboardBody({ userId }: { userId: string }) {
 
       {breakdown.length > 0 ? (
         <VariationTable
-          title={current ? `Sub-variations of ${openingLabel(current.opening)}` : 'By opening'}
+          title={
+            current
+              ? // a line with no children of its own shows only where its games went, and
+                // calling that "sub-variations" would name the rows after what they are not
+                current.children.length > 0
+                ? `Sub-variations of ${openingLabel(current.opening)}`
+                : `Out of ${openingLabel(current.opening)}`
+              : 'By opening'
+          }
           rows={breakdown}
           up={up}
         />

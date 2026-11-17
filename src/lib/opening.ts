@@ -222,6 +222,44 @@ export function gameMatchesNode(game: GameRecord, keys: GameKeys, node: OpeningN
   return subtreeOpenings(node).some(opening => gameMatchesOpening(game, keys, opening))
 }
 
+/**
+ * Where a game went after reaching this line, when it left for a saved line that is not
+ * under it.
+ *
+ * The breakdown under a node splits its games by sub-variation and sweeps the rest into
+ * **Other lines** — which was reading as "nothing more is known about these", when what
+ * is actually known is the most interesting thing on the row: they reached the Modern
+ * Variation and then transposed into the Exchange. The destination is a saved line with
+ * its own page, its own sub-variations and its own games, so burying it loses the next
+ * question rather than answering it.
+ *
+ * **The first arrival after this one that is outside the subtree**, which is literally
+ * where it went next. Later ones are where it went after *that*, and are the same
+ * question asked again one line along — which is what clicking through is for. A game
+ * that reached this line and no other saved line afterwards has no departure and stays
+ * in Other lines, which is the honest answer for it.
+ *
+ * Ancestors are excluded by the same test rather than by a second rule: a line this one
+ * is nested under was reached *before* it, so the ply comparison already drops it.
+ */
+export function departedTo(
+  nodes: OpeningNode[],
+  node: OpeningNode,
+  game: GameRecord,
+  keys: GameKeys,
+): OpeningNode | null {
+  const route = openingRoute(nodes, game, keys)
+  const here = route.find(arrival => arrival.node.opening.id === node.opening.id)
+  if (!here) return null
+
+  const under = new Set(subtreeOpenings(node).map(opening => opening.id))
+  const next = route.find(
+    arrival => arrival.ply > here.ply && !under.has(arrival.node.opening.id),
+  )
+
+  return next?.node ?? null
+}
+
 /* --------------------------------------------------------- how a game got here */
 
 export interface Arrival {
