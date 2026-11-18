@@ -17,19 +17,31 @@
  * the board and have to spot the change yourself; without one you are told the change in
  * words. The first is harder and better, and the second is what you get for free.
  */
-import type { PatternDrillStat, PatternRecord } from '@/types/chess'
-import { ESSENTIALS_SECTIONS, lineHome, lineTree } from './pattern'
-import { fenAt } from './movetree'
+import type { Color, PatternDrillStat, PatternLine, PatternRecord } from '@/types/chess'
+import { ESSENTIALS_SECTIONS, lineHome, lineTree, pointId } from './pattern'
+import { fenAt, mainLine, mainLineFrom, nodeAt } from './movetree'
+import { sideToMove } from './board'
 
 /** Which way the card's question is answered. */
 export type PatternAnswer = 'works' | 'fails'
 
-export interface PatternCard {
+/** What a card asks of you. */
+export type PatternCardKind = 'boundary' | 'line'
+
+interface CardBase {
   /** `patternId:pointId`, the identity of one card across sessions. */
   key: string
   patternId: string
+  /** What the drill record is filed under on the pattern. */
   pointId: string
   patternName: string
+  stat: PatternDrillStat | null
+  /** When it next falls due. A card never answered is due now. */
+  due: number
+}
+
+export interface BoundaryCard extends CardBase {
+  kind: 'boundary'
   /** The board the change was made to, when the point carries one. */
   fen: string | null
   /** The pattern's own position, for the reveal — what the change was made *to*. */
@@ -48,10 +60,44 @@ export interface PatternCard {
   answer: PatternAnswer
   /** Which question it came from, for the reveal. */
   section: string
-  stat: PatternDrillStat | null
-  /** When it next falls due. A card never answered is due now. */
-  due: number
 }
+
+/**
+ * Play the line, which is what an opening pattern is actually for.
+ *
+ * The boundary question — does the pattern still work here — is the right one for a
+ * tactic, where the pattern is a shape you either see or miss. An opening pattern is
+ * not a shape, it is a **sequence you are supposed to know**: the position comes up,
+ * and what you need back is the moves. Asking whether it still works is asking nothing
+ * about the thing you were trying to learn.
+ *
+ * So an `opening` write-up puts its examples in front of you instead. The position it
+ * opens on, the name of the idea and the lines it is filed under — enough to remember
+ * what this one is for — and then you play it out, move by move, with their replies
+ * supplied from the example you wrote.
+ */
+export interface LineCard extends CardBase {
+  kind: 'line'
+  /** The position the example opens on, which is where you are asked to start. */
+  fen: string
+  /** Which end you play from, and therefore which plies of the line are yours. */
+  orientation: Color
+  /** The line from that position on — your moves and theirs, alternating. */
+  moves: string[]
+  /** What the example is called, held back until the line is played or given up. */
+  title: string
+  /** What you wrote about the line as a whole, revealed with it. */
+  note: string | null
+  /**
+   * The saved openings the pattern names, as ids.
+   *
+   * Ids rather than names because this module knows nothing about the repertoire and
+   * should not start: the page has the openings loaded and does the lookup.
+   */
+  openingIds: string[]
+}
+
+export type PatternCard = BoundaryCard | LineCard
 
 /**
  * How far ahead a card goes after each right answer, in days.
@@ -103,6 +149,72 @@ function openingFen(pattern: PatternRecord): string | null {
   }
 }
 
+/**
+ * An id for an example, derived from the example itself.
+ *
+ * A `PatternLine` has never carried one — it is an entry in an array, identified by
+ * where it sits — and a drill record keyed by position would move to a different
+ * example the moment one was removed from the middle of the list. The same FNV-1a a
+ * point without an id gets, over the only two things that make the line what it is: the
+ * position it opens on and the moves played from it.
+ *
+ * Re-pointing or extending a line therefore starts a new card, which is the honest
+ * answer: a line you have rewritten is not the line you had learned.
+ */
+export function lineCardId(line: PatternLine, moves: string[]): string {
+  return `line:${pointId(`${line.startFen ?? ''}|${moves.join(' ')}`)}`
+}
+
+/**
+ * The example as a card: where it opens, and what you have to play from there.
+ *
+ * Null for an example with no moves after its opening ply — a position on its own is a
+ * complete *example*, and the page says so, but there is nothing to be asked for.
+ */
+function lineCard(pattern: PatternRecord, line: PatternLine): Omit<LineCard, 'stat' | 'due'> | null {
+  let fen: string
+  let moves: string[]
+
+  try {
+    const tree = lineTree(line)
+    const home = lineHome(tree, line.startPly)
+    const at = nodeAt(tree, home)
+    fen = fenAt(tree, home)
+    // what follows the ply the board opens on, down the line's own main line
+    moves = at ? mainLineFrom(at).slice(1).map(node => node.san) : mainLine(tree)
+  } catch {
+    return null
+  }
+
+  if (moves.length === 0) return null
+
+  return {
+    kind: 'line',
+    key: `${pattern.id}:${lineCardId(line, moves)}`,
+    patternId: pattern.id,
+    pointId: lineCardId(line, moves),
+    patternName: pattern.name,
+    fen,
+    orientation: line.orientation ?? 'white',
+    moves,
+    title: line.title,
+    note: line.note?.trim() || null,
+    openingIds: pattern.openingIds ?? [],
+  }
+}
+
+/**
+ * Whether ply `index` of a line card is one of yours.
+ *
+ * The line alternates from the position it opens on, so the whole answer is who is to
+ * move there. An example pointed at the opponent's move opens with their move played
+ * for you, which is the same thing the drill does at every other step.
+ */
+export function yoursAt(card: LineCard, index: number): boolean {
+  const youStart = sideToMove(card.fen) === card.orientation
+  return youStart === (index % 2 === 0)
+}
+
 /** Every card a pattern offers, whether or not it is due. */
 export function cardsOf(pattern: PatternRecord): PatternCard[] {
   const cards: PatternCard[] = []
@@ -119,6 +231,7 @@ export function cardsOf(pattern: PatternRecord): PatternCard[] {
       const stat = drills[point.id] ?? null
 
       cards.push({
+        kind: 'boundary',
         key: `${pattern.id}:${point.id}`,
         patternId: pattern.id,
         pointId: point.id,
@@ -133,6 +246,21 @@ export function cardsOf(pattern: PatternRecord): PatternCard[] {
         stat,
         due: stat?.due ?? 0,
       })
+    }
+  }
+
+  /*
+    An opening write-up asks for its lines instead of its boundaries — the position
+    comes up and what you need back is the moves, which is not a question "does it
+    still work" can put to you. Its boundaries still make cards if any were written;
+    the two kinds compose rather than replacing each other.
+  */
+  if (pattern.kind === 'opening') {
+    for (const example of pattern.examples) {
+      const card = lineCard(pattern, example)
+      if (!card) continue
+      const stat = drills[card.pointId] ?? null
+      cards.push({ ...card, stat, due: stat?.due ?? 0 })
     }
   }
 
@@ -182,7 +310,8 @@ export function drillSummary(patterns: PatternRecord[], now: number) {
   const due = all.filter(card => card.due <= now)
   const unseen = all.filter(card => card.stat === null)
   const withBoard = all.filter(card => card.fen !== null)
-  const withReason = all.filter(card => card.why !== null)
+  const withReason = all.filter(card => card.kind === 'boundary' && card.why !== null)
+  const lines = all.filter(card => card.kind === 'line')
 
   return {
     total: all.length,
@@ -190,10 +319,11 @@ export function drillSummary(patterns: PatternRecord[], now: number) {
     unseen: unseen.length,
     withBoard: withBoard.length,
     withReason: withReason.length,
+    lines: lines.length,
   }
 }
 
 /** Whether an answer was right. The section the point sits in is the truth. */
-export function judge(card: PatternCard, said: PatternAnswer): boolean {
+export function judge(card: BoundaryCard, said: PatternAnswer): boolean {
   return said === card.answer
 }

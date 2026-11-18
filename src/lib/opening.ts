@@ -363,10 +363,12 @@ export interface RouteStep {
    * its arrow step and every `under` step up to the first one that is not.
    */
   under: boolean
+  /** Which side the line is saved for, drawn as a dot rather than said in brackets. */
+  color: OpeningColor
 }
 
 /**
- * The route as names, for whichever of the two labellings the screen uses.
+ * The route as names, with no colour in any of them.
  *
  * The first step is never a transposition however it was reached: there is nothing
  * saved in front of it to have come *from*, and an arrow with one end is a claim the
@@ -387,10 +389,7 @@ export interface RouteStep {
  * Two *unrelated* transpositions still get an arrow each, which is the point of hanging
  * this off the chain rather than off a flag saying the route has gone astray.
  */
-export function routeSteps(
-  arrivals: Arrival[],
-  label: (opening: OpeningLine) => string = openingLabel,
-): RouteStep[] {
+export function routeSteps(arrivals: Arrival[]): RouteStep[] {
   const steps: RouteStep[] = []
   let previous: Arrival | null = null
 
@@ -401,12 +400,19 @@ export function routeSteps(
       !carries &&
       isParentLine(previous.node.opening.moves, arrival.node.opening.moves)
 
-    const names = [...arrival.under, arrival.node].map(node => label(node.opening))
-    for (const [at, name] of names.entries()) {
+    const lines = [...arrival.under, arrival.node].map(node => node.opening)
+    for (const [at, line] of lines.entries()) {
       steps.push({
-        name,
+        /*
+          The bare name. The colour used to be glued on here by `openingLabel`, which
+          put `(Black)` on all four steps of a four-step route — and the game it is
+          drawn under already says which colour you were. It is a dot on the first step
+          that has one now, drawn by `OpeningRoute`.
+        */
+        name: line.name,
         transposed: steps.length > 0 && at === 0 && !arrival.played && !onwards,
         under: at < arrival.under.length,
+        color: line.color,
       })
     }
 

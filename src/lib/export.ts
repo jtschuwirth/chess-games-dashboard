@@ -202,7 +202,7 @@ export function buildExport(
 
   const routesById = new Map<string, { line: string[]; route: string }>()
   for (const game of counted) {
-    const steps = routeSteps(openingRoute(tree, game, keysFor(game)), opening => opening.name)
+    const steps = routeSteps(openingRoute(tree, game, keysFor(game)))
     routesById.set(game.id, { line: steps.map(step => step.name), route: routeText(steps) })
   }
 

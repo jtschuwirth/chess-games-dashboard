@@ -310,10 +310,7 @@ function StudyBody({ userId, openingId }: { userId: string; openingId: string })
   const routesByGame = useMemo(() => {
     const map = new Map<string, RouteStep[]>()
     for (const game of shown) {
-      const steps = routeSteps(
-        openingRoute(tree, game, positionKeys.get(game.id) ?? new Map()),
-        entry => entry.name,
-      )
+      const steps = routeSteps(openingRoute(tree, game, positionKeys.get(game.id) ?? new Map()))
       if (steps.length > 0) map.set(game.id, steps)
     }
     return map

@@ -503,7 +503,7 @@ export interface MoveVerdict {
   dismissed?: boolean
 }
 
-export type PatternKind = 'tactics' | 'mate' | 'strategy' | 'development' | 'endgame'
+export type PatternKind = 'tactics' | 'mate' | 'strategy' | 'opening' | 'endgame'
 
 /**
  * The questions the essentials method asks, each answered as a list of short points.

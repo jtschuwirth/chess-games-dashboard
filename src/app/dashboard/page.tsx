@@ -204,10 +204,7 @@ function DashboardBody({ userId }: { userId: string }) {
   const routesByGame = useMemo(() => {
     const map = new Map<string, RouteStep[]>()
     for (const game of scoped.slice(0, limit)) {
-      const steps = routeSteps(
-        openingRoute(tree, game, positionKeys.get(game.id) ?? new Map()),
-        opening => opening.name,
-      )
+      const steps = routeSteps(openingRoute(tree, game, positionKeys.get(game.id) ?? new Map()))
       if (steps.length > 0) map.set(game.id, steps)
     }
     return map

@@ -33,19 +33,31 @@ import { trainableMistakes } from './review'
  * is also the one kind a motif cannot help: the write-up's own *name* already says
  * which mate it is, so a sub-tag could only repeat it.
  */
-export const PATTERN_KINDS: PatternKind[] = [
-  'tactics',
-  'mate',
-  'strategy',
-  'development',
-  'endgame',
-]
+export const PATTERN_KINDS: PatternKind[] = ['tactics', 'mate', 'strategy', 'opening', 'endgame']
+
+/**
+ * Kinds a document may carry that nothing offers any more.
+ *
+ * `development` was what `opening` is called now. The word described the *phase* a
+ * pattern belongs to and the write-ups filed under it were all about one opening — so
+ * the name was a step away from the thing, and the drill could not ask an opening
+ * question of a kind that did not say it was about openings. Read forward on the way
+ * out of Firestore, never migrated, the habit every stored shape here follows.
+ */
+const RENAMED_KINDS: Record<string, PatternKind> = { development: 'opening' }
+
+/** A stored or hand-typed kind, as one the app offers — or nothing. */
+export function readKind(raw: string | null | undefined): PatternKind | null {
+  if (!raw) return null
+  const named = RENAMED_KINDS[raw] ?? raw
+  return PATTERN_KINDS.includes(named as PatternKind) ? (named as PatternKind) : null
+}
 
 export const KIND_LABEL: Record<PatternKind, string> = {
   tactics: 'Tactics',
   mate: 'Mate',
   strategy: 'Strategy',
-  development: 'Development',
+  opening: 'Opening',
   endgame: 'Endgame',
 }
 
@@ -59,7 +71,7 @@ export const KIND_BADGE: Record<PatternKind, string> = {
   // fuchsia: clear of the rose beside it, and of the violet the engine owns elsewhere
   mate: 'bg-fuchsia-500/15 text-fuchsia-300 border-fuchsia-500/30',
   strategy: 'bg-sky-500/15 text-sky-300 border-sky-500/30',
-  development: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
+  opening: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
   endgame: 'bg-amber-500/15 text-amber-300 border-amber-500/30',
 }
 
@@ -314,7 +326,7 @@ export const MOTIFS_BY_KIND: Record<PatternKind, MotifGroup[]> = {
   // a named mate is named by the write-up itself, so a sub-tag could only repeat it
   mate: [],
   strategy: [],
-  development: [],
+  opening: [],
   endgame: [],
 }
 
@@ -494,6 +506,8 @@ export function normalizePattern(raw: PatternRecord): PatternRecord {
 
   const normalized: PatternRecord = {
     ...raw,
+    // `development` is what `opening` used to be called; read forward, never migrated
+    kind: readKind(raw.kind) ?? 'tactics',
     examples: raw.main && lineHasContent(raw.main) ? [raw.main, ...stored] : stored,
   }
 

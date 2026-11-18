@@ -1,3 +1,4 @@
+import ColorDot from '@/components/ColorDot'
 import type { RouteStep } from '@/lib/opening'
 
 /**
@@ -15,7 +16,14 @@ import type { RouteStep } from '@/lib/opening'
  *
  * One component rather than one per screen, because the dashboard list and the game
  * view both draw it and a route that read two ways would be two vocabularies for one
- * fact. They differ only in whether the names carry their colour suffix.
+ * fact. Nothing differs between them any more: the colour used to, and does not.
+ *
+ * **The colour is one dot at the front, not a bracket on every name.** `openingLabel`
+ * glued `(Black)` onto each step, so a four-step route said it four times — about a
+ * repertoire that is all one colour by construction, under a header that had already
+ * said it once. It is drawn at the first step that names a side, because every step
+ * after it is that side too: `canNest` will not file a Black line under a White parent,
+ * so the only thing a later step can add is a colour where the root had none.
  */
 export default function OpeningRoute({
   steps,
@@ -25,6 +33,8 @@ export default function OpeningRoute({
   className?: string
 }) {
   const transposed = steps.filter(step => step.transposed)
+  /* the first step that names a side; every step past it is the same one */
+  const colored = steps.findIndex(step => step.color !== 'any')
 
   return (
     <span className={className} title={title(steps, transposed)}>
@@ -35,6 +45,7 @@ export default function OpeningRoute({
               {step.transposed ? ' → ' : ' › '}
             </span>
           )}
+          {index === colored && <ColorDot color={step.color} className="mr-1.5 -mt-px" />}
           {step.name}
         </span>
       ))}

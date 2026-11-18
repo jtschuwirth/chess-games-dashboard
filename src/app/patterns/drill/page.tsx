@@ -3,11 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import MoveTreeBoard from '@/components/MoveTreeBoard'
+import PatternLineCard from '@/components/PatternLineCard'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import BackLink from '@/components/BackLink'
 import { withFrom } from '@/lib/nav'
 import { playLabel, sideToMove } from '@/lib/board'
-import { getPatterns, savePatternDrill } from '@/lib/firestore'
+import { getOpenings, getPatterns, savePatternDrill } from '@/lib/firestore'
+import { openingLabel } from '@/lib/opening'
 import { emptyTree, fenAt, type MoveTree, type Path } from '@/lib/movetree'
 import {
   LADDER,
@@ -18,7 +20,7 @@ import {
   type PatternAnswer,
   type PatternCard,
 } from '@/lib/pattern-drill'
-import type { PatternRecord } from '@/types/chess'
+import type { OpeningLine, PatternRecord } from '@/types/chess'
 
 /** The board as it currently stands, and the card it belongs to. */
 interface Scratch {
@@ -46,6 +48,12 @@ interface Scratch {
  */
 function DrillBody({ userId }: { userId: string }) {
   const [patterns, setPatterns] = useState<PatternRecord[] | null>(null)
+  /*
+    The saved lines, for the one thing a line card needs that the pattern cannot say:
+    which openings it is filed under. A handful of documents, read once, and the names
+    are what turns a board out of its game into "this is the Catalan".
+  */
+  const [openings, setOpenings] = useState<OpeningLine[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
   const [index, setIndex] = useState(0)
   const [said, setSaid] = useState<PatternAnswer | null>(null)
@@ -66,9 +74,10 @@ function DrillBody({ userId }: { userId: string }) {
 
   const load = useCallback(
     () =>
-      getPatterns(userId)
-        .then(loaded => {
-          setPatterns(loaded)
+      Promise.all([getPatterns(userId), getOpenings(userId)])
+        .then(([loadedPatterns, loadedOpenings]) => {
+          setPatterns(loadedPatterns)
+          setOpenings(loadedOpenings)
           setLoadError(null)
         })
         .catch(caught => setLoadError(errorText(caught, 'Could not load your patterns.'))),
@@ -123,26 +132,32 @@ function DrillBody({ userId }: { userId: string }) {
   if (loadError) return <LoadError message={loadError} onRetry={load} />
   if (!patterns) return <Spinner />
 
-  const right = card && said !== null ? judge(card, said) : null
+  const right = card && card.kind === 'boundary' && said !== null ? judge(card, said) : null
 
-  async function answer(choice: PatternAnswer) {
-    if (!card || said !== null) return
-    setSaid(choice)
-
-    const correct = judge(card, choice)
-    setAnswered(current => ({ ...current, [card.key]: correct }))
+  /**
+   * One recorder, because both kinds of card land here and a second copy is a second
+   * place to forget the session's own tally or the ladder.
+   */
+  async function record(answeredCard: PatternCard, correct: boolean) {
+    setAnswered(current => ({ ...current, [answeredCard.key]: correct }))
 
     try {
       await savePatternDrill(
         userId,
-        card.patternId,
-        card.pointId,
-        reschedule(card.stat, correct, Date.now()),
+        answeredCard.patternId,
+        answeredCard.pointId,
+        reschedule(answeredCard.stat, correct, Date.now()),
       )
     } catch {
       // the answer is on screen either way; a failed write costs this card's place in
       // the ladder, not the session
     }
+  }
+
+  function answer(choice: PatternAnswer) {
+    if (!card || card.kind !== 'boundary' || said !== null) return
+    setSaid(choice)
+    record(card, judge(card, choice))
   }
 
   /**
@@ -162,6 +177,60 @@ function DrillBody({ userId }: { userId: string }) {
 
   const done = Object.keys(answered).length
   const got = Object.values(answered).filter(Boolean).length
+
+  /** The saved lines a pattern names, by the label every other screen gives them. */
+  function openingNames(ids: string[]): string[] {
+    return ids
+      .map(id => openings.find(line => line.id === id))
+      .filter((line): line is OpeningLine => Boolean(line))
+      .map(openingLabel)
+  }
+
+  /**
+   * On to the next, and the write-up behind this one.
+   *
+   * One copy rather than one per kind of card: the two ask different questions and
+   * finish identically, and a second set of controls would be a second place for
+   * `Finish` to stop meaning the end of the queue.
+   */
+  /* a render function, not a component: one defined during render remounts every time */
+  function controls() {
+    return (
+      <div className="flex items-center gap-3 flex-wrap">
+        <button
+          type="button"
+          onClick={next}
+          className="px-4 py-2 text-xs rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white transition-colors"
+        >
+          {index + 1 < queue.length ? 'Next' : 'Finish'}
+        </button>
+        <Link
+          href={withFrom(`/patterns/${card!.patternId}`, '/patterns/drill')}
+          className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+        >
+          Open the write-up →
+        </Link>
+      </div>
+    )
+  }
+
+  /**
+   * Plain text rather than another answer, because it is not one. A card you are not
+   * ready to be asked is usually a write-up still being written, and guessing would put
+   * a real miss in the record and drag it back to tomorrow.
+   */
+  function skipButton() {
+    return (
+      <button
+        type="button"
+        onClick={skip}
+        title="Pass over this one. Nothing is written and it stays due."
+        className="ml-auto text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
+      >
+        Skip
+      </button>
+    )
+  }
 
   /*
     What a skip costs, which is nothing, said once. Worth saying at all because a drill
@@ -196,9 +265,9 @@ function DrillBody({ userId }: { userId: string }) {
           <p className="text-sm text-zinc-400 max-w-prose">
             {summary && summary.total === 0 ? (
               <>
-                No boundaries written yet. A pattern earns cards from questions 3a and 3b —
-                what would make it fail, and what it survives — so taking one apart is what
-                fills this.
+                Nothing to ask yet. A pattern earns cards two ways: questions 3a and 3b —
+                what would make it fail, and what it survives — and, on an opening write-up,
+                the examples themselves, which you play back a move at a time.
               </>
             ) : done > 0 ? (
               <>
@@ -238,11 +307,27 @@ function DrillBody({ userId }: { userId: string }) {
             )}
           </div>
 
-          {/*
+          {card.kind === 'line' ? (
+            /*
+              An opening write-up asks for its lines rather than its boundaries. The
+              question "does the pattern still work here" is the right one for a shape
+              you either see or miss; an opening is a sequence you are supposed to know,
+              so the test is the position and the moves it wants back.
+            */
+            <PatternLineCard
+              key={card.key}
+              card={card}
+              openings={openingNames(card.openingIds)}
+              onAnswered={correct => record(card, correct)}
+            >
+              {over => (over ? controls() : skipButton())}
+            </PatternLineCard>
+          ) : (
+          /*
             The pattern is named and the change is not. Naming the change would be handing
             over the answer on a card that carries a board, and the whole exercise is
             finding what moved.
-          */}
+          */
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 flex flex-col gap-4">
             <div className="flex flex-col gap-1">
               <h2 className="text-lg font-semibold text-zinc-100">{card.patternName}</h2>
@@ -313,20 +398,7 @@ function DrillBody({ userId }: { userId: string }) {
                   Breaks it
                 </button>
 
-                {/*
-                  Plain text rather than a third button, because it is not a third
-                  answer. A boundary you are not ready to be asked about is usually a
-                  write-up still being written, and guessing at it would put a real miss
-                  in the record and drag the card back to tomorrow.
-                */}
-                <button
-                  type="button"
-                  onClick={skip}
-                  title="Pass over this one. Nothing is written and it stays due."
-                  className="ml-auto text-xs text-zinc-600 hover:text-zinc-300 transition-colors"
-                >
-                  Skip
-                </button>
+                {skipButton()}
               </div>
             ) : (
               <div className="flex flex-col gap-3">
@@ -368,24 +440,11 @@ function DrillBody({ userId }: { userId: string }) {
                   </div>
                 )}
 
-                <div className="flex items-center gap-3 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={next}
-                    className="px-4 py-2 text-xs rounded-lg bg-zinc-100 text-zinc-900 font-medium hover:bg-white transition-colors"
-                  >
-                    {index + 1 < queue.length ? 'Next' : 'Finish'}
-                  </button>
-                  <Link
-                    href={withFrom(`/patterns/${card.patternId}`, '/patterns/drill')}
-                    className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
-                  >
-                    Open the write-up →
-                  </Link>
-                </div>
+                {controls()}
               </div>
             )}
           </div>
+          )}
         </div>
       )}
     </div>

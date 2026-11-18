@@ -9,7 +9,7 @@ import PatternStudy from '@/components/PatternStudy'
 import BackLink from '@/components/BackLink'
 import { withFrom } from '@/lib/nav'
 import { deletePattern, getGames, getOpenings, getPatterns, updatePattern } from '@/lib/firestore'
-import { openingLabel } from '@/lib/opening'
+import ColorDot from '@/components/ColorDot'
 import {
   KIND_BADGE,
   KIND_LABEL,
@@ -213,9 +213,12 @@ function PatternBody({ userId, patternId }: { userId: string; patternId: string 
               <Link
                 key={opening.id}
                 href={`/dashboard?opening=${opening.id}`}
-                className="px-2 py-0.5 rounded-md border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
+                className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md border border-zinc-800 bg-zinc-950/60 text-xs text-zinc-400 hover:border-zinc-600 hover:text-zinc-100 transition-colors"
               >
-                {openingLabel(opening)}
+                {/* a pill is already a shape, so the colour is a dot inside it rather
+                    than a bracket widening the name it belongs to */}
+                <ColorDot color={opening.color} />
+                {opening.name}
               </Link>
             ))}
           </div>

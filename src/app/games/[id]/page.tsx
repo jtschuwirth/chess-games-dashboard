@@ -25,6 +25,7 @@ import ReviewEditor from '@/components/ReviewEditor'
 import OpeningRoute from '@/components/OpeningRoute'
 import StatusTag from '@/components/StatusTag'
 import BackLink from '@/components/BackLink'
+import ColorDot from '@/components/ColorDot'
 import { readFrom, withFrom } from '@/lib/nav'
 import Chip from '@/components/Chip'
 import { FilterGrid, FilterRow } from '@/components/FilterPanel'
@@ -47,7 +48,7 @@ import {
 import { DEFAULT_TAG_GROUPS, type TagGroup } from '@/lib/tags'
 import { timeClassOf } from '@/lib/upload'
 import { endingOf } from '@/lib/termination'
-import { SOURCE_LABEL } from '@/types/chess'
+import { COLOR_LABEL, SOURCE_LABEL } from '@/types/chess'
 import type { Color, GameRecord, GameResult, GameReview, OpeningLine, PatternRecord, TimeClass } from '@/types/chess'
 
 const RESULT_COLOR: Record<GameResult, string> = {
@@ -695,13 +696,10 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
           <span className={`text-lg font-bold ${RESULT_COLOR[game.result]}`}>
             {RESULT_LABEL[game.result]}
           </span>
+          {/* the dot the opening route draws, so the two cannot drift apart */}
           <span className="inline-flex items-center gap-1.5 text-sm text-zinc-300">
-            <span
-              className={`w-2.5 h-2.5 rounded-full ${
-                game.color === 'white' ? 'bg-white' : 'bg-black ring-1 ring-zinc-500'
-              }`}
-            />
-            {game.color === 'white' ? 'White' : 'Black'}
+            <ColorDot color={game.color} size="w-2.5 h-2.5" />
+            {COLOR_LABEL[game.color]}
           </span>
           <span className="text-sm text-zinc-100">
             vs {game.opponent}

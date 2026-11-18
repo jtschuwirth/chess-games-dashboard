@@ -160,7 +160,8 @@ src/
 │                               # PlanForm, PlanRatings,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
 │                               # GameShapePanel, ClockPanel, ThinkPanel, ConfigNotice,
-│                               # HomeNav, NavMenu, BackLink, RatingPanel, SignInButton
+│                               # HomeNav, NavMenu, BackLink, ColorDot,
+│                               # PatternLineCard, RatingPanel, SignInButton
 ├── context/AuthContext.tsx     # onAuthStateChanged provider + useAuth()
 ├── lib/
 │   ├── firebase.ts             # app/auth/db singletons
@@ -1170,7 +1171,7 @@ src/
 - **Each line carries its own orientation.** A pattern nearly always belongs to one side —
   the note that prompted this says "Black - Catalan" — and read from the wrong end it is a
   different idea. Lines written before the field existed read as White.
-- **A pattern is filed under one of four kinds**, tactics / strategy / development /
+- **A pattern is filed under one of four kinds**, tactics / strategy / opening /
   endgame, each with its own colour. The list is short on purpose: a pattern you cannot
   file under one of them is usually two patterns.
 - **The PGN is kept exactly as pasted, beside the parsed moves.** Re-pointing a line later
@@ -1550,6 +1551,46 @@ src/
   `drills` lives on the pattern document keyed by point id, like `verdicts` and `drills`
   on a game: a `merge` write on a map field merges keys, so answering one boundary never
   clears the rest.
+
+- **An opening write-up drills its lines, not its boundaries.** "Does the pattern
+  still work here" is the right question for a tactic, where the pattern is a shape you
+  either see or miss. An opening pattern is not a shape: it is a **sequence you are
+  supposed to know**, so the useful test is the position in front of you and the moves
+  it wants back. Asking whether it still works asks nothing about the thing you were
+  trying to learn.
+
+  So a `kind: 'opening'` write-up turns each of its examples into a card. The position
+  it opens on, the pattern's own name and the saved lines it is filed under — enough to
+  remember what this one is for — and then you play it out, with their replies supplied
+  from the example you wrote. What is held back is the example's **title and note**,
+  which usually say what the line *does*: that is the answer. The two kinds compose
+  rather than replacing each other, so boundaries written on an opening pattern still
+  make their own cards.
+
+  **`development` is what the kind used to be called**, and the name was a step away
+  from the thing: it named the *phase* a pattern belongs to, where every write-up filed
+  under it was about one opening — and a drill cannot ask an opening question of a kind
+  that does not say it is about openings. Read forward by `readKind` on the way out of
+  Firestore and on the way out of the query string, never migrated, the habit every
+  stored shape here follows.
+
+  **An example is identified by itself**, since a `PatternLine` has never carried an id
+  — it is an entry in an array, identified by where it sits, and a record keyed by
+  position would move to a different example the moment one was removed from the middle
+  of the list. `lineCardId` is the same FNV-1a a point without an id gets, over the only
+  two things that make the line what it is: the position it opens on and the moves
+  played from it. Re-pointing or extending a line therefore starts a new card, which is
+  the honest answer — a line you have rewritten is not the line you had learned. It is
+  filed in the same `drills` map, under a `line:` prefix so the two kinds cannot collide.
+
+  **The board is derived from how far you have got**, rather than kept, so a wrong move
+  never has to be unwound: the next render draws the line as it stands, or the whole of
+  it once the card is over. Their reply is *played* rather than waited for, because it
+  comes from the example and there is nothing to find in it.
+
+  **A board can be playable without being editable**, which `onTree` had been the switch
+  for both of. `remove this move` under a drill offers to delete the thing being asked
+  for, so `MoveTreeBoard` takes `edits` as well.
 
 - **It is its own page rather than a third source in `/learn`.** The two drills share a
   concept and almost no mechanics — this one is two buttons and no engine, no filters, no
@@ -2464,6 +2505,32 @@ src/
   **Colour**, so the chip says `White`. The stat blocks keep their own phrasing — *As
   White* is a sentence fragment above a figure rather than a value you pick — and that
   is the line: a label on a control is the value, a heading over a number is prose.
+
+- **A colour is a dot, drawn once, not a bracket on every name.** `openingLabel`
+  appended `(Black)` to a line's name, and a route is a chain of them — so a game read
+  `English Opening (Black) › Queen's Pawn Game (Black) › Queen's Gambit Declined (Black)
+  › Catalan Opening (Black)`, four brackets saying one thing, under a header that had
+  already said it once beside the result.
+
+  `ColorDot` is the fact as the thing it is. The game view has drawn that dot for as
+  long as there has been a game view; it is a component now, so the route, the header
+  and a pattern's opening pills cannot drift. It takes no width, which is the whole
+  reason it can sit at the front of a route or inside a pill without crowding the name,
+  and the word is on hover, since a black dot on a dark panel is a ring rather than
+  something you can read.
+
+  **Once, at the first step that names a side**, because every step after it is that
+  side too: `canNest` will not file a Black line under a White parent, so the only thing
+  a later step can add is a colour where the root had none — which is exactly what the
+  rule draws. `routeSteps` lost its `label` parameter in the same move: two of its three
+  callers already passed `opening.name` to get the brackets off, and the third was the
+  screen the complaint came from.
+
+  A dropdown `<option>` cannot hold a dot, and prose is prose — `openingLabel` still
+  spells it out in the Opening picker and in a sentence like *Sub-variations of Caro
+  Kann (Black)*. The rule is the one the colour labels already follow: a label on a
+  control is the value, a heading over a number is prose, and a name in a list is a
+  name with a dot beside it.
 
   **`both` became `any` because the Site row stopped being two things.** It was
   chess.com and lichess when the word was chosen, and an uploaded game is a third, so

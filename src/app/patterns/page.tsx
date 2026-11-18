@@ -17,6 +17,7 @@ import {
   KIND_BADGE,
   KIND_LABEL,
   PATTERN_KINDS,
+  readKind,
   describedBy,
   motifOf,
   normalizePattern,
@@ -68,7 +69,8 @@ function readFind(params: ReturnType<typeof useSearchParams>): Find {
     text: params.get('q') ?? '',
     // an unknown value is dropped rather than passed through, so a hand-typed URL
     // cannot invent a category the list has no way to draw
-    kind: PATTERN_KINDS.includes(kind as PatternKind) ? (kind as PatternKind) : null,
+    // `?kind=development` still reads, since that is what `opening` was called
+    kind: readKind(kind),
     written: DESCRIPTIONS.includes(written as Description) ? (written as Description) : null,
     motif: params.get('motif'),
   }
@@ -284,8 +286,8 @@ function PatternsBody({ userId }: { userId: string }) {
                 href="/patterns/drill"
                 title={
                   drill.due > 0
-                    ? `${drill.due} of ${drill.total} boundaries are due`
-                    : 'Nothing due — every boundary is scheduled ahead'
+                    ? `${drill.due} of ${drill.total} cards are due`
+                    : 'Nothing due — every card is scheduled ahead'
                 }
                 className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors ${
                   drill.due > 0

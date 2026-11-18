@@ -47,6 +47,7 @@ export default function MoveTreeBoard({
   onPath,
   onTree,
   orientation = 'white',
+  edits = true,
   onFlip,
   styleOf,
   /** Where `⏮` goes, for a line that does not start at move one. */
@@ -58,6 +59,15 @@ export default function MoveTreeBoard({
   onPath: (path: Path) => void
   /** Omit to make the board read-only. */
   onTree?: (tree: MoveTree, path: Path) => void
+  /**
+   * Whether the line itself can be rearranged, as against played on.
+   *
+   * Two different things, and `onTree` was the switch for both. A drill where you play
+   * the line back needs the board live and the tree is the question — so `remove this
+   * move` under it offers to delete what you are being asked for, which is not an edit
+   * anyone meant to make.
+   */
+  edits?: boolean
   orientation?: Color
   onFlip?: () => void
   /** What each node is — the game, yours, a review's line. Default is undifferentiated. */
@@ -139,7 +149,7 @@ export default function MoveTreeBoard({
 
       {footer}
 
-      {editable && path.length > 0 && (
+      {editable && edits && path.length > 0 && (
         <div className="flex items-center gap-3 text-xs">
           <button
             type="button"
