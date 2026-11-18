@@ -43,6 +43,7 @@ export default function MoveNoteCard({
   onToggleTags,
   onChange,
   onRemove,
+  save,
   onShowPly,
   verdicts,
   patternTags,
@@ -64,6 +65,8 @@ export default function MoveNoteCard({
   onToggleTags: () => void
   onChange: (changes: Partial<NoteDraft>) => void
   onRemove: () => void
+  /** Saving this note on its own, rendered by the form that knows what is unsaved. */
+  save?: React.ReactNode
   onShowPly: () => void
   verdicts: Record<string, Verdict>
   patternTags: string[]
@@ -119,13 +122,17 @@ export default function MoveNoteCard({
           </span>
         )}
 
-        <button
-          type="button"
-          onClick={onRemove}
-          className="ml-auto text-xs text-zinc-500 hover:text-red-400 transition-colors"
-        >
-          Remove
-        </button>
+        <span className="ml-auto flex items-center gap-3">
+          {/* the page's own control, so a note saves by itself like an entry does */}
+          {save}
+          <button
+            type="button"
+            onClick={onRemove}
+            className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+          >
+            Remove
+          </button>
+        </span>
       </div>
 
       {folded ? (

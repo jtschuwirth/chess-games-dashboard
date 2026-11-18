@@ -181,6 +181,33 @@ export interface ProposedMove {
   line: string[]
   /** Why it holds the game. Optional — sometimes the move really does speak for itself. */
   why: string
+  /**
+   * What you actually typed, when the line is not all of it.
+   *
+   * A row used to be dropped on save unless its moves parsed — so writing the reason
+   * first, or mistyping one move of six, threw the whole row away with the sentence in
+   * it, having flagged the problem in the form and then said nothing about discarding
+   * it. The same bargain the pattern form makes with a PGN that will not read: keep
+   * what was written, say what is wrong with it, and let it be fixed.
+   *
+   * Set only when it differs from `line`, so a row that parses cleanly stores nothing
+   * extra and every row written before this reads back exactly as it did.
+   */
+  text?: string
+  /**
+   * A line you looked at and ruled out, rather than one you would play.
+   *
+   * "Nc6 does not work, they have Bxd4" is as much a part of a post-mortem as the move
+   * you should have found — it is the half of the calculation you got right — and
+   * there was nowhere to put it. Written into the alternatives it was worse than
+   * nowhere: the drill accepts anything you wrote down as *your* answer, so a line you
+   * had rejected came back marked correct.
+   *
+   * Absent means a line you would play, which is what every row written before this
+   * was. The engine's reading is unchanged either way — it is a fact about the moves,
+   * not about what you meant by writing them down.
+   */
+  rejected?: boolean
 }
 
 /**

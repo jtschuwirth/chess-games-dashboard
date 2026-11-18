@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import MoveNoteCard, { type NoteDraft } from '@/components/MoveNoteCard'
 import ProposedMoves, {
   EMPTY_ROW,
-  verdictKey,
   type ProposedRow,
   type Verdict,
 } from '@/components/ProposedMoves'
@@ -23,8 +22,12 @@ import {
   fromMover,
   markColor,
   missingFrom,
+  lineSteps,
   moveNotesOf,
   noteHasContent,
+  proposedHasContent,
+  proposedText,
+  verdictKey,
 } from '@/lib/review'
 import { tagName, type TagGroup } from '@/lib/tags'
 import type {
@@ -48,7 +51,8 @@ function noteDraftFrom(note: MoveNote): NoteDraft {
     note: note.note,
     tags: note.tags,
     lines: (note.alternatives ?? []).map(move => ({
-      input: move.line.join(' '),
+      input: proposedText(move),
+      rejected: move.rejected === true,
       why: move.why,
     })),
     cpBefore: note.cpBefore,
@@ -81,7 +85,11 @@ function draftFrom(mistake: ReviewedMistake): Draft {
     intent: mistake.intent ?? '',
     cause: mistake.cause,
     signal: mistake.signal,
-    better: betterMovesOf(mistake).map(move => ({ input: move.line.join(' '), why: move.why })),
+    better: betterMovesOf(mistake).map(move => ({
+      input: proposedText(move),
+      why: move.why,
+      rejected: move.rejected === true,
+    })),
     tags: mistake.tags,
     unreasonable: mistake.unreasonable,
     cpBefore: mistake.cpBefore,
@@ -186,7 +194,25 @@ export default function ReviewEditor({
   )
   const [notes, setNotes] = useState(game.review?.notes ?? '')
   const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState<number | null>(game.review?.reviewedAt ?? null)
+  /**
+   * The review as Firestore last confirmed it, which is what one move is saved against.
+   *
+   * The same baseline a plan day and a sheet's exercise keep, for the same reason: a
+   * review is written one move at a time, and being made to commit all three to keep
+   * the one you have just finished is the wrong unit. The whole document still goes
+   * over the wire — a review is a field on the game — so what makes a save *partial*
+   * is what is in it: the server's own copy with this one move put into it, leaving
+   * every other edit on the device alone.
+   *
+   * It also replaces the hand-held "saved" flag, which could only say that something
+   * had been touched: typing a word and deleting it again left the form claiming
+   * unsaved work with nothing to save, and once one move can go by itself, "is there
+   * anything left" is a question only a comparison can answer. The sheet of exercises
+   * found exactly this when its own `dirty` became derived.
+   */
+  const [stored, setStored] = useState<GameReview | null>(game.review ?? null)
+  /** Which move is being written, so two saves cannot run and each knows its spinner. */
+  const [savingPly, setSavingPly] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [engine, setEngine] = useState<Record<number, string>>({})
   const [asking, setAsking] = useState<number | null>(null)
@@ -265,25 +291,32 @@ export default function ReviewEditor({
       // whose move it is decides both the sign and whether there is a judgement to make
       const yours = move.color === game.color
 
-      // only the first move of a line is a decision you get to make, so that is what
-      // gets judged; the rest depends on the opponent playing along
+      /*
+        Every ply of every line, not only the move it opens with.
+
+        The old rule judged the first move alone, because the rest depends on the
+        opponent playing along. That is true of what the line *commits* you to and was
+        the wrong thing to hang a reading on: a plan that goes wrong at move four is
+        wrong, and the form had nothing to say about move four.
+
+        Whose ply it is alternates down the line, which decides both the sign and
+        whether there is a judgement to make — a move of theirs inside your line is
+        read and not graded, exactly as their move in the game is.
+      */
       const lines = rows.flatMap(row => {
         const parsed = parseLine(move.fenBefore, row.input)
-        if (parsed.line.length === 0) return []
-        return [
-          {
-            key: verdictKey(ply, parsed.line[0]),
-            fenBefore: move.fenBefore,
-            fenAfter: parsed.fens[0],
-            yours,
-          },
-        ]
+        return lineSteps(move.fenBefore, parsed.line, parsed.fens).map((step, at) => ({
+          key: verdictKey(step.before, step.san),
+          fenBefore: step.before,
+          fenAfter: step.after,
+          yours: at % 2 === 0 ? yours : !yours,
+        }))
       })
 
       // the before position is shared with every alternative, so this costs one lookup
       return [
         {
-          key: verdictKey(ply, move.san),
+          key: verdictKey(move.fenBefore, move.san),
           fenBefore: move.fenBefore,
           fenAfter: move.fenAfter,
           yours,
@@ -377,7 +410,6 @@ export default function ReviewEditor({
     const move = plyByIndex.get(ply)
     if (!move || taken.has(ply) || full) return
 
-    setSaved(null)
     setDrafts(prev =>
       [
         ...prev,
@@ -410,7 +442,6 @@ export default function ReviewEditor({
     const move = plyByIndex.get(ply)
     if (!move || taken.has(ply)) return
 
-    setSaved(null)
     setNoteDrafts(prev =>
       [
         ...prev,
@@ -432,14 +463,12 @@ export default function ReviewEditor({
   }
 
   function patchNote(ply: number, changes: Partial<NoteDraft>) {
-    setSaved(null)
     setNoteDrafts(prev =>
       prev.map(draft => (draft.ply === ply ? { ...draft, ...changes } : draft)),
     )
   }
 
   function patch(ply: number, changes: Partial<Draft>) {
-    setSaved(null)
     setDrafts(prev => prev.map(draft => (draft.ply === ply ? { ...draft, ...changes } : draft)))
   }
 
@@ -474,18 +503,33 @@ export default function ReviewEditor({
     })
     .filter((text): text is string => text !== null)
 
+  /**
+   * The rows of a card, in the shape they are stored in.
+   *
+   * A row used to be dropped unless its moves parsed, which threw away the reason
+   * written beside them — having flagged the problem in the form and then said nothing
+   * about discarding it. Anything written is kept now: the legal prefix as the line,
+   * and what you typed beside it where the two differ, so a mistyped move comes back
+   * to be fixed rather than retyped. Only a row nobody touched goes.
+   */
+  function toProposed(fenBefore: string | null, rows: ProposedRow[]): ProposedMove[] {
+    return rows
+      .map(row => {
+        const typed = row.input.trim()
+        const parsed = fenBefore ? parseLine(fenBefore, row.input) : null
+        const line = parsed?.line ?? []
+        const move: ProposedMove = { line, why: row.why.trim() }
+        if (typed !== line.join(' ')) move.text = typed
+        // set only when true, so a line you would play stores nothing extra
+        if (row.rejected) move.rejected = true
+        return move
+      })
+      .filter(proposedHasContent)
+  }
+
   function toMistake(draft: Draft): ReviewedMistake {
     const move = plyByIndex.get(draft.ply)
-
-    // only legal moves are stored; the illegal ones are flagged in the form instead
-    // only the legal prefix is stored; whatever stopped the parse is flagged in the form
-    const betterMoves: ProposedMove[] = []
-    for (const row of draft.better) {
-      const parsed = move ? parseLine(move.fenBefore, row.input) : null
-      if (parsed && parsed.line.length > 0) {
-        betterMoves.push({ line: parsed.line, why: row.why.trim() })
-      }
-    }
+    const betterMoves = toProposed(move?.fenBefore ?? null, draft.better)
 
     return {
       ply: draft.ply,
@@ -507,15 +551,7 @@ export default function ReviewEditor({
 
   function toMoveNote(draft: NoteDraft): MoveNote {
     const move = plyByIndex.get(draft.ply)
-
-    // only the legal prefix is stored; whatever stopped the parse is flagged in the form
-    const alternatives: ProposedMove[] = []
-    for (const row of draft.lines) {
-      const parsed = move ? parseLine(move.fenBefore, row.input) : null
-      if (parsed && parsed.line.length > 0) {
-        alternatives.push({ line: parsed.line, why: row.why.trim() })
-      }
-    }
+    const alternatives = toProposed(move?.fenBefore ?? null, draft.lines)
 
     return {
       ply: draft.ply,
@@ -540,13 +576,54 @@ export default function ReviewEditor({
   /** Entries, notes, or a line about the game. Never an empty document. */
   const saveable = drafts.length > 0 || writtenNotes.length > 0 || notes.trim().length > 0
 
+  /* --------------------------------------------------- what is still unsaved */
+
+  const storedMistakes = stored?.mistakes ?? []
+  const storedNotes = stored?.moveNotes ?? []
+
+  /** By value, because that is the only thing that can answer "is there anything left". */
+  const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+
+  const mistakeChanged = (draft: Draft) =>
+    !same(toMistake(draft), storedMistakes.find(entry => entry.ply === draft.ply))
+
+  /**
+   * A note with nothing in it is dropped on save, so it counts as unsaved only when
+   * the server is holding one — otherwise an empty card would ask to be written for
+   * ever and the write would do nothing.
+   */
+  const noteChanged = (draft: NoteDraft) => {
+    const written = toMoveNote(draft)
+    const before = storedNotes.find(entry => entry.ply === draft.ply)
+    if (!noteHasContent(written)) return before !== undefined
+    return !same(written, before)
+  }
+
+  const dirty =
+    notes.trim() !== (stored?.notes ?? '').trim() ||
+    drafts.length !== storedMistakes.length ||
+    writtenNotes.length !== storedNotes.length ||
+    drafts.some(mistakeChanged) ||
+    noteDrafts.some(noteChanged)
+
+  /* ------------------------------------------------------------ writing it */
+
+  /** One writer, so the two paths cannot disagree about what a review document holds. */
+  async function write(
+    body: { mistakes: ReviewedMistake[]; notes: string; moveNotes: MoveNote[] },
+  ) {
+    const review = await saveReview(userId, game.id, body)
+    setStored(review)
+    onSaved(review)
+  }
+
   async function save() {
     if (problems.length > 0 || !saveable) return
 
     setSaving(true)
     setError(null)
     try {
-      const review = await saveReview(userId, game.id, {
+      await write({
         mistakes: drafts.map(toMistake),
         notes: notes.trim(),
         /*
@@ -558,12 +635,82 @@ export default function ReviewEditor({
         */
         moveNotes: writtenNotes,
       })
-      setSaved(review.reviewedAt)
-      onSaved(review)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not save the review.')
     } finally {
       setSaving(false)
+    }
+  }
+
+  /**
+   * The dot and the button a card carries when it alone is unsaved.
+   *
+   * A dot rather than the word, because on a review of three moves plus notes this is
+   * something you scan for and "unsaved" five times over is a column of noise — the
+   * rule the exercise sheet's folded header already follows. It says why it cannot
+   * save rather than disappearing, which is the one thing a disabled control has to do.
+   */
+  function moveSave(ply: number, kind: 'mistake' | 'note', changed: boolean, blocked: string | null) {
+    if (!changed) return null
+
+    return (
+      <span className="flex items-center gap-2">
+        <span
+          title="This move has changes that are only on this device"
+          className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+        />
+        <button
+          type="button"
+          onClick={() => saveMove(ply, kind)}
+          disabled={savingPly !== null || saving || blocked !== null}
+          title={blocked ?? 'Save this move, and leave the rest of the review as it is'}
+          className="text-xs text-zinc-400 hover:text-zinc-100 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {savingPly === ply ? 'Saving…' : 'Save'}
+        </button>
+      </span>
+    )
+  }
+
+  /** The baseline's own list with one move's entry put into it, in ply order. */
+  function withEntry<T extends { ply: number }>(list: T[], entry: T | null, ply: number): T[] {
+    const rest = list.filter(other => other.ply !== ply)
+    return (entry ? [...rest, entry] : rest).sort((a, b) => a.ply - b.ply)
+  }
+
+  /**
+   * One move, written against the server's copy.
+   *
+   * Everything else — the other moves, the game note, the plan of the whole review —
+   * is taken from the baseline and left alone, so the rest of what is on screen stays
+   * a draft. It refuses a move the form would refuse: a half-written post-mortem is
+   * the one thing a save must not put on the server.
+   */
+  async function saveMove(ply: number, kind: 'mistake' | 'note') {
+    if (savingPly !== null || saving) return
+
+    const draft = kind === 'mistake' ? drafts.find(entry => entry.ply === ply) : null
+    const note = kind === 'note' ? noteDrafts.find(entry => entry.ply === ply) : null
+    if (!draft && !note) return
+    if (draft && missingFrom(toMistake(draft))) return
+
+    setSavingPly(ply)
+    setError(null)
+    try {
+      const written = note ? toMoveNote(note) : null
+      await write({
+        mistakes: draft
+          ? withEntry(storedMistakes, toMistake(draft), ply)
+          : storedMistakes,
+        notes: stored?.notes ?? '',
+        moveNotes: written
+          ? withEntry(storedNotes, noteHasContent(written) ? written : null, ply)
+          : storedNotes,
+      })
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Could not save that move.')
+    } finally {
+      setSavingPly(null)
     }
   }
 
@@ -575,7 +722,7 @@ export default function ReviewEditor({
       setDrafts([])
       setNoteDrafts([])
       setNotes('')
-      setSaved(null)
+      setStored(null)
       onSaved(null)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : 'Could not clear the review.')
@@ -653,7 +800,7 @@ export default function ReviewEditor({
 
           // once the engine has looked at the move you played, show that rather than
           // whatever the stored analysis said, so the card is internally comparable
-          const judged = verdicts[`${draft.ply}:${draft.san}`]
+          const judged = move ? verdicts[verdictKey(move.fenBefore, move.san)] : undefined
           const live = judged && judged !== 'failed' ? judged : null
           const shownBefore = live ? live.cpBefore : draft.cpBefore
           const shownAfter = live ? live.cpAfter : draft.cpAfter
@@ -695,13 +842,21 @@ export default function ReviewEditor({
                     {formatEval(shownBefore, game.color)} → {formatEval(shownAfter, game.color)}
                   </span>
                 )}
-                <button
-                  type="button"
-                  onClick={() => setDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))}
-                  className="ml-auto text-xs text-zinc-500 hover:text-red-400 transition-colors"
-                >
-                  Remove
-                </button>
+                <span className="ml-auto flex items-center gap-3">
+                  {moveSave(
+                    draft.ply,
+                    'mistake',
+                    mistakeChanged(draft),
+                    missingFrom(toMistake(draft)),
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))}
+                    className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+                  >
+                    Remove
+                  </button>
+                </span>
               </div>
 
               {isFolded ? (
@@ -920,7 +1075,7 @@ export default function ReviewEditor({
 
         {noteDrafts.map(draft => {
           const move = plyByIndex.get(draft.ply)
-          const judged = verdicts[verdictKey(draft.ply, draft.san)]
+          const judged = move ? verdicts[verdictKey(move.fenBefore, move.san)] : undefined
           const live = judged && judged !== 'failed' ? judged : null
 
           return (
@@ -938,9 +1093,9 @@ export default function ReviewEditor({
               onToggleTags={() =>
                 setTagsOpen(prev => ({ ...prev, [draft.ply]: !(prev[draft.ply] ?? false) }))
               }
+              save={moveSave(draft.ply, 'note', noteChanged(draft), null)}
               onChange={changes => patchNote(draft.ply, changes)}
               onRemove={() => {
-                setSaved(null)
                 setNoteDrafts(prev => prev.filter(entry => entry.ply !== draft.ply))
               }}
               onShowPly={() => onShowPly(draft.ply)}
@@ -968,10 +1123,7 @@ export default function ReviewEditor({
           </Label>
           <textarea
             value={notes}
-            onChange={event => {
-              setSaved(null)
-              setNotes(event.target.value)
-            }}
+            onChange={event => setNotes(event.target.value)}
             rows={3}
             placeholder="Comfortable until the time scramble, then I stopped looking at their threats."
             className={`${FIELD} resize-y`}
@@ -992,10 +1144,10 @@ export default function ReviewEditor({
       <div className="flex items-center gap-3 flex-wrap">
         <button
           onClick={save}
-          disabled={saving || !saveable || problems.length > 0}
+          disabled={saving || savingPly !== null || !saveable || problems.length > 0 || !dirty}
           className="px-4 py-2 text-sm font-medium bg-zinc-100 text-zinc-900 rounded-lg hover:bg-white transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          {saving ? 'Saving…' : saved ? 'Saved' : 'Save review'}
+          {saving ? 'Saving…' : dirty ? 'Save review' : 'Saved'}
         </button>
 
         {game.review && (
@@ -1008,9 +1160,9 @@ export default function ReviewEditor({
           </button>
         )}
 
-        {saved && (
+        {stored?.reviewedAt && (
           <span className="text-xs text-zinc-600">
-            Reviewed {new Date(saved).toLocaleString()}
+            Reviewed {new Date(stored.reviewedAt).toLocaleString()}
           </span>
         )}
       </div>

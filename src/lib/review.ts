@@ -51,17 +51,83 @@ export function betterMovesOf(mistake: ReviewedMistake): ProposedMove[] {
     if (typeof move === 'string') return { line: [move], why: '' }
 
     const legacy = move as ProposedMove & { san?: string }
-    if (Array.isArray(legacy.line)) return { line: legacy.line, why: legacy.why ?? '' }
+    if (Array.isArray(legacy.line)) {
+      const read: ProposedMove = { line: legacy.line, why: legacy.why ?? '' }
+      // the text as typed, on a row whose moves did not all parse
+      if (typeof legacy.text === 'string') read.text = legacy.text
+      // a line you ruled out; absent on everything written before it could be said
+      if (legacy.rejected === true) read.rejected = true
+      return read
+    }
     return { line: legacy.san ? [legacy.san] : [], why: legacy.why ?? '' }
   })
 }
 
+/** The text a row shows: what you typed where that was kept, else the line itself. */
+export function proposedText(move: ProposedMove): string {
+  return move.text ?? move.line.join(' ')
+}
+
 /**
- * The move a line actually commits you to. Everything after it depends on the opponent
- * playing along, so this is the only part that can be judged, or asked for in a drill.
+ * Whether a proposed line is worth storing.
+ *
+ * Anything written counts — the moves, the reason, or text that does not parse yet.
+ * Only a row nobody touched is dropped, which is the rule an unfilled exercise and an
+ * empty template day already follow.
+ */
+export function proposedHasContent(move: ProposedMove): boolean {
+  return move.line.length > 0 || move.why.trim().length > 0 || (move.text ?? '').trim().length > 0
+}
+
+/**
+ * The move a line actually commits you to.
+ *
+ * It is what a drill asks for and what a line is filed under — the rest of the line is
+ * still read now, but only the first move is a decision you get to make.
  */
 export function firstMoveOf(move: ProposedMove): string | null {
   return move.line[0] ?? null
+}
+
+/**
+ * The key a verdict is filed under: the position it was played from, and the move.
+ *
+ * It was `ply:san` of a line's *first* move, because only the first move was judged —
+ * everything after it depends on the opponent playing along. That is still true of
+ * what the line **commits** you to, and it was the wrong thing to hang a reading on:
+ * a plan is wrong if it goes wrong at move four, and the form said nothing about move
+ * four. Every ply is read now, so the key has to tell two plies of one line apart.
+ *
+ * The position rather than the ply, because that is what the reading is actually of —
+ * so the same move reached by two rows, or by two entries, is judged once.
+ */
+export function verdictKey(fenBefore: string, san: string): string {
+  return `${fenBefore}|${san}`
+}
+
+/** Each ply of a line with the position it was played from, which is what is judged. */
+export function lineSteps(
+  fenBefore: string,
+  line: string[],
+  fens: string[],
+): { san: string; before: string; after: string }[] {
+  return line.map((san, at) => ({
+    san,
+    before: at === 0 ? fenBefore : fens[at - 1],
+    after: fens[at],
+  }))
+}
+
+/**
+ * The lines you said you would play, as against the ones you ruled out.
+ *
+ * The distinction only matters where a line is treated as *your answer* — the drill,
+ * and anything asking what you should have played. Everywhere a line is simply shown,
+ * a rejected one is worth showing: "Nc6 loses to Bxd4" is the half of the calculation
+ * you got right.
+ */
+export function playableMoves(moves: ProposedMove[]): ProposedMove[] {
+  return moves.filter(move => move.rejected !== true && move.line.length > 0)
 }
 
 /**
@@ -115,7 +181,7 @@ export function noteHasContent(note: MoveNote): boolean {
   return (
     note.note.trim().length > 0 ||
     note.tags.length > 0 ||
-    note.alternatives.some(move => move.line.length > 0)
+    note.alternatives.some(proposedHasContent)
   )
 }
 

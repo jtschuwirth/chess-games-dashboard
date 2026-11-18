@@ -170,7 +170,7 @@ src/
 │   ├── dashboard-filters.ts    # dashboard filters <-> query string
 │   ├── game-filters.ts         # date / rating / format scope rule, shared with the export
 │   ├── scope.ts                # criteria + opening together, shared with the game view
-│   ├── review.ts               # review vocabulary, tag counts, review queue
+│   ├── review.ts               # review vocabulary, tag counts, queue, line steps
 │   ├── drill.ts                # drill cards, the pass rule, what is sticking
 │   ├── board.ts                # replay, board squares, SAN parsing for the game view
 │   ├── ratings.ts              # reconstructs pre-game ratings, Elo expectation
@@ -783,11 +783,76 @@ src/
   the form addressing you as "you", because a question in one voice answered by a prompt in
   another is what made the old wording read oddly.
 - **An alternative is a line, not a move** — up to ten moves each side (`MAX_LINE_PLIES`), typed
-  as "Nd5 Bxe7 Qxe7" with move numbers tolerated and stripped. Only the *first* move is judged by
-  the engine in the review form, because the rest depends on the opponent playing along; the
-  continuation is still worth recording, since it is the plan you
-  were actually counting on. An illegal move ends the line there, and the legal prefix is kept
-  rather than the whole row being thrown away.
+  as "Nd5 Bxe7 Qxe7" with move numbers tolerated and stripped. An illegal move ends the line
+  there, and the legal prefix is kept rather than the whole row being thrown away.
+
+- **Every move of a line is judged, not the move it opens with.** The old rule read the
+  first move alone, because the rest depends on the opponent playing along. That is true
+  of what the line *commits* you to and was the wrong thing to hang a reading on: a plan
+  that goes wrong at move four is wrong, and the form had nothing to say about move four.
+
+  `lineSteps` pairs each ply with the position it is played from, and a reading is drawn
+  under each one — your moves graded by `classifyMove` as they always were, their replies
+  read and not graded, which is the rule the game's own moves already follow. So a line
+  reads `Qf3?? +5.2 → −1.2 · Nc6 −1.2 → +5.0 · Bc4?? +5.0 → +0.1`, and where it falls
+  apart is visible rather than implied.
+
+  **The verdict is keyed by the position, not by the ply.** `ply:san` of a line's first
+  move cannot tell two plies of one line apart, and the key has to now. The position is
+  what the reading is actually *of*, so the same move reached by two rows, or by two
+  entries, costs one search — on top of the engine's own FEN cache.
+
+  It is more engine time, and that is the trade: a ten-ply line is ten searches instead
+  of one, debounced and cached. The alternative was to go on showing a number about the
+  first move of a plan nobody had checked.
+
+- **A line you ruled out is a line worth keeping, and it is not your answer.** "Nc6 does
+  not work, they have Bxd4" is as much a part of a post-mortem as the move you should
+  have found — it is the half of the calculation you got right — and there was nowhere
+  to put it. Written in as an alternative it was worse than nowhere: the drill accepts
+  anything you wrote down as *your* move, so a line you had rejected came back marked
+  correct.
+
+  `rejected` is the flag, two chips on the row — **would play** / **ruled out** — rather
+  than a box to tick, because the default has to be visible: a row that said nothing
+  would read as a move you are recommending, which is the confusion this ends. Absent
+  means a line you would play, so every row written before this reads back as one.
+
+  `playableMoves` is where the distinction bites, and only there: the drill's `proposed`
+  list. Everywhere a line is merely *shown* — the write-up, the board's branches, the
+  reveal — a rejected one is worth showing, which is the whole point of writing it down.
+
+- **A row is kept because something was written in it.** It used to be dropped unless its
+  moves parsed, so writing the reason first, or mistyping one move of six, threw the
+  whole row away with the sentence in it — having flagged the problem in the form and
+  then said nothing about discarding it.
+
+  `text` holds what you typed when the line is not all of it, the same bargain the
+  pattern form makes with a PGN that will not read: keep what was written, say what is
+  wrong with it, let it be fixed. It is set only when it differs from the parsed line, so
+  a row that reads cleanly stores nothing extra. `proposedHasContent` is the rule —
+  moves, a reason, or text that does not parse yet — and only a row nobody touched is
+  dropped.
+
+- **A move saves on its own, and that needs a baseline.** A review is written one move at
+  a time, and being made to commit all three to keep the one you have just finished is
+  the wrong unit — the plan day's bargain and the exercise sheet's, for the third time.
+  The whole document still goes over the wire, since a review is a field on the game;
+  what makes a save *partial* is what is in it. `stored` holds the server's own copy and
+  `saveMove` writes it with this one move put into it, so every other edit on the device
+  stays a draft.
+
+  It **refuses what the form refuses**: a half-written post-mortem is the one thing a
+  save must not put on the server, so the button says `add at least one tag` rather than
+  disappearing. A note with nothing in it counts as unsaved only when the server is
+  holding one, or an empty card would ask to be written for ever.
+
+  `dirty` became **derived** in the same move, and had to. The hand-held flag could only
+  say that something was touched — typing a word and deleting it again left the form
+  claiming unsaved work with nothing to save — and once one move can go by itself, "is
+  there anything left" is a question only a comparison against the baseline can answer.
+  The card carries a dot rather than the word, because on a review of three moves plus
+  notes this is something you scan for.
 
 - **The drill asks for the whole line, not the move it starts with.** Producing the first
   move of a four-ply plan is not the same as having the plan, and the drill used to stop

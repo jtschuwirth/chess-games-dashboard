@@ -2,7 +2,7 @@ import { playMove, replayGame } from './board'
 import { isDrillable, toPlay } from './exercise'
 import { mainLine } from './movetree'
 import { commentedNodes, lineTree } from './pattern'
-import { betterMovesOf, firstMoveOf, isFault, trainableMistakes } from './review'
+import { betterMovesOf, firstMoveOf, isFault, playableMoves, trainableMistakes } from './review'
 import type {
   Color,
   DrillStat,
@@ -148,7 +148,14 @@ export function buildDrillCards(games: GameRecord[], source: DrillSource): Drill
         moveNumber: Math.floor(ply / 2) + 1,
         played: mistake?.san ?? game.moves[ply] ?? '',
         playedTag: tags.get(ply) ?? null,
-        proposed: betterMovesOf(mistake ?? ({ betterMoves: [] } as unknown as ReviewedMistake)),
+        /*
+          Only the lines you said you would play. A line you wrote down to rule out —
+          "Nc6 loses to Bxd4" — is not an answer, and counting it as one would mark
+          the drill correct for the move you had already worked out was wrong.
+        */
+        proposed: playableMoves(
+          betterMovesOf(mistake ?? ({ betterMoves: [] } as unknown as ReviewedMistake)),
+        ),
         intent: mistake?.intent ?? '',
         cause: mistake?.cause ?? '',
         signal: mistake?.signal ?? '',

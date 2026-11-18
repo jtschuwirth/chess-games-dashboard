@@ -1,6 +1,8 @@
 'use client'
 
-import { MAX_LINE_PLIES, formatLine, parseLine } from '@/lib/board'
+import Chip from '@/components/Chip'
+import { lineSteps, verdictKey } from '@/lib/review'
+import { MAX_LINE_PLIES, lineTokens, parseLine } from '@/lib/board'
 import { ENGINE_DEPTH, type MoveTag } from '@/lib/analysis'
 import { formatEval, isFault, markColor } from '@/lib/review'
 import type { Color } from '@/types/chess'
@@ -19,18 +21,17 @@ export type Verdict = { cpBefore: number; cpAfter: number; tag: MoveTag | null }
 export interface ProposedRow {
   input: string
   why: string
+  /**
+   * A line you looked at and ruled out, rather than one you would play.
+   *
+   * "Nc6 does not work, they have Bxd4" is as much a part of a post-mortem as the move
+   * you should have found, and there was nowhere to put it — written in as an
+   * alternative it came back marked correct in the drill.
+   */
+  rejected?: boolean
 }
 
 export const EMPTY_ROW: ProposedRow = { input: '', why: '' }
-
-/**
- * The key a line's verdict is filed under. `ply:san` of its *first* move, because only
- * that move is a decision you get to make — everything after it depends on the
- * opponent playing along, so it is the only part that can be judged.
- */
-export function verdictKey(ply: number, firstMove: string): string {
-  return `${ply}:${firstMove}`
-}
 
 const FIELD =
   'bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600'
@@ -100,7 +101,7 @@ export default function ProposedMoves({
       {rows.map((row, index) => {
         const parsed = fenBefore ? parseLine(fenBefore, row.input) : null
         const played = parsed && parsed.line.length > 0 ? parsed : null
-        const verdict = played ? verdicts[verdictKey(ply, played.line[0])] : undefined
+        const steps = played && fenBefore ? lineSteps(fenBefore, played.line, played.fens) : []
 
         return (
           <div
@@ -115,8 +116,32 @@ export default function ProposedMoves({
                 aria-label="Line"
                 className={`${FIELD} font-mono flex-1 min-w-0 ${
                   parsed?.invalid ? 'border-red-500/60' : ''
-                }`}
+                } ${row.rejected ? 'text-zinc-400 line-through decoration-zinc-700' : ''}`}
               />
+
+              {/*
+                Which kind of line this is. Two chips rather than a checkbox, because
+                it is a choice between two things you do rather than a box to tick —
+                and the default has to be visible: a row that said nothing would read
+                as a move you are recommending, which is exactly the confusion this is
+                here to end.
+              */}
+              <div className="flex gap-1 shrink-0 pt-1">
+                <Chip
+                  active={!row.rejected}
+                  onClick={() => setRow(index, { rejected: false })}
+                  title="A line you would play"
+                >
+                  would play
+                </Chip>
+                <Chip
+                  active={row.rejected === true}
+                  onClick={() => setRow(index, { rejected: true })}
+                  title="A line you looked at and ruled out — it is kept, and never offered as your answer in a drill"
+                >
+                  ruled out
+                </Chip>
+              </div>
               <button
                 type="button"
                 onClick={() => onChange(rows.filter((entry, at) => at !== index))}
@@ -128,38 +153,65 @@ export default function ProposedMoves({
               </button>
             </div>
 
+            {/*
+              Every move of the line, each with its own reading.
+              
+              Only the first used to be judged, on the grounds that the rest depends on
+              the opponent playing along — true about what the line *commits* you to,
+              and the wrong thing to hang a reading on: a plan that goes wrong at move
+              four is wrong, and the form said nothing about move four. The moves are a
+              row of their own so a long line wraps as moves rather than as a sentence.
+            */}
+            {steps.length > 0 && (
+              <div className="flex gap-x-3 gap-y-1 flex-wrap text-xs font-mono">
+                {steps.map((step, at) => {
+                  const verdict = verdicts[verdictKey(step.before, step.san)]
+                  const prefix = lineTokens(ply, played!.line)[at].prefix
+
+                  return (
+                    <span key={at} className="inline-flex items-baseline gap-1">
+                      {prefix && <span className="text-zinc-600">{prefix}</span>}
+                      <span
+                        className={
+                          verdict && verdict !== 'failed' && verdict.tag !== null
+                            ? isFault(verdict.tag)
+                              ? markColor(verdict.tag)
+                              : 'text-emerald-400'
+                            : 'text-zinc-300'
+                        }
+                      >
+                        {step.san}
+                        {verdict && verdict !== 'failed' && verdict.tag !== null && isFault(verdict.tag)
+                          ? verdict.tag
+                          : ''}
+                      </span>
+                      <span
+                        className="text-zinc-500"
+                        title={
+                          verdict === undefined
+                            ? undefined
+                            : verdict === 'failed'
+                              ? 'The engine did not answer for this one'
+                              : verdict.tag === null
+                                ? `Where ${step.san} leaves the game, from White's side`
+                                : isFault(verdict.tag)
+                                  ? `${step.san} gives something away`
+                                  : `${step.san} holds the position`
+                        }
+                      >
+                        {verdict === undefined
+                          ? '…'
+                          : verdict === 'failed'
+                            ? '—'
+                            : `${formatEval(verdict.cpBefore, color)} → ${formatEval(verdict.cpAfter, color)}`}
+                      </span>
+                    </span>
+                  )
+                })}
+              </div>
+            )}
+
             <div className="flex items-center gap-3 flex-wrap text-xs">
-              {played && (
-                <span className="text-zinc-400 font-mono">{formatLine(ply, played.line)}</span>
-              )}
-
-              {played &&
-                (verdict === undefined ? (
-                  <span className="text-zinc-600">checking…</span>
-                ) : verdict === 'failed' ? (
-                  <span className="text-zinc-600">not checked</span>
-                ) : (
-                  <span
-                    className={`font-mono ${
-                      verdict.tag === null
-                        ? 'text-zinc-400'
-                        : isFault(verdict.tag)
-                          ? markColor(verdict.tag)
-                          : 'text-emerald-400'
-                    }`}
-                    title={
-                      verdict.tag === null
-                        ? `Where ${played.line[0]} would leave the game, from White's side`
-                        : isFault(verdict.tag)
-                          ? `${played.line[0]} gives something away too`
-                          : `${played.line[0]} holds the position`
-                    }
-                  >
-                    {formatEval(verdict.cpBefore, color)} → {formatEval(verdict.cpAfter, color)}
-                    {verdict.tag !== null && isFault(verdict.tag) && ` ${verdict.tag}`}
-                  </span>
-                ))}
-
               {parsed?.invalid && (
                 <span className="text-red-400">
                   {played ? 'the line stops at' : 'not legal here:'} {parsed.invalid}
@@ -177,7 +229,7 @@ export default function ProposedMoves({
               onChange={event => setRow(index, { why: event.target.value })}
               rows={2}
               aria-label="Why this line"
-              placeholder={whyPlaceholder}
+              placeholder={row.rejected ? 'they have Bxd4 and the knight is just lost' : whyPlaceholder}
               className={`${FIELD} w-full resize-y`}
             />
           </div>
