@@ -66,6 +66,12 @@ export interface MethodPass {
   /** One line saying what the pass is for, and nothing the steps already say. */
   summary: string
   branch: PassBranch
+  /**
+   * The question answered immediately *before* this pass, where reaching it is not
+   * automatic. It lives on the pass rather than in the screen that draws it, so the
+   * two branches in the method are part of the method rather than part of a layout.
+   */
+  gate?: string
   /** Tailwind ink for the pass, so a step reads as belonging to one. */
   tone: string
   border: string
@@ -110,6 +116,7 @@ export const METHOD_PASSES: MethodPass[] = [
       'The tactical read. Material sets what you are playing for, the motifs say what ' +
       'is available, and only then are there candidates worth calculating.',
     branch: 'always',
+    gate: 'still in your preparation? → play it, and go straight to Pass 3',
     tone: 'text-amber-300',
     border: 'border-amber-500/30',
     steps: [
@@ -151,6 +158,9 @@ export const METHOD_PASSES: MethodPass[] = [
       'Asked only when Pass 1 found nothing concrete. Three questions, then a plan — ' +
       'candidate plans rather than candidate moves.',
     branch: 'quiet',
+    gate:
+      'did a candidate produce something concrete that survives their best reply? ' +
+      '→ yes, Pass 3',
     tone: 'text-emerald-300',
     border: 'border-emerald-500/30',
     steps: [
@@ -242,15 +252,51 @@ export function blamesAStep(failed: MoveFailureId | undefined): boolean {
 }
 
 /**
+ * Whether your preparation still covers this move.
+ *
+ * Absent `leftBookAt` reads as still in book, which is true at the start of every game.
+ * Derived from the one field rather than stored per move: a game leaves book once.
+ */
+export function inBookAt(game: DailyGame, ply: number): boolean {
+  return game.leftBookAt === undefined || ply < game.leftBookAt
+}
+
+/**
+ * The game with the end of your preparation moved to this move, or back off it.
+ *
+ * `out` sets the boundary here, so this move and everything after it is yours to find.
+ * `in` puts it at your *next* move — saying this one is still book is saying the game
+ * left book no earlier than the one after it — which is also how a mispress is undone
+ * from the move it was made on.
+ */
+export function withBookEnd(game: DailyGame, ply: number, out: boolean): DailyGame {
+  return { ...game, leftBookAt: out ? ply : ply + 2 }
+}
+
+/**
  * Which passes are asked of a move.
  *
- * The gate and nothing else: a move where something concrete turned up skips the plan
- * pass, because there was nothing quiet to plan in. This is the one branch in the
- * method, and the form honouring it is what keeps filling the form and running the loop
- * the same act.
+ * Two gates, and they are the whole reason the form is worth filling in rather than
+ * being a sheet of fourteen boxes you learn to skip half of.
+ *
+ * **Book is the first, and it is terminal.** A move your preparation already decided is
+ * not a move to think about, so asking what you are playing for and what their threats
+ * are is asking you to justify a move you are not choosing — the kind of question that
+ * gets answered "as usual" four times and then stops being read at all.
+ *
+ * It does **not** skip the commit check, and that is deliberate rather than an
+ * oversight. Playing a prepared move blind is exactly how a prepared line gets walked
+ * into, and the whole reason the book pass is a pass at all rather than a reflex is that
+ * the move still has to survive their reply.
+ *
+ * The second gate is quietness: something concrete takes the plan pass off, because
+ * there was nothing quiet to plan in.
  */
-export function passesFor(concrete: boolean): MethodPass[] {
-  return METHOD_PASSES.filter(pass => pass.branch === 'always' || !concrete)
+export function passesFor(concrete: boolean, inBook = false): MethodPass[] {
+  if (inBook) return METHOD_PASSES.filter(pass => pass.id === 'book' || pass.id === 'commit')
+  return METHOD_PASSES.filter(
+    pass => pass.id !== 'book' && (pass.branch === 'always' || !concrete),
+  )
 }
 
 /* ------------------------------------------------------------------- a log */
@@ -293,8 +339,8 @@ export function logHasContent(log: MoveLog): boolean {
 }
 
 /** How much of the loop a log answered, out of the steps that were asked of it. */
-export function logProgress(log: MoveLog): { asked: number; answered: number } {
-  const steps = passesFor(log.concrete).flatMap(pass => pass.steps)
+export function logProgress(log: MoveLog, inBook = false): { asked: number; answered: number } {
+  const steps = passesFor(log.concrete, inBook).flatMap(pass => pass.steps)
   const answered = steps.filter(step => (log.answers[step.id] ?? '').trim().length > 0).length
   return { asked: steps.length, answered }
 }
@@ -458,6 +504,13 @@ export function normalizeDailyGame(raw: DailyGame): DailyGame {
     createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
   }
 
+  if (
+    typeof raw.leftBookAt !== 'number' ||
+    !Number.isInteger(raw.leftBookAt) ||
+    raw.leftBookAt < 0
+  ) {
+    delete game.leftBookAt
+  }
   if (typeof raw.url !== 'string' || raw.url.trim().length === 0) delete game.url
   if (raw.result !== 'win' && raw.result !== 'loss' && raw.result !== 'draw') {
     delete game.result
@@ -486,6 +539,7 @@ export function dailyBody(game: DailyGame): NewDailyGame {
     createdAt: game.createdAt,
   }
 
+  if (game.leftBookAt !== undefined) body.leftBookAt = game.leftBookAt
   if (game.url && game.url.trim().length > 0) body.url = game.url.trim()
   if (game.result) body.result = game.result
   if (game.gameId) body.gameId = game.gameId

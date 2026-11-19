@@ -1005,6 +1005,16 @@ export interface DailyGame {
   moves: string[]
   /** What you wrote before each of your moves, keyed by ply. */
   logs: Record<string, MoveLog>
+  /**
+   * The ply your preparation ran out at: the first move you had to find yourself.
+   *
+   * On the game rather than on each log, because a game leaves book **once** — there is
+   * no coming back to it, so a flag per move would be a hundred copies of one fact and
+   * a hundred chances for them to disagree. Absent means you have not said yet, which
+   * reads as still in book: that is true at the start of every game, and the control to
+   * end it is on the move where you notice.
+   */
+  leftBookAt?: number
   /** Whether it is still being played. */
   finished: boolean
   result?: GameResult

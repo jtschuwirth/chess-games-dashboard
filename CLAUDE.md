@@ -3378,10 +3378,33 @@ src/
   shape of object as the burger, so it is one habit learned twice rather than two
   systems. The imbalances are a reference list under the first question.
 
-  **The gate is a control, not a note.** Answering *yes, something concrete* takes the
+  **The gates are controls, not notes.** Answering *yes, something concrete* takes the
   plan pass off the form, because there was nothing quiet to plan in; answering *no*
   puts it back. That is what keeps filling the form and running the loop the same act,
-  instead of fourteen boxes and a rule about which eight to skip.
+  instead of fourteen boxes and a rule about which eight to skip. Each gate is a `gate`
+  line on the pass it stands in front of, so the branches are part of the method's own
+  table rather than part of whatever screen draws it.
+
+- **Book is a gate too, and it is terminal.** It was a pass like the others, so a
+  repertoire move opened ten boxes — asking what you are playing for and what their
+  threats are about a move you are not choosing. That is the kind of question that gets
+  answered "as usual" four times and then stops being read, which costs you the one
+  question on the form that was worth asking.
+
+  In book, the form is the line you are in and the check that it survives their reply.
+  **The commit check stays**, and that is the design rather than an oversight: playing a
+  prepared move blind is exactly how a prepared line gets walked into, and it is the
+  whole reason book is a pass at all rather than a reflex. The evaluation is not asked
+  either — you are recalling a move, not judging a position, and a number written to
+  fill a box would be scored by the post-mortem as an opinion you never held.
+
+  `leftBookAt` is **on the game, not on each log**, because a game leaves book once:
+  there is no coming back to it, so a flag per move would be a hundred copies of one
+  fact and a hundred chances to disagree. Absent reads as still in book, which is true
+  at the start of every game, and the control to end it sits on the move where you
+  notice. Marking a move as book again puts the boundary at your *next* move rather
+  than clearing it, which is both what that sentence means and how a mispress is undone
+  from the move it was made on.
 
 - **The steps are the failure vocabulary, which is the whole reason the loop is
   recorded.** Without a per-step artefact a post-mortem can only say the move was bad,

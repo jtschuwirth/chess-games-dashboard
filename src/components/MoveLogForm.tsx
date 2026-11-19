@@ -27,12 +27,18 @@ const INPUT =
  */
 export default function MoveLogForm({
   log,
+  inBook,
+  onBook,
   onChange,
 }: {
   log: MoveLog
+  /** Whether your preparation still covers this move. */
+  inBook: boolean
+  /** Move the end of the book to this move, or past it. */
+  onBook: (out: boolean) => void
   onChange: (update: (current: MoveLog) => MoveLog) => void
 }) {
-  const passes = passesFor(log.concrete)
+  const passes = passesFor(log.concrete, inBook)
 
   function setAnswer(id: MoveStepId, text: string) {
     onChange(current => {
@@ -47,7 +53,30 @@ export default function MoveLogForm({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-end gap-4">
+      {/*
+        Out of book, the fact is a line rather than a control: it is true of the whole
+        rest of the game and you are not deciding it again on every move. It stays
+        pressable because a mispress has to be undoable from the move it was made on.
+      */}
+      {/*
+        The evaluation is not asked in book either. You are recalling a move rather than
+        judging a position, and a number written to fill a box is worse than no number at
+        all — the post-mortem would score it as an opinion you never held.
+      */}
+      {!inBook && (
+        <>
+          <p className="text-xs text-zinc-600">
+            Past your preparation.{' '}
+            <button
+              type="button"
+              onClick={() => onBook(false)}
+              className="underline hover:text-zinc-300 transition-colors"
+            >
+              this move was still book
+            </button>
+          </p>
+
+          <div className="flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1.5">
           <span
             className="text-xs uppercase tracking-wide text-zinc-500"
@@ -104,8 +133,10 @@ export default function MoveLogForm({
             placeholder="12"
             className={`${INPUT} w-20`}
           />
-        </label>
-      </div>
+          </label>
+          </div>
+        </>
+      )}
 
       {passes.map(pass => (
         <div key={pass.id} className={`border-l-2 ${pass.border} pl-4 flex flex-col gap-3`}>
@@ -132,6 +163,32 @@ export default function MoveLogForm({
               )}
             </div>
           ))}
+
+          {/*
+            The book gate, at the foot of Pass 0 where it is answered. It is terminal:
+            a move your preparation decided takes the burger and the plan off the form
+            entirely, leaving the line you are in and the check that it still survives
+            their reply.
+          */}
+          {pass.id === 'book' && (
+            <div className="flex items-center gap-2 flex-wrap pt-1">
+              <span className="text-xs text-zinc-500">Still in your preparation?</span>
+              <Chip
+                active
+                onClick={() => onBook(false)}
+                title="Still book — the burger and the plan are not asked"
+              >
+                yes
+              </Chip>
+              <Chip
+                active={false}
+                onClick={() => onBook(true)}
+                title="This is the move your preparation ran out at"
+              >
+                no, it runs out here
+              </Chip>
+            </div>
+          )}
 
           {/*
             The gate is drawn at the foot of Pass 1, where it is answered: the candidates

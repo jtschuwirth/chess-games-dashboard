@@ -19,13 +19,10 @@ export default function MethodCard() {
     <div className="flex flex-col gap-3">
       {METHOD_PASSES.map(pass => (
         <div key={pass.id} className="flex flex-col gap-2">
-          {pass.branch === 'quiet' && (
+          {pass.gate && (
             <div className="flex items-center gap-2 text-xs text-zinc-500 py-1">
-              <span className="h-px flex-1 bg-zinc-800" />
-              <span>
-                did a candidate produce something concrete that survives their best reply?
-                <span className="text-zinc-400"> yes → Pass 3 · no → Pass 2</span>
-              </span>
+              <span className="h-px w-4 shrink-0 bg-zinc-800" />
+              <span className="min-w-0">{pass.gate}</span>
               <span className="h-px flex-1 bg-zinc-800" />
             </div>
           )}

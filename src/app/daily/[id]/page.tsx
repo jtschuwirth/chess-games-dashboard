@@ -17,10 +17,12 @@ import {
   dailyTree,
   emptyLog,
   formatEvalGuess,
+  inBookAt,
   isYourMove,
   logHasContent,
   logProgress,
   uploadFrom,
+  withBookEnd,
   yourPlies,
 } from '@/lib/daily'
 import DailyReviewPanel from '@/components/DailyReviewPanel'
@@ -233,7 +235,8 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const ply = path.length
   const yours = isYourMove(game.color, ply)
   const log: MoveLog = game.logs[String(ply)] ?? emptyLog(ply)
-  const answered = logProgress(log)
+  const inBook = inBookAt(game, ply)
+  const answered = logProgress(log, inBook)
 
   /** One move's log, rewritten against whatever it currently holds. */
   function editLogAt(at: number, update: (current: MoveLog) => MoveLog) {
@@ -403,7 +406,12 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
                 )}
               </div>
 
-              <MoveLogForm log={log} onChange={editLog} />
+              <MoveLogForm
+                log={log}
+                inBook={inBook}
+                onBook={out => edit(current => withBookEnd(current, ply, out))}
+                onChange={editLog}
+              />
             </section>
           ) : (
             <p className="text-sm text-zinc-600">
