@@ -162,6 +162,36 @@ export function fromMover(cp: number, yours: boolean): number {
   return yours ? cp : -cp
 }
 
+/* ------------------------------------------------- why it was a mistake */
+
+/**
+ * One ply of the engine's answer to the move you played.
+ *
+ * Kept with the position it was played from, so the walk can carry on from wherever it
+ * has got to without replaying anything, and with its evaluation in **your** frame like
+ * every other number stored or shown here.
+ */
+export interface RefutationMove {
+  san: string
+  before: string
+  after: string
+  cp: number
+  /** Whose ply it is, which alternates and decides the sign. */
+  yours: boolean
+}
+
+/**
+ * How many plies the next press reveals.
+ *
+ * One the first time — their reply to the move you played, which is the whole question
+ * — and a pair after that: your best answer and what they do about it. A pair, because
+ * "what do I even do then" is half of why a move is a mistake, and a single ply would
+ * leave the answer hanging on your own move every other press.
+ */
+export function refutationStep(shown: number): number {
+  return shown === 0 ? 1 : 2
+}
+
 /**
  * The notes written on individual moves, normalised on read.
  *

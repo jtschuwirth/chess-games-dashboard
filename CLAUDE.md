@@ -826,6 +826,32 @@ src/
   of one, debounced and cached. The alternative was to go on showing a number about the
   first move of a plan nobody had checked.
 
+- **What they play is a press away, because the alternative was another tab.** The
+  form asks why the move is a mistake, and on a move you cannot see the point of there
+  was nothing to do but copy the position into an analysis board somewhere else — which
+  is the one thing that reliably stops a review being written at all.
+
+  **It reveals one ply at a time, and that is the whole design.** The first press is
+  their reply and nothing else, because that is usually the whole of it: you played the
+  move, they have something, and being shown the something is enough. Each press after
+  that walks a **pair** — your best answer and what they do about it — for the times it
+  is not, so the walk always lands on their move and never leaves the answer hanging on
+  your own. `refutationStep` is that rule and nothing else, which is what makes it
+  checkable.
+
+  It is behind a press for the same reason the drill withholds everything until you
+  answer: a refutation already on screen when the card opens is the answer given away,
+  and the question the form is asking is one you are supposed to try first.
+
+  **A search per ply, not one search's principal variation.** The PV is what the engine
+  happened to be looking at when it stopped and gets vaguer the further down it runs; a
+  fresh search on each position is `ENGINE_DEPTH` all the way, which is the depth every
+  other number on the card is read at. It costs about a second a ply and only for the
+  plies you asked for — which is the bargain the press was already making.
+
+  Nothing is stored. It is a study aid rather than a measurement, so it does not earn a
+  field, and losing it when the page closes is right: next time you should try again.
+
 - **A line you ruled out is a line worth keeping, and it is not your answer.** "Nc6 does
   not work, they have Bxd4" is as much a part of a post-mortem as the move you should
   have found — it is the half of the calculation you got right — and there was nowhere

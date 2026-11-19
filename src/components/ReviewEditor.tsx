@@ -8,7 +8,7 @@ import ProposedMoves, {
   type Verdict,
 } from '@/components/ProposedMoves'
 import TagPicker from '@/components/TagPicker'
-import { parseLine, plyLabel, sanFromUci, type Ply } from '@/lib/board'
+import { lineTokens, parseLine, playMove, plyLabel, sanFromUci, type Ply } from '@/lib/board'
 import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { queueBusy } from '@/lib/analysis-queue'
@@ -27,7 +27,9 @@ import {
   noteHasContent,
   proposedHasContent,
   proposedText,
+  refutationStep,
   verdictKey,
+  type RefutationMove,
 } from '@/lib/review'
 import { tagName, type TagGroup } from '@/lib/tags'
 import type {
@@ -216,6 +218,15 @@ export default function ReviewEditor({
   const [error, setError] = useState<string | null>(null)
   const [engine, setEngine] = useState<Record<number, string>>({})
   const [asking, setAsking] = useState<number | null>(null)
+  /**
+   * How the engine answers the move you played, a press at a time, per entry.
+   *
+   * Nothing is stored: it is a study aid rather than a measurement, and the whole point
+   * is that you try to see it yourself first — a refutation already on screen when the
+   * card opens is the answer given away.
+   */
+  const [refutations, setRefutations] = useState<Record<number, RefutationMove[]>>({})
+  const [walking, setWalking] = useState<number | null>(null)
   /** Keyed by `ply:san`, so a move retyped or proposed twice is only judged once. */
   const [verdicts, setVerdicts] = useState<Record<string, Verdict>>({})
   const requested = useRef(new Set<string>())
@@ -496,6 +507,63 @@ export default function ReviewEditor({
     }
   }
 
+  /**
+   * The engine's answer to the move you played, one press further on.
+   *
+   * The first press gives their reply and nothing else, because that is usually the
+   * whole of it: you played the move, they have something, and being shown the something
+   * is enough to see why. Each press after that walks a pair — your best answer and
+   * what they do about it — for the times it is not.
+   *
+   * A search per ply rather than one search's principal variation. The PV is what the
+   * engine happened to be looking at when it stopped and gets vaguer the further down it
+   * goes; a fresh search on each position is the same depth all the way, which is the
+   * rule every other number in this app is read under. It costs about a second a ply,
+   * and only for the plies you asked for.
+   */
+  async function walk(ply: number) {
+    const move = plyByIndex.get(ply)
+    if (!move || walking !== null) return
+
+    const shown = refutations[ply] ?? []
+    // where the walk has got to: after your move the first time, after the last reply since
+    let fen = shown.length > 0 ? shown[shown.length - 1].after : move.fenAfter
+    // their move answers yours, and whose it is alternates from there
+    let yours = shown.length > 0 ? !shown[shown.length - 1].yours : false
+
+    setWalking(ply)
+    setError(null)
+    try {
+      const found: RefutationMove[] = []
+      for (let step = 0; step < refutationStep(shown.length); step++) {
+        const evaluation = await analyzePosition(fen, ENGINE_DEPTH)
+        const played = playMove(fen, sanFromUci(fen, evaluation.bestMoveUci) ?? '')
+        // a position with no legal move is the end of the line rather than an error
+        if (!played) break
+
+        found.push({
+          san: played.san,
+          before: fen,
+          after: played.fen,
+          // scored for the side to move, which is whoever plays this ply
+          cp: fromMover(evaluation.cp, yours),
+          yours,
+        })
+
+        fen = played.fen
+        yours = !yours
+      }
+
+      if (found.length > 0) {
+        setRefutations(prev => ({ ...prev, [ply]: [...(prev[ply] ?? []), ...found] }))
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'The engine did not answer.')
+    } finally {
+      setWalking(null)
+    }
+  }
+
   const problems = drafts
     .map(draft => {
       const missing = missingFrom(toMistake(draft))
@@ -640,6 +708,77 @@ export default function ReviewEditor({
     } finally {
       setSaving(false)
     }
+  }
+
+  /**
+   * The engine's answer, as far as you have asked for it.
+   *
+   * A render function rather than a component defined during render, which remounts
+   * every keystroke — the rule the page's own controls already follow. The moves read
+   * like the move list does: your own are plain, theirs are the point, and every one
+   * carries where it leaves the game from White's side like every other evaluation on
+   * the screen.
+   */
+  function renderRefutation(ply: number) {
+    const move = plyByIndex.get(ply)
+    if (!move) return null
+
+    const shown = refutations[ply] ?? []
+    const busy = walking === ply
+
+    return (
+      <div className="flex flex-col gap-1.5">
+        {shown.length > 0 && (
+          <div className="flex gap-x-3 gap-y-1 flex-wrap text-xs font-mono">
+            {/* numbered the way a variation is, which is what this is */}
+            {lineTokens(ply + 1, shown.map(answer => answer.san)).map((token, at) => (
+              <span key={at} className="inline-flex items-baseline gap-1">
+                {token.prefix && <span className="text-zinc-600">{token.prefix}</span>}
+                <span className={shown[at].yours ? 'text-zinc-400' : 'text-zinc-100'}>
+                  {token.san}
+                </span>
+                <span className="text-zinc-500">{formatEval(shown[at].cp, game.color)}</span>
+              </span>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 flex-wrap text-xs">
+          <button
+            type="button"
+            onClick={() => walk(ply)}
+            disabled={walking !== null}
+            title={
+              shown.length === 0
+                ? `What they play against ${draftSan(ply)}, at depth ${ENGINE_DEPTH}`
+                : `Your best answer and what they do about it, at depth ${ENGINE_DEPTH}`
+            }
+            className="text-violet-300 hover:text-violet-100 transition-colors disabled:opacity-40"
+          >
+            {busy
+              ? 'asking the engine…'
+              : shown.length === 0
+                ? 'what do they play?'
+                : 'and then?'}
+          </button>
+
+          {shown.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setRefutations(prev => ({ ...prev, [ply]: [] }))}
+              className="text-zinc-600 hover:text-zinc-300 transition-colors"
+            >
+              hide it again
+            </button>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  /** The move an entry is about, for the one sentence that names it. */
+  function draftSan(ply: number): string {
+    return plyByIndex.get(ply)?.san ?? 'it'
   }
 
   /**
@@ -895,6 +1034,17 @@ export default function ReviewEditor({
                       placeholder="It drops the h-pawn and opens a file at my king…"
                       className={`${FIELD} resize-y`}
                     />
+
+                    {/*
+                      What they have, a press at a time.
+
+                      The alternative was copying the position into another tab to find
+                      out, which is the one thing that reliably stops a review being
+                      written. It is behind a press and reveals one ply at a time so the
+                      answer is still yours to find: the first press is their reply and
+                      nothing else, which is usually the whole of it.
+                    */}
+                    {renderRefutation(draft.ply)}
                   </div>
 
                   <div className="flex flex-col gap-1.5">
