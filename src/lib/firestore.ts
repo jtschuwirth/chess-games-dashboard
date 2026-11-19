@@ -33,6 +33,7 @@ import {
 import { applyTagGroups, normalizeTagGroups, type TagGroup } from './tags'
 import { normalizePlan } from './plan'
 import { normalizeGuide } from './exercise'
+import { normalizeDailyGame } from './daily'
 import {
   closingRatings,
   joinYears,
@@ -42,11 +43,13 @@ import {
 } from './rating-history'
 import type { Query, QuerySnapshot } from 'firebase/firestore'
 import type {
+  DailyGame,
   DrillStat,
   ExerciseGuide,
   GameRecord,
   GameReview,
   MoveVerdict,
+  NewDailyGame,
   NewExerciseGuide,
   NewOpeningLine,
   NewPattern,
@@ -785,6 +788,53 @@ export async function updateGuide(
 
 export async function deleteGuide(userId: string, guideId: string): Promise<void> {
   await deleteDoc(doc(db, 'users', userId, GUIDES, guideId))
+}
+
+/* ------------------------------------------------------------ daily games */
+
+/**
+ * The games played slowly with the thinking written down, in their own collection.
+ *
+ * Not a field on a game document, because a game in progress has no finished move list
+ * and an uploaded game's id is hashed from its moves — so there is nothing stable to
+ * hang a log on until it is over. `gameId` joins the two once it has been brought in.
+ *
+ * Read from the server for the plans reason, which applies here at its strongest: this
+ * is the thing you write on a laptop in the evening and check on a phone when their move
+ * arrives, and there are a handful of them.
+ */
+const DAILY = 'dailyGames'
+
+export async function getDailyGames(
+  userId: string,
+  options?: ReadOptions,
+): Promise<DailyGame[]> {
+  const ref = collection(db, 'users', userId, DAILY)
+  const snapshot = await readDocs(query(ref, orderBy('createdAt', 'desc')), {
+    fresh: true,
+    ...options,
+  })
+  return snapshot.docs.map(d => normalizeDailyGame({ ...d.data(), id: d.id } as DailyGame))
+}
+
+export async function saveDailyGame(userId: string, game: NewDailyGame): Promise<string> {
+  const ref = collection(db, 'users', userId, DAILY)
+  const docRef = await addDoc(ref, { ...game, updatedAt: Date.now() })
+  return docRef.id
+}
+
+/** The whole document goes back on every change, like a plan and a guide. */
+export async function updateDailyGame(
+  userId: string,
+  gameId: string,
+  game: NewDailyGame,
+): Promise<void> {
+  // stamped here so a save can neither forget it nor round-trip a stale one
+  await setDoc(doc(db, 'users', userId, DAILY, gameId), { ...game, updatedAt: Date.now() })
+}
+
+export async function deleteDailyGame(userId: string, gameId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, DAILY, gameId))
 }
 
 export async function getPlans(userId: string, options?: ReadOptions): Promise<StudyPlan[]> {

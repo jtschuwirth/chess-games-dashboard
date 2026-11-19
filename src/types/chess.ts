@@ -889,3 +889,104 @@ export interface ProviderResponse {
   games: SyncedGame[]
   warnings: string[]
 }
+
+/* ------------------------------------------------------------- daily games */
+
+/**
+ * One step of the move loop, and the whole failure vocabulary.
+ *
+ * The ids are the point: a post-mortem files what went wrong under the step that was
+ * supposed to catch it, so "step 2 never listed their loose bishop" is countable where
+ * "that move was bad" is not. They read as tags because that is what they will become.
+ *
+ * The table they come from is `METHOD_PASSES` in `lib/daily.ts`, the habit
+ * `STUDY_SECTIONS` and `ESSENTIALS_SECTIONS` already follow — the screen that explains
+ * the method renders the same table the form asks from, so a step cannot be asked on one
+ * and missing from the other.
+ */
+export type MoveStepId =
+  | 'book'
+  | 'goal'
+  | 'their-motifs'
+  | 'my-motifs'
+  | 'candidates'
+  | 'weaknesses'
+  | 'worst-piece'
+  | 'their-plan'
+  | 'plan-choice'
+  | 'blunder-check'
+
+/**
+ * What you wrote before playing one move.
+ *
+ * Keyed by the ply it produced — `logs['6']` is the thinking behind the seventh
+ * half-move of the game — so a log is tied to a move rather than to where it sits in a
+ * list, and entering a move you forgot earlier never re-files the rest.
+ */
+export interface MoveLog {
+  /** Index of the move this produced: how many half-moves were on the board. */
+  ply: number
+  /**
+   * Whether Pass 1 found something concrete that survives their best reply.
+   *
+   * The gate, and the reason it is a boolean rather than a number: it decides whether
+   * the position is quiet, and "did I find something" is a question you can answer where
+   * "is this roughly equal" is the thing you are trying to learn to answer.
+   */
+  concrete: boolean
+  /**
+   * What you think the position is worth, in pawns, **from White's side**.
+   *
+   * White's because that is the frame every board, readout and engine panel in the app
+   * shows; the stored analysis is in your own frame and converts at the point of display.
+   * Written on every move, not only quiet ones — it is the one field that scores against
+   * the engine with no interpretation at all.
+   */
+  evaluation: number | null
+  /**
+   * The line the evaluation is the value of.
+   *
+   * Without it a disagreement with the engine is unattributable. With it there are two
+   * different findings: the line was wrong, which is calculation, or the line was right
+   * and its final position is not worth what you said, which is judgement.
+   */
+  line: string
+  /** One answer per step of the loop, by step id. Steps you skipped are absent. */
+  answers: Partial<Record<MoveStepId, string>>
+  /** How long you spent on it, in minutes. Yours to write; nothing times you. */
+  minutes?: number
+}
+
+/**
+ * A game played slowly on purpose, with the thinking written down move by move.
+ *
+ * Its own collection rather than a field on a game, because a game in progress has no
+ * finished move list — and an uploaded game's id is hashed from its moves, so there is
+ * nothing stable to hang the log on until the game is over. The two are joined by
+ * `gameId` once it has been brought in.
+ */
+export interface DailyGame {
+  id: string
+  /** Who you are playing. */
+  opponent: string
+  /** Where the game lives, so you can get back to it in one press. */
+  url?: string
+  color: Color
+  /** The moves so far, exactly as entered. The authority; `moves` is parsed from it. */
+  pgn: string
+  moves: string[]
+  /** What you wrote before each of your moves, keyed by ply. */
+  logs: Record<string, MoveLog>
+  /** Whether it is still being played. */
+  finished: boolean
+  result?: GameResult
+  /** The synced or uploaded game this became, once it has been brought in. */
+  gameId?: string
+  /** What the whole game taught you, written at the end. */
+  note: string
+  createdAt: number
+  /** When any device last saved it, for the draft comparison a plan makes. */
+  updatedAt?: number
+}
+
+export type NewDailyGame = Omit<DailyGame, 'id'>

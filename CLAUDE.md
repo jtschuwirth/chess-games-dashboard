@@ -103,7 +103,16 @@ win/draw/loss splits for all games or for the games that followed one of those l
    pasted in as a FEN and the board you solve it on, with variations, a comment on any
    move and a note on the whole thing. Tick one off when you have it, and the sheet says
    how far through you are.
-10. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
+10. `/daily` — a game played at three days a move, with the thinking written down as it
+   happens. A game is an opponent, a colour and a board you enter the moves on; standing
+   in a position where it is your turn, the **move loop** is asked of you step by step —
+   the book pass, the burger (material, their threats, your targets, candidates), and,
+   *only* when the burger came back with nothing concrete, the plan pass (weaknesses,
+   worst piece, what they want, the plan). The commit check is asked either way. Every
+   move also carries what you think the position is worth and the line that figure is the
+   value of. The loop itself is on the page, folded, so it can be read while it is being
+   run.
+11. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag. Find the move you
    wrote down and the drill plays their reply and asks what you do about it, down the
@@ -139,6 +148,8 @@ src/
 │   ├── uploads/page.tsx        # Games you pasted in: the panel, and what it left you
 │   ├── plans/page.tsx          # Study plans: list + create
 │   ├── plans/[id]/page.tsx     # One plan: weeks, days, tasks, notes, that day's games
+│   ├── daily/page.tsx          # Daily games: the list, and the move loop written out
+│   ├── daily/[id]/page.tsx     # One game: the board, and the loop asked move by move
 │   ├── learn/page.tsx          # Drill over the reviewed positions
 │   └── api/
 │       ├── chesscom/games/route.ts
@@ -158,6 +169,7 @@ src/
 │                               # PlanDayCard, PlanWeekCard, PlanTemplateCard,
 │                               # TemplateEditor,
 │                               # PlanForm, PlanRatings,
+│                               # MethodCard, MoveLogForm,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
 │                               # GameShapePanel, ClockPanel, ThinkPanel, ConfigNotice,
 │                               # HomeNav, NavMenu, BackLink, ColorDot,
@@ -202,6 +214,7 @@ src/
 │   ├── tags.ts                 # your own tag vocabulary: groups, stable ids, display names
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
+│   ├── daily.ts                # the move loop: the passes, a log, the stored game
 │   ├── days.ts                 # day keys, the 6am rule, calendar arithmetic
 │   ├── plan.ts                 # study plans: weeks, dates, counted tasks, progress
 │   ├── plan-draft.ts           # a plan edited and not yet saved, kept on the device
@@ -3339,6 +3352,65 @@ src/
   Measured against the whole account rather than guessed: 1,156 games through the rule in
   3ms, inside the memo the breakdown already lives in.
 
+- **The move loop is a table, and the form branches where the method branches.**
+  `METHOD_PASSES` in `lib/daily.ts` holds the four passes and their steps; `MethodCard`
+  renders it and `MoveLogForm` asks it, the rule `TRANSITIONS` and `ESSENTIALS_SECTIONS`
+  already follow — a step cannot be asked on the form and missing from the screen that
+  teaches the procedure.
+
+  The method is Azel Chua's burger with three things around it. A **book** pass in
+  front, because a move already decided is not a move to think about — and because a
+  deviation is the cheapest tactic in the game, so leaving book sends you to the burger
+  rather than past it. A **plan** pass behind, for the positions the burger comes back
+  empty from, which is most of them. And a **commit** check at the end, unconditional,
+  because a club game is lost to what you allowed far more often than to what you
+  missed.
+
+  The strategic pass is **Aagaard's three questions**, not Silman's imbalances. Both are
+  good and the questions win on fit: short enough to run at the board, and the same
+  shape of object as the burger, so it is one habit learned twice rather than two
+  systems. The imbalances are a reference list under the first question.
+
+  **The gate is a control, not a note.** Answering *yes, something concrete* takes the
+  plan pass off the form, because there was nothing quiet to plan in; answering *no*
+  puts it back. That is what keeps filling the form and running the loop the same act,
+  instead of fourteen boxes and a rule about which eight to skip.
+
+- **The steps are the failure vocabulary, which is the whole reason the loop is
+  recorded.** Without a per-step artefact a post-mortem can only say the move was bad,
+  and "the method did not work" trains nothing. With one, a mistake is filed under the
+  step that should have caught it — `their-motifs`, `candidates`, `blunder-check` — and
+  that is a row that can be counted over months by machinery this app already has: the
+  tag vocabulary is groups of stable ids with display names, and the mistakes dashboard
+  already adds them up.
+
+- **The eval estimate is written on every move, and it is the value of a line.** It is
+  the one field that scores against the engine with no interpretation at all — a number
+  against a number — so it gives a calibration curve while everything else is still
+  thin. It is **not** the gate: guessing an eval in order to decide whether to think
+  strategically is circular, where "did a candidate produce something concrete" is a
+  question you can actually answer.
+
+  It is stored in **White's frame**, against the rest of the analysis layer, because it
+  is typed in rather than derived: every board, readout and engine panel in the app shows
+  White's, and asking for a number in the stored frame would be asking for the conversion
+  the app already does in the other direction.
+
+  `line` is what makes a disagreement attributable. The estimate is the value of the leaf
+  of your own line, claimed as the value of the position, so when the engine disagrees
+  there are two different findings: the line was wrong, which is **calculation**, or the
+  line was right and its final position is not worth what you said, which is
+  **judgement**. Without the line stored, only "guessed +1.5, engine says −0.3" survives,
+  and that names neither.
+
+- **A daily game is its own collection, and what you played is not stored on the log.**
+  A game in progress has no finished move list, and an uploaded game's id is hashed from
+  its moves — so there is nothing stable to hang a log on until it is over. `dailyGames`
+  holds them and `gameId` joins the two once the game has been brought in. A log is keyed
+  by the ply it produced, so entering a move you forgot earlier never re-files the rest,
+  and the move itself is read from `moves[ply]` rather than copied onto the log: the PGN
+  is the authority for what was played, here as everywhere else.
+
 ## Checking the app on a throwaway account
 `scripts/dev-games.mjs` writes a sheet of games to paste into **Upload a game** on the
 profile page, for a fresh account with nothing in it. Every move is played through
@@ -3392,5 +3464,8 @@ yarn lint
   A re-sync fixes them; nothing can at read time, because the rating change was never stored.
 
 ## Not built yet
+- The post-mortem half of `/daily`: a finished game read against the engine, so each
+  marked move can be filed under the step of the loop that should have caught it. The
+  record is being captured for it; nothing reads it yet.
 - Background or scheduled syncing
 - Any training drill built from the tag counts — the database is read by eye for now

@@ -83,6 +83,13 @@ export const NAV_SECTIONS: NavSection[] = [
     filtered: true,
   },
   {
+    href: '/daily',
+    title: 'Daily games',
+    short: 'Daily',
+    icon: '🧠',
+    description: 'Run the move loop move by move, written down as you go',
+  },
+  {
     href: '/uploads',
     title: 'Uploaded games',
     short: 'Uploads',
