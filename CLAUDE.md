@@ -112,6 +112,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    move also carries what you think the position is worth and the line that figure is the
    value of. The loop itself is on the page, folded, so it can be read while it is being
    run.
+   Once it is over, the **post-mortem** brings it in as an ordinary game, reads the
+   engine's own numbers off it and says two things: how far out your estimates were,
+   split by whether you called the position quiet, and which moves want explaining —
+   the ones the engine marked, and the ones where your read of the position was a whole
+   band out. Each of those is filed under the step of the loop that should have caught
+   it, and the tally of those steps is on the section itself.
 11. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag. Find the move you
@@ -169,7 +175,7 @@ src/
 │                               # PlanDayCard, PlanWeekCard, PlanTemplateCard,
 │                               # TemplateEditor,
 │                               # PlanForm, PlanRatings,
-│                               # MethodCard, MoveLogForm,
+│                               # MethodCard, MoveLogForm, DailyReviewPanel,
 │                               # AnalysisSettingsPanel, VerdictPanel, ShapePanel, EvalGraph,
 │                               # GameShapePanel, ClockPanel, ThinkPanel, ConfigNotice,
 │                               # HomeNav, NavMenu, BackLink, ColorDot,
@@ -215,6 +221,7 @@ src/
 │   ├── upload.ts               # a pasted PGN turned into ordinary game documents
 │   ├── accuracy.ts             # centipawn loss over time, mistakes by think time
 │   ├── daily.ts                # the move loop: the passes, a log, the stored game
+│   ├── daily-review.ts         # a finished game against the engine, filed by step
 │   ├── days.ts                 # day keys, the 6am rule, calendar arithmetic
 │   ├── plan.ts                 # study plans: weeks, dates, counted tasks, progress
 │   ├── plan-draft.ts           # a plan edited and not yet saved, kept on the device
@@ -3411,6 +3418,63 @@ src/
   and the move itself is read from `moves[ply]` rather than copied onto the log: the PGN
   is the authority for what was played, here as everywhere else.
 
+- **The post-mortem runs no engine, and that is what made it cheap.** A finished daily
+  game is brought in as an ordinary game document and analysed by the first pass, one
+  game at a time and on your press, the way any game is. `analysis.moves` then carries
+  `cpBefore` and `cpAfter` per move of yours keyed by the absolute ply — which is exactly
+  what a `MoveLog` is keyed by — so `lib/daily-review.ts` is a join and not a second
+  engine. A second one would also have been a second answer to what a position is worth,
+  which is the trap `reconcile` was written to get out of one level down.
+
+  `uploadFrom` gives the game a `sourceId` of the **daily game's own id**, not a
+  fingerprint of its moves. An upload is fingerprinted so two pastes of one game land on
+  one document; here the daily game is the identity, so bringing it in again after
+  correcting a move has to land on the same document rather than minting a second beside
+  it. Its class is `daily` and its control is empty: there is no clock the rest of the app
+  could compare at three days a move, and an invented one would put a chip in the Control
+  row that nothing matches.
+
+- **Two findings come out of it, because the log records two different things.** The
+  **move** — the engine marked it, so a step missed something — and the **read**, where
+  your evaluation landed in a different band from the engine's, so whatever you played you
+  did not know where you stood. The second is the one nothing else in this app could ever
+  have told you, and it is why the estimate is written on every move rather than only the
+  quiet ones.
+
+  It is compared by **band and not by centipawns**, because a band is the app's own
+  vocabulary for where you stand and a threshold here would be a second private answer to
+  what counts as a different position. Sixty centipawns out inside `level` is a good read;
+  sixty across the edge of it is not, and only the band tells those apart.
+
+  The guess is converted into the **stored** frame once, at the join. It is typed in
+  White's because that is what every board and engine reading on screen shows, and
+  everything the analysis layer stores — and every rule that reads it, `standingOf`
+  included — is in your own.
+
+- **The calibration is split by the gate, which is the only split worth drawing.** A move
+  where the burger found something is a move whose evaluation you *calculated*; a move you
+  called quiet is one you *judged*. Those are the two skills the loop separates, so one
+  average over both would hide whichever of them is the problem.
+
+- **`gate` and `none` are failures that are not steps.** The ten steps have boxes on the
+  form; the gate is a chip, and it is very likely the most interesting row this will ever
+  produce — a quiet position read as having something concrete in it, or a tactic you had
+  and talked yourself out of. Leaving it out of the vocabulary would force the most
+  structural failure in the method to be filed as something else.
+
+  `none` is the escape hatch and it is not a shrug: it is the conclusion you reach after
+  trying to name the step and finding there is not one. It is stored and then left out of
+  every tally, the rule *hard to find* already follows — a move nothing would have caught
+  must never read as a step that failed, or the one row you would act on is inflated by
+  the moves you could do nothing about. `blamesAStep` is that rule, in one place.
+
+  An unknown value is dropped on read, so a hand-edited document cannot invent a step for
+  the table to count.
+
+- **The tally is on the section, not only inside the game it came from.** One game says
+  you missed their bishop once; six say which step of the loop you do not actually run.
+  The per-game panel still carries its own, because that is the one you read while filing.
+
 ## Checking the app on a throwaway account
 `scripts/dev-games.mjs` writes a sheet of games to paste into **Upload a game** on the
 profile page, for a fresh account with nothing in it. Every move is played through
@@ -3464,8 +3528,8 @@ yarn lint
   A re-sync fixes them; nothing can at read time, because the rating change was never stored.
 
 ## Not built yet
-- The post-mortem half of `/daily`: a finished game read against the engine, so each
-  marked move can be filed under the step of the loop that should have caught it. The
-  record is being captured for it; nothing reads it yet.
+- Any reading of the step tally beyond the count: which steps fail together, whether a
+  step stops failing after it has been named, how the calibration moves over months. The
+  record is there for it now.
 - Background or scheduled syncing
 - Any training drill built from the tag counts — the database is read by eye for now

@@ -8,6 +8,7 @@ import MethodCard from '@/components/MethodCard'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import Panel from '@/components/Section'
 import { dailyProgress } from '@/lib/daily'
+import { allLogs, failureTally } from '@/lib/daily-review'
 import { getDailyGames, saveDailyGame } from '@/lib/firestore'
 import type { Color, DailyGame } from '@/types/chess'
 
@@ -71,6 +72,7 @@ function DailyBody({ userId }: { userId: string }) {
   if (!games) return <Spinner />
 
   const playing = games.filter(game => !game.finished)
+  const tally = failureTally(allLogs(games))
 
   return (
     <div className="flex flex-col gap-5">
@@ -189,6 +191,34 @@ function DailyBody({ userId }: { userId: string }) {
             )
           })}
         </div>
+      )}
+
+      {/*
+        The tally is the whole point of the exercise, so it sits on the section rather
+        than only inside the game it came from: one game says you missed their bishop
+        once, and six say which step of the loop you do not actually run.
+      */}
+      {tally.rows.length > 0 && (
+        <Panel
+          id="daily-tally"
+          title="Which step is failing"
+          meta={`${tally.filed} move${tally.filed === 1 ? '' : 's'} filed`}
+        >
+          <div className="flex flex-col gap-1">
+            {tally.rows.map(row => (
+              <div key={row.id} className="flex items-center gap-2 text-xs">
+                <span className="w-6 text-right font-mono text-zinc-100">{row.count}</span>
+                <span className="text-zinc-400 min-w-0">{row.label}</span>
+              </div>
+            ))}
+            {tally.unavoidable > 0 && (
+              <p className="text-[11px] text-zinc-600 pt-1">
+                {tally.unavoidable} more filed as nothing the loop would have caught, left
+                out of the table on purpose.
+              </p>
+            )}
+          </div>
+        </Panel>
       )}
 
       {/*

@@ -955,7 +955,35 @@ export interface MoveLog {
   answers: Partial<Record<MoveStepId, string>>
   /** How long you spent on it, in minutes. Yours to write; nothing times you. */
   minutes?: number
+  /**
+   * Which step should have caught it, written afterwards against the engine.
+   *
+   * The whole reason the loop is recorded move by move. Absent means nobody has filed
+   * this move yet, which is told from `none` — a move no step of the loop would have
+   * caught — the way an unanswered question is told from one answered with nothing.
+   */
+  failed?: MoveFailureId
+  /** What to do differently, in your own words. */
+  lesson?: string
 }
+
+/**
+ * What a move is filed under in the post-mortem.
+ *
+ * The ten steps, plus two things that are failures and are not steps.
+ *
+ * `gate` is the branch going the wrong way: a quiet position you read as having
+ * something concrete in it, or a tactic you had and talked yourself out of. It has no
+ * box on the form because it is a chip rather than a question, and it is very likely the
+ * most interesting row this will ever produce — so leaving it out of the vocabulary
+ * would force the most structural failure in the method to be filed as something else.
+ *
+ * `none` is the escape hatch, and it earns its place the same way the review form's
+ * "hard to find" does: it is the conclusion you reach *after* trying to name the step
+ * and finding there is not one. It is stored and then left out of every tally, so a move
+ * nothing would have caught can never read as a step that failed.
+ */
+export type MoveFailureId = MoveStepId | 'gate' | 'none'
 
 /**
  * A game played slowly on purpose, with the thinking written down move by move.

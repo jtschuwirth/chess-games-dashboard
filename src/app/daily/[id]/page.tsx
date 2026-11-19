@@ -20,10 +20,19 @@ import {
   isYourMove,
   logHasContent,
   logProgress,
+  uploadFrom,
   yourPlies,
 } from '@/lib/daily'
+import DailyReviewPanel from '@/components/DailyReviewPanel'
 import { clearDraft, readDraft, writeDraft } from '@/lib/draft'
-import { deleteDailyGame, getDailyGames, updateDailyGame } from '@/lib/firestore'
+import {
+  deleteDailyGame,
+  gameDocId,
+  getDailyGames,
+  getGames,
+  saveGames,
+  updateDailyGame,
+} from '@/lib/firestore'
 import {
   mainPath,
   moveLabel,
@@ -32,7 +41,7 @@ import {
   sansAlong,
   START_FEN,
 } from '@/lib/movetree'
-import type { DailyGame, GameResult, MoveLog } from '@/types/chess'
+import type { DailyGame, GameRecord, GameResult, MoveLog } from '@/types/chess'
 
 const INPUT =
   'bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600'
@@ -51,6 +60,9 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const [restored, setRestored] = useState<number | null>(null)
   /** The game as the server last had it, for what "unsaved" means. */
   const [savedGame, setSavedGame] = useState<DailyGame | null>(null)
+  /** The stored games, for the one this became once it was brought in. */
+  const [games, setGames] = useState<GameRecord[] | null>(null)
+  const [bringing, setBringing] = useState(false)
   /**
    * Where the board is standing, held as the moves leading there rather than as node
    * ids: every edit writes the line back out as a PGN and `fromPgn` mints fresh ids on
@@ -61,8 +73,9 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
   const load = useCallback(
     () =>
-      getDailyGames(userId)
-        .then(loaded => {
+      Promise.all([getDailyGames(userId), getGames(userId)])
+        .then(([loaded, stored]) => {
+          setGames(stored)
           const found = loaded.find(entry => entry.id === gameId) ?? null
           setMissing(found === null)
           if (!found) return
@@ -128,6 +141,44 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
   const progress = useMemo(() => (game ? dailyProgress(game) : null), [game])
 
+  /*
+   * The game document this became. Looked up by the id it would have been given as well
+   * as by the link stored on the daily game, so a game brought in and then edited before
+   * the link was written is still found rather than brought in twice.
+   */
+  const record = useMemo(() => {
+    if (!game || !games) return null
+    const id = game.gameId ?? gameDocId('upload', `daily${game.id}`)
+    return games.find(entry => entry.id === id) ?? null
+  }, [game, games])
+
+  /**
+   * Bring the finished game in as an ordinary game document.
+   *
+   * The link is written straight to the server around the baseline, the way a plan day
+   * saves: this is one field, and it must not be the thing that commits whatever else
+   * you had half-written on the page.
+   */
+  async function bringIn() {
+    if (!game || !savedGame || bringing) return
+    setBringing(true)
+    setError(null)
+    try {
+      await saveGames(userId, [uploadFrom(game)])
+      // fresh, because the write has to be visible to the lookup that draws the panel
+      setGames(await getGames(userId, { fresh: true }))
+
+      const id = gameDocId('upload', `daily${game.id}`)
+      await updateDailyGame(userId, gameId, dailyBody({ ...savedGame, gameId: id }))
+      setSavedGame(current => (current ? { ...current, gameId: id } : current))
+      edit(current => ({ ...current, gameId: id }))
+    } catch (caught) {
+      setError(errorText(caught, 'Could not bring that game in.'))
+    } finally {
+      setBringing(false)
+    }
+  }
+
   async function save() {
     if (!game) return
     setSaving(true)
@@ -184,12 +235,17 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
   const log: MoveLog = game.logs[String(ply)] ?? emptyLog(ply)
   const answered = logProgress(log)
 
-  function editLog(update: (current: MoveLog) => MoveLog) {
+  /** One move's log, rewritten against whatever it currently holds. */
+  function editLogAt(at: number, update: (current: MoveLog) => MoveLog) {
     edit(current => {
-      const key = String(ply)
-      const existing = current.logs[key] ?? emptyLog(ply)
+      const key = String(at)
+      const existing = current.logs[key] ?? emptyLog(at)
       return { ...current, logs: { ...current.logs, [key]: update(existing) } }
     })
+  }
+
+  function editLog(update: (current: MoveLog) => MoveLog) {
+    editLogAt(ply, update)
   }
 
   const written = yourPlies(game, game.moves.length - 1).filter(at =>
@@ -355,6 +411,27 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
               comes back for your reply.
             </p>
           )}
+
+          {/*
+            The post-mortem sits under the form rather than on a page of its own: the
+            thing you are filing a move under is the thing you wrote about it, and the
+            two being a scroll apart is what would make filing a matter of memory.
+          */}
+          <Panel
+            id="daily-postmortem"
+            title="Post-mortem"
+            meta={game.finished ? undefined : 'once the game is over'}
+            startFolded={!game.finished}
+          >
+            <DailyReviewPanel
+              game={game}
+              record={record}
+              onFile={editLogAt}
+              onBringIn={bringIn}
+              bringing={bringing}
+              error={error}
+            />
+          </Panel>
 
           <Panel id="daily-game-method" title="The move loop" startFolded>
             <MethodCard />

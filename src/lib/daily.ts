@@ -26,7 +26,15 @@
  * rule renders the rule, or it explains what the rule used to be.
  */
 import { colorAt, fromPgn, mainLine, START_FEN, toPgn, type MoveTree } from './movetree'
-import type { Color, DailyGame, MoveLog, MoveStepId, NewDailyGame } from '@/types/chess'
+import type {
+  Color,
+  DailyGame,
+  MoveFailureId,
+  MoveLog,
+  MoveStepId,
+  NewDailyGame,
+  SyncedGame,
+} from '@/types/chess'
 
 /** Which pass a step belongs to. */
 export type MethodPassId = 'book' | 'burger' | 'plan' | 'commit'
@@ -205,6 +213,35 @@ export const STEP_LABEL: Record<MoveStepId, string> = Object.fromEntries(
 ) as Record<MoveStepId, string>
 
 /**
+ * Everything a move can be filed under: the ten steps, then the two that are failures
+ * without being steps. `none` sits last because it is the answer you reach after trying
+ * the others, not one of them.
+ */
+export const FAILURE_IDS: MoveFailureId[] = [...METHOD_STEP_IDS, 'gate', 'none']
+
+export function isFailureId(raw: string): raw is MoveFailureId {
+  return (FAILURE_IDS as string[]).includes(raw)
+}
+
+export const FAILURE_LABEL: Record<MoveFailureId, string> = {
+  ...STEP_LABEL,
+  gate: 'The gate went the wrong way',
+  none: 'No step would have caught it',
+}
+
+/**
+ * Whether a filing says a step of the loop failed.
+ *
+ * `none` is stored and then left out of every tally, the rule the review form's "hard
+ * to find" already follows: a move nothing would have caught must not read as a step
+ * that failed, or the one row you would act on is inflated by the moves you could do
+ * nothing about.
+ */
+export function blamesAStep(failed: MoveFailureId | undefined): boolean {
+  return failed !== undefined && failed !== 'none'
+}
+
+/**
  * Which passes are asked of a move.
  *
  * The gate and nothing else: a move where something concrete turned up skips the plan
@@ -315,6 +352,46 @@ export function dailyFromTree(game: DailyGame, tree: MoveTree): DailyGame {
   return { ...game, pgn: toPgn(tree), moves: mainLine(tree) }
 }
 
+/**
+ * The finished game as an ordinary game document, so everything else can read it.
+ *
+ * This is the whole of how the post-mortem gets its evaluations: the app already turns
+ * a pasted PGN into a game, and a game is what the engine, the review, the drill and
+ * the mistakes dashboard all work on. Bringing a daily game in therefore costs nothing
+ * new — and the post-mortem reads `analysis.moves` off it rather than running a second
+ * engine of its own, which is the rule the analysis skill states outright.
+ *
+ * `sourceId` is the daily game's own id rather than a fingerprint of the moves. An
+ * upload is fingerprinted so that pasting the same game twice lands on one document;
+ * here the daily game *is* the identity, so re-bringing it in after a correction must
+ * land on the same document and not mint a second one beside it.
+ *
+ * `timeControl` is empty and the class is `daily`. A daily game has no clock the rest of
+ * the app can compare — per-move timing means nothing at three days a move — and an
+ * invented control would put a chip in the Control row that nothing else matches.
+ */
+export function uploadFrom(game: DailyGame): SyncedGame {
+  return {
+    source: 'upload',
+    sourceId: `daily${game.id}`,
+    url: game.url ?? '',
+    playedAt: game.createdAt,
+    timeClass: 'daily',
+    timeControl: '',
+    color: game.color,
+    result: game.result ?? 'draw',
+    termination: 'unknown',
+    opponent: game.opponent,
+    opponentIsBot: false,
+    opponentRating: null,
+    userRating: null,
+    eco: null,
+    openingName: null,
+    moves: game.moves,
+    clocks: null,
+  }
+}
+
 /* ------------------------------------------------------------ stored shapes */
 
 function normalizeLog(raw: unknown, ply: number): MoveLog | null {
@@ -336,6 +413,10 @@ function normalizeLog(raw: unknown, ply: number): MoveLog | null {
     answers,
   }
   if (typeof entry.minutes === 'number') log.minutes = entry.minutes
+  // an unknown value is dropped rather than passed through, so a hand-edited document
+  // cannot invent a step for the tally to count
+  if (typeof entry.failed === 'string' && isFailureId(entry.failed)) log.failed = entry.failed
+  if (typeof entry.lesson === 'string' && entry.lesson.length > 0) log.lesson = entry.lesson
 
   return log
 }
