@@ -769,12 +769,25 @@ src/
   it is for, in the words that tell it from the other — that line is the only new prose,
   and it earns its place by being the thing that was missing.
 
-- **A review is four questions about at most three moves.** The method is borrowed from
-  incident root-cause analysis: what you were doing, what failed, what would have caught it, and
-  what to do instead. `MAX_REVIEW_MISTAKES` is 3 on purpose — a post-mortem that blames every
-  move explains nothing, so the cap forces a choice. Each entry asks, in order: **why you played
-  it**, why it is a mistake, what you could have seen or worked out, and what you would play
-  instead. Proposed moves are validated against the position with chess.js and only the legal
+- **A review is four questions about as many moves as the game had.** The method is
+  borrowed from incident root-cause analysis: what you were doing, what failed, what would
+  have caught it, and what to do instead. Each entry asks, in order: **why you played
+  it**, why it is a mistake, what you could have seen or worked out, and what you would
+  play instead.
+
+  **There was a cap of three, and it is gone.** The reasoning was that a post-mortem
+  blaming every move explains nothing, so forcing a choice makes the review better. That
+  is a good rule about a *bad* game and the wrong rule for this app: a long game you
+  played well has more than three moves worth explaining, and the cap never stopped a
+  weak review — it stopped the fourth entry of a strong one. What it was really guarding
+  against is a review of fifteen entries, and nobody writes one of those by accident.
+
+  Everything that made the cap bearable stays, and those were the parts doing the work:
+  `repeats` folds one idea missed four times into one entry, `missingFrom` refuses an
+  entry with no cause and no tag, and the moves offered are still the ones the engine
+  marked. The heading counts rather than rations — `6 moves`, not `3 of 3` — and the
+  Notes group's line lost the words *no cap*, which only meant anything while the group
+  above it had one. Proposed moves are validated against the position with chess.js and only the legal
   ones are stored, since the point is a move you could actually have played. Each proposed move
   is a row of its own with its own reasoning: a bare move is a line to memorise, while the reason
   is the part that transfers to the next game.
@@ -783,9 +796,11 @@ src/
   sentence four times and count the tag four times — letting one bad evening outweigh a
   month. An entry carries `repeats`: other marked moves it also speaks for. They hold the
   move and nothing else, because the parent's cause, tags and alternatives are already
-  theirs, and `missingFrom` asks them for nothing. The cap stays at three because it counts
-  *entries*: it is there to stop three unrelated explanations, not to stop one explanation
-  covering the four moves it actually covers. A ply claimed as a repeat leaves the list of
+  theirs, and `missingFrom` asks them for nothing. It counted *entries* while there was a
+  cap, which is why one explanation covering four moves never cost four of three; now
+  that the cap is gone what it buys is the tag count, where the parent is counted once
+  however many moves it speaks for — so one bad evening cannot outweigh a month. A ply
+  claimed as a repeat leaves the list of
   moves to take apart, so nothing can be both a parent and a child. `tagsOf` counts the
   parent once, which is the whole point; `reviewedPlies` returns both, so the move list
   marks every move the review speaks about rather than only the ones with an entry under

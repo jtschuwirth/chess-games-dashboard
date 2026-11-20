@@ -18,15 +18,21 @@ import type {
  * actually decided the game.
  */
 /**
- * How many moves one review may take apart. A post-mortem that blames every move
- * explains nothing, so the cap forces a choice.
+ * There is no cap on how many moves a review takes apart, and there was.
  *
- * It counts entries, not moves: an entry can carry repeats — the same mistake played
- * again before you saw it — and those are free. The cap is there to stop you writing
- * three unrelated explanations, not to stop one explanation covering the four moves it
- * actually covers.
+ * Three, on the reasoning that a post-mortem blaming every move explains nothing. That
+ * is a good rule about a *bad* game and the wrong rule for the app: a long game you
+ * actually played well has more than three moves worth explaining, and the cap did not
+ * stop you writing a weak review — it stopped you writing the fourth entry of a strong
+ * one. The thing it was really protecting against is a review of fifteen entries, and
+ * nobody writes one of those by accident.
+ *
+ * What stays is everything that made the cap bearable, and those are the parts that
+ * were doing the work anyway: `repeats` still folds one idea missed four times into one
+ * entry, `missingFrom` still refuses an entry with no cause and no tag, and the moves
+ * offered are still the ones the engine marked. The count in the heading reads as a
+ * count now rather than as a quota.
  */
-export const MAX_REVIEW_MISTAKES = 3
 
 /**
  * Which group a tag belongs to, under the account's own vocabulary.

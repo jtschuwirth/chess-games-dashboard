@@ -14,7 +14,6 @@ import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { queueBusy } from '@/lib/analysis-queue'
 import { deleteReview, saveReview } from '@/lib/firestore'
 import {
-  MAX_REVIEW_MISTAKES,
   repeatsOf,
   betterMovesOf,
   candidateMoves,
@@ -414,12 +413,11 @@ export default function ReviewEditor({
   ])
   /** Marked moves nobody has claimed: what you can take apart, and what a repeat can be. */
   const candidates = candidateMoves(game.analysis).filter(move => !taken.has(move.ply))
-  const full = drafts.length >= MAX_REVIEW_MISTAKES
 
 
   function add(ply: number, cpBefore: number | null = null, cpAfter: number | null = null) {
     const move = plyByIndex.get(ply)
-    if (!move || taken.has(ply) || full) return
+    if (!move || taken.has(ply)) return
 
     setDrafts(prev =>
       [
@@ -879,7 +877,7 @@ export default function ReviewEditor({
       <Group
         title="Root cause analysis"
         line="the moves that decided it, four questions each"
-        meta={`${drafts.length} of ${MAX_REVIEW_MISTAKES}`}
+        meta={`${drafts.length} ${drafts.length === 1 ? 'move' : 'moves'}`}
       >
         <div className="flex flex-col gap-2">
           <Label hint={game.analysis ? undefined : 'Run the engine above to get suggestions.'}>
@@ -891,7 +889,6 @@ export default function ReviewEditor({
               <button
                 key={move.ply}
                 type="button"
-                disabled={full}
                 onClick={() => add(move.ply, move.cpBefore, move.cpAfter)}
                 title={`Take this move apart${
                   game.analysis ? ` — from the stored analysis at depth ${game.analysis.depth}` : ''
@@ -910,7 +907,6 @@ export default function ReviewEditor({
 
             <select
               value=""
-              disabled={full}
               onChange={event => {
                 if (event.target.value) add(Number(event.target.value))
               }}
@@ -926,11 +922,6 @@ export default function ReviewEditor({
                 ))}
             </select>
 
-            {full && (
-              <span className="text-xs text-zinc-600">
-                {MAX_REVIEW_MISTAKES} is the limit — remove one to swap it out.
-              </span>
-            )}
           </div>
         </div>
 
@@ -1189,7 +1180,7 @@ export default function ReviewEditor({
       */}
       <Group
         title="Notes"
-        line="anything worth remembering, yours or theirs — no cap, no questions"
+        line="anything worth remembering, yours or theirs — nothing asked"
         meta={`${noteDrafts.length} ${noteDrafts.length === 1 ? 'move' : 'moves'}`}
       >
         <div className="flex flex-col gap-2">
