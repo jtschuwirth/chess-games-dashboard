@@ -16,9 +16,9 @@ const INPUT =
  *
  * **The gate is a control rather than a note**, and it is what makes filling this in
  * the same act as running the method: answering *yes, something concrete* takes the
- * plan pass off the form, because there was nothing quiet to plan in. Answering *no*
- * puts it back. The form therefore branches where the method branches, instead of
- * showing fourteen boxes and trusting you to know which eight to skip.
+ * reassessment off the form, because there was nothing quiet to reassess. Answering
+ * *no* puts it back. The form therefore branches where the method branches, instead of
+ * showing every box and trusting you to know which half to skip.
  *
  * The evaluation sits at the top rather than at the end, because it is asked on every
  * move whichever way the gate went — and because writing it before the commit check
@@ -166,7 +166,7 @@ export default function MoveLogForm({
 
           {/*
             The book gate, at the foot of Pass 0 where it is answered. It is terminal:
-            a move your preparation decided takes the burger and the plan off the form
+            a move your preparation decided takes the burger and the reassessment off the form
             entirely, leaving the line you are in and the check that it still survives
             their reply.
           */}
@@ -176,7 +176,7 @@ export default function MoveLogForm({
               <Chip
                 active
                 onClick={() => onBook(false)}
-                title="Still book — the burger and the plan are not asked"
+                title="Still book — the burger and the reassessment are not asked"
               >
                 yes
               </Chip>
@@ -202,14 +202,14 @@ export default function MoveLogForm({
               <Chip
                 active={log.concrete}
                 onClick={() => onChange(current => ({ ...current, concrete: true }))}
-                title="Something concrete turned up — the plan pass is not asked"
+                title="Something concrete turned up — the reassessment is not asked"
               >
                 yes
               </Chip>
               <Chip
                 active={!log.concrete}
                 onClick={() => onChange(current => ({ ...current, concrete: false }))}
-                title="Quiet — the plan pass is asked"
+                title="Quiet — the reassessment is asked"
               >
                 no, it is quiet
               </Chip>

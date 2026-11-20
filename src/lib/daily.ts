@@ -2,18 +2,28 @@
  * The move loop: a written-down procedure for choosing a move, and the games played
  * slowly enough to run it.
  *
- * The method is Azel Chua's burger — count the material, read the tactical motifs,
- * then calculate candidates — with three things around it. A **book** pass in front,
- * because a move you have already decided is not a move to think about; a **plan** pass
- * behind, for the positions where the burger comes back empty, which is most of them;
- * and a **commit** check at the end, unconditional, because the common club loss is not
- * a missed win but an allowed one.
+ * The method is Azel Chua's burger in **its own three steps** — count the material and
+ * name the imbalance, read the threats, find the candidates worth calculating — with
+ * three things around it. A **book** pass in front, because a move you have already
+ * decided is not a move to think about; a **reassess** pass behind, for the positions
+ * where the burger comes back empty, which is most of them; and a **commit** check at
+ * the end, unconditional, because the common club loss is not a missed win but an
+ * allowed one.
  *
- * The strategic pass is Aagaard's three questions rather than Silman's imbalances. Both
- * are good and the three questions win on fit: they are short enough to run at the board
- * and they are the same shape of object as the burger, so it is one habit learned twice
- * rather than two systems. The imbalances are a reference list for the first question,
- * not a second procedure.
+ * The quiet pass is **Silman's reassessment** — the imbalances, the side of the board
+ * they point at, the position you want, and whether it can be had. It replaced Aagaard's
+ * three questions, which are a middlegame instrument and degenerate in an opening: on
+ * move four nothing is weak yet, every minor piece is the worst piece, and what the
+ * opponent wants is to develop. Silman's inventory carries development, initiative and
+ * king safety as imbalances in their own right, so the same four questions have real
+ * answers on move four and on move forty.
+ *
+ * **The two passes share their first step.** Counting the material and naming the
+ * imbalance is the burger's own opening move *and* the whole of Silman's first step, so
+ * it is asked once, in Pass 1, and the quiet pass starts with that homework already
+ * done. Asking it twice would be two inventories of one position with nothing keeping
+ * them in step — the rule the rest of this codebase follows about storing a fact twice,
+ * one level up in the method itself.
  *
  * **The steps are the failure vocabulary.** Every one of them produces something you
  * write down at the time, which is the whole reason the loop is worth recording: without
@@ -78,15 +88,45 @@ export interface MethodPass {
   steps: MethodStep[]
 }
 
-const MOTIF_CHECKLIST = [
-  'loose and undefended pieces',
-  'overloaded defenders',
-  'pieces sharing a line, rank, diagonal or knight-geometry',
-  'king safety: open lines, back rank, escape squares, which defender left',
-  'pins and pinnable pieces',
-  'trapped pieces',
-  'pawn breaks that arrive with tempo',
-  'passers and promotion geometry',
+/**
+ * Silman's imbalances, as the checklist under the one step that reads them.
+ *
+ * It is a longer list than a tactical pass seems to want, and that is the point: this
+ * same inventory is the first step of the quiet pass, so writing it here is what lets
+ * Pass 2 open with the work already done. Development, initiative and king safety are
+ * imbalances in their own right, which is what gives the list something to say about a
+ * position four moves old.
+ */
+const IMBALANCES = [
+  'minor pieces — whose bishop or knight is the better one here',
+  'pawn structure',
+  'space',
+  'material',
+  'files, ranks and squares',
+  'development',
+  'initiative',
+  'king safety',
+]
+
+/**
+ * The technique's own breakdown of step two, read over the whole board rather than per
+ * side: the worked example in the book names White's loose rook and Black's loose pawns
+ * in one breath, because a threat is a fact about the position and not about a player.
+ *
+ * **Unprotected and hanging are two different ledger states**, which is why they are two
+ * lines rather than the book's one. Unprotected is attackers equal to defenders — 0 for
+ * 0 as much as 2 for 2 — and hanging is attackers outnumbering them. The move the
+ * technique is hunting for is the one that shifts that ledger: after it, two things are
+ * hanging and one move cannot cover both.
+ */
+const THREAT_CHECKLIST = [
+  'unprotected — attackers equal defenders, 0 for 0 as much as 2 for 2',
+  'hanging — attackers outnumber defenders',
+  'x-ray attacks',
+  'mating possibilities',
+  'trappable pieces',
+  'pinned, pinnable, forkable and skewerable pieces',
+  'critical lines and squares',
 ]
 
 export const METHOD_PASSES: MethodPass[] = [
@@ -113,38 +153,36 @@ export const METHOD_PASSES: MethodPass[] = [
     number: '1',
     title: 'Burger',
     summary:
-      'The tactical read. Material sets what you are playing for, the motifs say what ' +
-      'is available, and only then are there candidates worth calculating.',
+      'The tactical read, in the three steps the technique has: what is on the board, ' +
+      'what is loose on it, and only then the moves worth calculating.',
     branch: 'always',
     gate: 'still in your preparation? → play it, and go straight to Pass 3',
     tone: 'text-amber-300',
     border: 'border-amber-500/30',
     steps: [
       {
-        id: 'goal',
-        label: 'What am I playing for?',
-        prompt: 'mate, win material, convert, hold, complicate — and what the material says',
-        checklist: ['count the material', 'name the imbalance, not just the number'],
+        id: 'material',
+        label: 'Material, and the imbalances',
+        prompt: 'the count, then what each side has that the other does not',
+        checklist: IMBALANCES,
       },
       {
-        id: 'their-motifs',
-        label: 'What are their threats?',
-        prompt: 'one per line',
-        checklist: MOTIF_CHECKLIST,
-      },
-      {
-        id: 'my-motifs',
-        label: 'What can I hit?',
-        prompt: 'one per line',
-        checklist: MOTIF_CHECKLIST,
+        id: 'threats',
+        label: 'Existing and potential threats',
+        prompt: 'both sides, one per line: the piece, the square, who is attacking it',
+        checklist: THREAT_CHECKLIST,
       },
       {
         id: 'candidates',
         label: 'Candidates, calculated',
         prompt: 'one per line: the move, the line, what it is worth',
         checklist: [
-          'the motifs above are the candidate list',
+          'the threats above are the candidate list, forcing or not',
           'only if they came back empty: checks, then captures, then threats',
+          'what you are hunting for is a move that shifts the ledger — two of theirs ' +
+            'hanging and one move to cover both',
+          'a candidate that fails names the fault: the next one has to fix that fault, ' +
+            'not be a fresh guess',
           'calculate each to a quiet position before judging it',
         ],
       },
@@ -153,10 +191,11 @@ export const METHOD_PASSES: MethodPass[] = [
   {
     id: 'plan',
     number: '2',
-    title: 'Plan',
+    title: 'Reassess',
     summary:
-      'Asked only when Pass 1 found nothing concrete. Three questions, then a plan — ' +
-      'candidate plans rather than candidate moves.',
+      'Asked only when Pass 1 found nothing concrete. The imbalances are already ' +
+      'written above, so this starts at the one you play — then the position you ' +
+      'want, and whether it can be had.',
     branch: 'quiet',
     gate:
       'did a candidate produce something concrete that survives their best reply? ' +
@@ -165,26 +204,29 @@ export const METHOD_PASSES: MethodPass[] = [
     border: 'border-emerald-500/30',
     steps: [
       {
-        id: 'weaknesses',
-        label: 'Where are the weaknesses?',
-        prompt: 'theirs and mine',
-        checklist: ['squares', 'pawns', 'the king', 'structure you cannot undo'],
+        id: 'side',
+        label: 'Which imbalance do I play, and where on the board?',
+        prompt: 'the one from Pass 1.1 that favours me, and the side it points at',
+        checklist: [
+          'the inventory is already written in Pass 1.1',
+          'theirs as well — which of their imbalances must I not let grow',
+          'play where your advantage is, not where the position looks loudest',
+        ],
       },
       {
-        id: 'worst-piece',
-        label: 'What is my worst piece?',
-        prompt: 'where it belongs, and the cheapest route there',
-      },
-      {
-        id: 'their-plan',
-        label: 'What do they want?',
-        prompt: 'if I pass three times, what do they play',
+        id: 'fantasy',
+        label: 'What position do I want?',
+        prompt: 'the pieces on the squares they belong on — the position, not the route',
+        checklist: ['no calculation yet', 'name squares, not intentions'],
       },
       {
         id: 'plan-choice',
-        label: 'My plan, and the move that serves it',
-        prompt: 'the plan, then why this move is the one that starts it',
-        checklist: ['does it concede anything named under the weaknesses above'],
+        label: 'Is it achievable, and what is the move?',
+        prompt: 'if it is not, the nearest one that is — then the move that starts towards it',
+        checklist: [
+          'if the dream will not go, change the dream rather than the imbalance it is built on',
+          'does the move concede anything their own imbalances point at',
+        ],
       },
     ],
   },
@@ -207,6 +249,8 @@ export const METHOD_PASSES: MethodPass[] = [
           'what of mine is loose, or newly loose',
           'does it concede a square I named myself',
           'does it help the plan I wrote down for them',
+          'if their reply refutes it, name the fault and look for the candidate that ' +
+            'fixes that one thing',
         ],
       },
     ],
@@ -223,7 +267,7 @@ export const STEP_LABEL: Record<MoveStepId, string> = Object.fromEntries(
 ) as Record<MoveStepId, string>
 
 /**
- * Everything a move can be filed under: the ten steps, then the two that are failures
+ * Everything a move can be filed under: the eight steps, then the two that are failures
  * without being steps. `none` sits last because it is the answer you reach after trying
  * the others, not one of them.
  */
@@ -277,7 +321,7 @@ export function withBookEnd(game: DailyGame, ply: number, out: boolean): DailyGa
  * Which passes are asked of a move.
  *
  * Two gates, and they are the whole reason the form is worth filling in rather than
- * being a sheet of fourteen boxes you learn to skip half of.
+ * being a sheet of boxes you learn to skip half of.
  *
  * **Book is the first, and it is terminal.** A move your preparation already decided is
  * not a move to think about, so asking what you are playing for and what their threats
@@ -440,15 +484,53 @@ export function uploadFrom(game: DailyGame): SyncedGame {
 
 /* ------------------------------------------------------------ stored shapes */
 
+/**
+ * Step ids the loop has retired, read forward onto what replaced them.
+ *
+ * v1 asked *what am I playing for* where the technique's own first step is the material
+ * and the imbalance, and it split the threats into theirs and mine where the book reads
+ * the whole board at once. Both are the same questions renamed, so an answer written
+ * under the old id is an answer to the new one.
+ *
+ * The quiet pass is not: Aagaard's weaknesses, worst piece and opponent's plan are not
+ * Silman's imbalance, fantasy and plan, so those three retire with nothing to carry them
+ * onto. An answer under one is dropped rather than filed under a question it does not
+ * answer — the habit every stored shape here follows, which is to read forward where
+ * there is something to read forward to and to drop what there is not.
+ */
+const RETIRED_STEPS: Record<string, MoveStepId> = {
+  goal: 'material',
+  'their-motifs': 'threats',
+  'my-motifs': 'threats',
+}
+
+/**
+ * A stored filing in the vocabulary as it stands, or nothing.
+ *
+ * A renamed step is read forward; a retired one and a step that never existed get the
+ * same answer, so the move reads as unfiled rather than as a row the tally cannot count.
+ */
+export function readFailure(raw: unknown): MoveFailureId | null {
+  if (typeof raw !== 'string') return null
+  const id = RETIRED_STEPS[raw] ?? raw
+  return isFailureId(id) ? id : null
+}
+
 function normalizeLog(raw: unknown, ply: number): MoveLog | null {
   if (!raw || typeof raw !== 'object') return null
   const entry = raw as Partial<MoveLog>
 
   const answers: Partial<Record<MoveStepId, string>> = {}
   const stored = (entry.answers ?? {}) as Record<string, unknown>
-  for (const id of METHOD_STEP_IDS) {
-    const value = stored[id]
-    if (typeof value === 'string' && value.length > 0) answers[id] = value
+  for (const [key, value] of Object.entries(stored)) {
+    if (typeof value !== 'string' || value.length === 0) continue
+    const id = (RETIRED_STEPS[key] ?? key) as MoveStepId
+    if (!(METHOD_STEP_IDS as string[]).includes(id)) continue
+    // two retired steps can land on one: both halves of the old threat question are
+    // answers to the question that replaced them, so they are joined rather than one of
+    // them silently winning
+    const written = answers[id]
+    answers[id] = written === undefined ? value : `${written}\n${value}`
   }
 
   const log: MoveLog = {
@@ -461,7 +543,8 @@ function normalizeLog(raw: unknown, ply: number): MoveLog | null {
   if (typeof entry.minutes === 'number') log.minutes = entry.minutes
   // an unknown value is dropped rather than passed through, so a hand-edited document
   // cannot invent a step for the tally to count
-  if (typeof entry.failed === 'string' && isFailureId(entry.failed)) log.failed = entry.failed
+  const failed = readFailure(entry.failed)
+  if (failed !== null) log.failed = failed
   if (typeof entry.lesson === 'string' && entry.lesson.length > 0) log.lesson = entry.lesson
 
   return log

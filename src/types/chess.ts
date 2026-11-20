@@ -906,13 +906,11 @@ export interface ProviderResponse {
  */
 export type MoveStepId =
   | 'book'
-  | 'goal'
-  | 'their-motifs'
-  | 'my-motifs'
+  | 'material'
+  | 'threats'
   | 'candidates'
-  | 'weaknesses'
-  | 'worst-piece'
-  | 'their-plan'
+  | 'side'
+  | 'fantasy'
   | 'plan-choice'
   | 'blunder-check'
 
@@ -970,7 +968,7 @@ export interface MoveLog {
 /**
  * What a move is filed under in the post-mortem.
  *
- * The ten steps, plus two things that are failures and are not steps.
+ * The eight steps, plus two things that are failures and are not steps.
  *
  * `gate` is the branch going the wrong way: a quiet position you read as having
  * something concrete in it, or a tactic you had and talked yourself out of. It has no
