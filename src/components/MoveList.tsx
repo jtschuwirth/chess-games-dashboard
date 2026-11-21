@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react'
 import { MoveRun, type BranchStyle } from '@/components/MoveTreeBoard'
 import { type Ply } from '@/lib/board'
 import { mainPath, nodeAt, type MoveNode, type MoveTree, type Path } from '@/lib/movetree'
+import { THINK_INK, THINK_TINT, formatDuration, type LongThink } from '@/lib/clocks'
 import { markColor } from '@/lib/review'
 import type { Color } from '@/types/chess'
 
@@ -26,6 +27,7 @@ export default function MoveList({
   tags,
   reviewed,
   secondsByPly,
+  thinks,
   yourColor,
   tree,
   path,
@@ -44,6 +46,15 @@ export default function MoveList({
   reviewed: Set<number>
   /** Seconds spent per ply, both sides, where the game carries clock readings. */
   secondsByPly: Map<number, number>
+  /**
+   * The moves you spent longest on, by ply — the clock's own marks beside the engine's.
+   *
+   * A blunder is what the engine can see and a long think is what it cannot, and a good
+   * move that ate the clock is a bigger problem than the blunder it causes later. The
+   * duration *is* the mark: a rank number would be one more thing to decode where the
+   * figure you want is right there.
+   */
+  thinks: Map<number, LongThink>
   /** The side you played, so a hover can say whose think a number is. */
   yourColor: Color
   /** The game and everything branching off it. */
@@ -129,13 +140,24 @@ export default function MoveList({
                     className={`px-2 py-1 text-left transition-colors ${
                       ply.index === current && !onBranch
                         ? 'bg-zinc-700 text-zinc-50'
-                        : 'text-zinc-300 hover:bg-zinc-800'
+                        : `text-zinc-300 hover:bg-zinc-800 ${
+                            /* the tint is dropped on the move you are standing on, which
+                               has its own, rather than fighting it for the background */
+                            THINK_TINT[thinks.get(ply.index)?.step ?? 0] ?? ''
+                          }`
                     }`}
                   >
                     {ply.san}
                     {tags.has(ply.index) && (
                       <span className={markColor(tags.get(ply.index))}>
                         {tags.get(ply.index)}
+                      </span>
+                    )}
+                    {thinks.has(ply.index) && (
+                      <span
+                        className={`ml-1 text-[11px] ${THINK_INK[thinks.get(ply.index)!.step]}`}
+                      >
+                        {formatDuration(thinks.get(ply.index)!.seconds)}
                       </span>
                     )}
                     {reviewed.has(ply.index) && (

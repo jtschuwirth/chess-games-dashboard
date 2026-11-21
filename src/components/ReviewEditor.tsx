@@ -9,6 +9,7 @@ import ProposedMoves, {
 } from '@/components/ProposedMoves'
 import TagPicker from '@/components/TagPicker'
 import { lineTokens, parseLine, playMove, plyLabel, sanFromUci, type Ply } from '@/lib/board'
+import { THINK_INK, formatDuration, longestThinks, type LongThink } from '@/lib/clocks'
 import { ENGINE_DEPTH, classifyMove } from '@/lib/analysis'
 import { analyzePosition, terminateEngine } from '@/lib/engine'
 import { queueBusy } from '@/lib/analysis-queue'
@@ -413,6 +414,27 @@ export default function ReviewEditor({
   ])
   /** Marked moves nobody has claimed: what you can take apart, and what a repeat can be. */
   const candidates = candidateMoves(game.analysis).filter(move => !taken.has(move.ply))
+
+  /**
+   * The moves you spent longest on, offered beside the engine's objections.
+   *
+   * A blunder is what the engine can see and the clock is what it cannot: a good move
+   * that took 39 seconds and left you with 10 is a bigger problem than the blunder it
+   * causes eight moves later, and the form had no way to point at it.
+   *
+   * A move the engine already marked keeps its own chip and carries the think on it —
+   * one chip per move, saying everything known about it, rather than the same move
+   * offered twice under two headings.
+   */
+  const thinks = useMemo(() => {
+    const map = new Map<number, LongThink>()
+    for (const think of longestThinks(game)) map.set(think.ply, think)
+    return map
+  }, [game])
+
+  const slowMoves = [...thinks.values()]
+    .filter(think => !taken.has(think.ply) && !candidates.some(move => move.ply === think.ply))
+    .sort((a, b) => a.rank - b.rank)
 
 
   function add(ply: number, cpBefore: number | null = null, cpAfter: number | null = null) {
@@ -880,7 +902,19 @@ export default function ReviewEditor({
         meta={`${drafts.length} ${drafts.length === 1 ? 'move' : 'moves'}`}
       >
         <div className="flex flex-col gap-2">
-          <Label hint={game.analysis ? undefined : 'Run the engine above to get suggestions.'}>
+          {/*
+            The engine is no longer the only thing with suggestions, so the hint says so
+            only when there are none at all: on an unanalysed game that carries clocks,
+            the longest thinks are offered and telling you to run the engine would be
+            pointing past the chips already on the row.
+          */}
+          <Label
+            hint={
+              game.analysis || thinks.size > 0
+                ? undefined
+                : 'Run the engine above to get suggestions.'
+            }
+          >
             Moves to take apart
           </Label>
 
@@ -902,8 +936,43 @@ export default function ReviewEditor({
                   {' '}
                   {formatEval(move.cpBefore, game.color)} → {formatEval(move.cpAfter, game.color)}
                 </span>
+                {/* one chip per move: a blunder you also spent two minutes on is one
+                    thing to take apart, not two */}
+                {thinks.has(move.ply) && (
+                  <span className={THINK_INK[thinks.get(move.ply)!.step]}>
+                    {' '}
+                    {formatDuration(thinks.get(move.ply)!.seconds)}
+                  </span>
+                )}
               </button>
             ))}
+
+            {/*
+              The clock's own candidates. They carry no evaluation beside the duration
+              because there is usually nothing wrong with the move — that is the point
+              of offering it: the question is what the time bought, not what it cost.
+            */}
+            {slowMoves.map(think => {
+              const move = plyByIndex.get(think.ply)
+              const analysed = game.analysis?.moves.find(entry => entry.ply === think.ply)
+
+              return (
+                <button
+                  key={`think-${think.ply}`}
+                  type="button"
+                  onClick={() =>
+                    add(think.ply, analysed?.cpBefore ?? null, analysed?.cpAfter ?? null)
+                  }
+                  title={`Your ${
+                    think.rank === 1 ? 'longest' : think.rank === 2 ? 'second longest' : 'third longest'
+                  } think of the game`}
+                  className="px-3 py-1 text-xs rounded-full border border-cyan-500/40 text-zinc-300 hover:border-cyan-400 transition-colors font-mono"
+                >
+                  {move ? plyLabel(think.ply, move.san) : `ply ${think.ply}`}
+                  <span className={THINK_INK[think.step]}> {formatDuration(think.seconds)}</span>
+                </button>
+              )
+            })}
 
             <select
               value=""

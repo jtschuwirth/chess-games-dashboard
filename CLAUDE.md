@@ -842,6 +842,47 @@ src/
   of one, debounced and cached. The alternative was to go on showing a number about the
   first move of a plan nobody had checked.
 
+- **The clock marks moves too, and it marks the ones the engine cannot see.** A
+  blunder is what the engine objects to; a good move that took 39 seconds and left you
+  with 10 is a bigger problem than the blunder it causes eight moves later, and nothing
+  here said where that time went. `longestThinks` names the three you spent longest on,
+  and they are offered in **Moves to take apart** beside the engine's own candidates.
+
+  **Three, and a count rather than a threshold.** What counts as a long think is the
+  control's business — 39 seconds is most of a 10+0 move and nothing in a 30+30 — so
+  ranking inside the game asks the question without inventing a number that would be
+  wrong in half of them. It is also why there is no filter: the three are per game, and
+  a slice-wide "long thinks" would need exactly the threshold this avoids. The
+  dashboard's `THINK_BANDS` still answer that question, in absolute seconds, where the
+  Control chips are a press away.
+
+  **Your moves only**, since a review entry is about a move you played — the same reason
+  `analysis.moves` holds only yours. A move nobody timed is not in the running rather
+  than ranked at zero, the rule every other reading of the clock here follows, and a tie
+  goes to the move played **first**: two moves at 41s are equally long and the earlier
+  one is the one that set up the shortage.
+
+  **One chip per move.** A blunder you also spent two minutes on is one thing to take
+  apart, so the engine's chip carries the duration rather than the move appearing twice
+  under two headings. The clock's own chips carry no evaluation beside the duration,
+  because there is usually nothing wrong with the move — which is the point of offering
+  it: the question is what the time bought, not what it cost.
+
+  **The gradient follows the seconds, not the rank.** The rank was tried first and lies
+  about the quantity it draws: two moves at 21s against a longest of 22 are the same
+  think, and shading them differently says one of them was more. `thinkStep` is a share
+  of the longest in three bands, and the duration is printed beside it either way, so
+  nothing rests on reading the shade exactly.
+
+  **Cyan, because every other colour here already means something** — red a blunder,
+  amber a mistake, violet the engine, sky a review, emerald a move that held. A fourth
+  meaning on a hue already carrying one is how a move list stops being readable.
+
+  `thinkPerPly` gained its fourth caller and lost a copy in the same move: the game view
+  had the four steps written out inline, which is exactly what that function exists to
+  stop — it was written because getting a think time off a game has a trap in each of
+  them.
+
 - **What they play is a press away, because the alternative was another tab.** The
   form asks why the move is a mistake, and on a move you cannot see the point of there
   was nothing to do but copy the position into an analysis board somewhere else — which

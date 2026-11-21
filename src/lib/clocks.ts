@@ -233,6 +233,109 @@ export function thinkPerPly(game: GameRecord): number[] | null {
   return timeSpentPerPly(aligned, control)
 }
 
+/**
+ * How many of a game's longest thinks are worth marking.
+ *
+ * Three, because the question is *where did the clock go* and a list long enough to
+ * need reading is not an answer to it. It is a count rather than a threshold on
+ * purpose: what counts as a long think is the control's business — 39 seconds is most
+ * of a 10+0 move and nothing in a 30+30 — so ranking inside the game asks the question
+ * without inventing a number that would be wrong in half of them.
+ */
+export const LONG_THINKS = 3
+
+export interface LongThink {
+  ply: number
+  seconds: number
+  /** 1 is the longest think of the game. */
+  rank: number
+  /**
+   * How strongly it is drawn, 1 the strongest — a share of the longest think rather
+   * than the rank.
+   *
+   * The rank was tried first and it lies about the quantity it is drawing: two moves
+   * at 21s against a longest of 22 are the same think, and shading them differently
+   * says one of them was more. The share says what the seconds say, which is the whole
+   * point of a gradient — and the duration is printed beside it either way, so nothing
+   * rests on reading the shade exactly.
+   */
+  step: number
+}
+
+/**
+ * The moves you spent longest on, longest first.
+ *
+ * A blunder is the thing the engine can see and the clock is the thing it cannot: a
+ * good move that took 39 seconds and left you with 10 is a bigger problem than the
+ * blunder it causes eight moves later, and nothing in this app said where that time
+ * went. The engine's own objections are already offered for review; these sit beside
+ * them as the other reason a move is worth taking apart.
+ *
+ * **Your own moves only**, since a review entry is about a move you played — the same
+ * reason `analysis.moves` holds only yours. A move nobody timed is not in the running
+ * rather than ranked at zero, which is the rule every other reading of the clock here
+ * follows.
+ *
+ * Ties go to the move played **first**: two moves at 41s are equally long and the
+ * earlier one is the one that set up the shortage.
+ */
+export function longestThinks(game: GameRecord, count: number = LONG_THINKS): LongThink[] {
+  const spent = thinkPerPly(game)
+  if (!spent) return []
+
+  // ply 0 is White's first move, so your plies are the even ones as White
+  const mine = game.color === 'white' ? 0 : 1
+
+  return spent
+    .map((seconds, ply) => ({ ply, seconds }))
+    .filter(entry => entry.ply % 2 === mine && entry.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds || a.ply - b.ply)
+    .slice(0, count)
+    .map((entry, index, marked) => ({
+      ...entry,
+      rank: index + 1,
+      step: thinkStep(entry.seconds, marked[0].seconds),
+    }))
+}
+
+/**
+ * Which step of the gradient a think is drawn at, against the longest in its game.
+ *
+ * Three steps rather than a continuous ramp, because the thing being read is *which of
+ * these to look at first* and a shade you have to compare against its neighbour to
+ * order is not answering that. Four fifths and a half are where the three bands fall;
+ * they are a shade rather than a measurement, and the seconds are printed beside them.
+ */
+export function thinkStep(seconds: number, longest: number): number {
+  if (longest <= 0) return 3
+  const share = seconds / longest
+  if (share >= 0.8) return 1
+  if (share >= 0.5) return 2
+  return 3
+}
+
+/**
+ * The ink a ranked think is written in, strongest for the longest.
+ *
+ * Cyan because every other colour here already means something — red a blunder, amber
+ * a mistake, violet the engine, sky a review, emerald a move that held — and a fourth
+ * meaning on a hue already carrying one is how a move list stops being readable. The
+ * gradient is within the three: the longest think of the game is the one you want to
+ * find first, and the third is worth seeing without competing with it.
+ */
+export const THINK_INK: Record<number, string> = {
+  1: 'text-cyan-300',
+  2: 'text-cyan-400/80',
+  3: 'text-cyan-500/70',
+}
+
+/** The same scale behind the move, so the run of them can be found without reading. */
+export const THINK_TINT: Record<number, string> = {
+  1: 'bg-cyan-500/20',
+  2: 'bg-cyan-500/10',
+  3: 'bg-cyan-500/[0.06]',
+}
+
 export interface GamePhase {
   name: string
   label: string

@@ -30,7 +30,17 @@ import { readFrom, withFrom } from '@/lib/nav'
 import Chip from '@/components/Chip'
 import { FilterGrid, FilterRow } from '@/components/FilterPanel'
 import { replayGame } from '@/lib/board'
-import { alignClocks, formatClock, formatDuration, formatTimeControl, parseControlInput, parseTimeControl, timeControlsIn, timeSpentPerPly } from '@/lib/clocks'
+import {
+  alignClocks,
+  formatClock,
+  formatDuration,
+  formatTimeControl,
+  longestThinks,
+  parseControlInput,
+  thinkPerPly,
+  timeControlsIn,
+  type LongThink,
+} from '@/lib/clocks'
 import { opponentMoves } from '@/lib/analysis'
 import { onAnalysed } from '@/lib/analysis-queue'
 import { readFilters, writeFilters } from '@/lib/dashboard-filters'
@@ -417,18 +427,24 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [step, replay.plies.length, moveTree])
 
-  /** Seconds spent on each ply, both sides, where the game carries clock readings. */
+  /**
+   * Seconds spent on each ply, both sides, where the game carries clock readings.
+   *
+   * `thinkPerPly` rather than the four steps written out again: it exists precisely
+   * because getting a think time off a game has a trap in each of them, and this page
+   * was the fourth copy of them.
+   */
   const spentByPly = useMemo(() => {
     const map = new Map<number, number>()
-    if (!game?.clocks) return map
+    const spent = game ? thinkPerPly(game) : null
+    spent?.forEach((seconds, index) => map.set(index, seconds))
+    return map
+  }, [game])
 
-    const control = parseTimeControl(game.timeControl)
-    if (!control) return map
-
-    const clocks = alignClocks(game.clocks, game.moves.length)
-    if (!clocks) return map
-
-    timeSpentPerPly(clocks, control).forEach((seconds, index) => map.set(index, seconds))
+  /** The moves you spent longest on — the clock's own marks, beside the engine's. */
+  const thinks = useMemo(() => {
+    const map = new Map<number, LongThink>()
+    if (game) for (const think of longestThinks(game)) map.set(think.ply, think)
     return map
   }, [game])
 
@@ -961,6 +977,7 @@ function GameBody({ userId, gameId }: { userId: string; gameId: string }) {
             tags={engineTags}
             reviewed={reviewed}
             secondsByPly={spentByPly}
+            thinks={thinks}
             yourColor={game.color}
             tree={moveTree}
             path={path}
