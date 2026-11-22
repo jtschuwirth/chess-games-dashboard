@@ -149,6 +149,18 @@ export function isVariation(tree: MoveTree, path: Path): boolean {
   return siblings.length > 0 && siblings[0].id !== path[path.length - 1]
 }
 
+/**
+ * Whether a path follows the main line all the way, which is where a line may open.
+ *
+ * Not `!isVariation`, which asks only about the last move: a path can end on the first of
+ * its siblings while having turned off the main line three moves earlier. The question a
+ * line editor asks is about the whole path, since `startPly` counts along the main line
+ * and a cursor inside a variation names a ply that line never reaches.
+ */
+export function onMainLine(tree: MoveTree, path: Path): boolean {
+  return mainPath(tree, path.length).join('/') === path.join('/')
+}
+
 /** Every node in the tree, depth first, main line before variations. */
 export function walk(tree: MoveTree): { node: MoveNode; path: Path }[] {
   const out: { node: MoveNode; path: Path }[] = []

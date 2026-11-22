@@ -28,8 +28,12 @@ the patterns those studies are made of, and the model games showing them played.
    existed.
 4. `/studies` — what you know, written up once and pointed at from everywhere else. A
    study is a name, a **kind** — opening, structure, endgame or theme — a side and a line
-   saying what it is for; inside it, an overview, the plans for both sides ranked main or
-   alternative, and then five sets of links, none of which is stored twice. The **patterns**
+   saying what it is for; inside it, an overview, the **boards** it is read against, the
+   plans for both sides ranked main or alternative, and then five sets of links, none of
+   which is stored twice. A board is a line pasted in as a PGN or a position pasted in as
+   a FEN, played on the same board every other line here uses — branches, a comment on any
+   move, and as many boards as the study needs, so an endgame study is the position itself
+   and an opening study is its main line. The **patterns**
    that apply here, each a press from the board and the drill behind it. The **studies it
    runs into**, with a note saying which line gets there — so the Panov says "after 5…e6
    6.Nf3 Be7 7.cxd5" and the isolated-queen's-pawn study is one press away instead of being
@@ -194,6 +198,7 @@ src/
 │                               # PatternStudy, ExerciseCard, FilterPanel, MistakeHeatmap,
 │                               # EnginePanel, EngineMode, PatternForm, TagGroupsPanel,
 │                               # StudyIdeaList, StudyIdeaRow, StudyLinks, LinkPicker,
+│                               # LineEditor, LineBoards,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanTemplateCard,
 │                               # TemplateEditor,
@@ -1466,6 +1471,57 @@ src/
   What differs is the rows *already* linked, which each panel draws itself: a pattern row
   says how far it has been taken apart, a model game row says which move it opens on, and
   a study row carries the sentence about how you get there.
+
+- **A study has boards, and a board is a line.** The prose was the whole of it, and
+  reading it was the problem the pattern write-up had already solved one level down: "White
+  pushes the isolani to d5 at the right moment" is a claim about a position, and until that
+  position is in front of you it is a sentence you nod at.
+
+  `examples` on a study is a `PatternLine[]`, which is the fourth thing in this app to be
+  exactly that — a pattern's examples, an exercise's solution, a model game, and now this.
+  A PGN kept whole *or* a FEN with the moves played on top of it, branching where it
+  depends on the reply, with a comment on any move. So an opening study's main line and an
+  endgame study's bare position are one field rather than two, and nothing had to be built:
+  the board, the variations, the PGN round trip, the per-move commentary and the two paste
+  boxes all arrived working.
+
+  **One list, and nothing in it is the main line** — the rule a pattern's examples already
+  follow, and it matters more here: an endgame study has no main line at all, and a
+  structure study is several positions showing the same thing. The first is first only
+  because it was added first.
+
+  The panel sits **directly under the overview and above the plans**, because that is the
+  order it is read in: what this is, the position it is about, then what to do in it.
+
+- **`LineEditor` and `LineBoards` are the one editor and the one reader.** Writing a line
+  up on a board was `LineFields` inside `PatternForm`, and reading one was `ExampleBoard`
+  inside `PatternStudy` — both private, both about 150 lines, and the study needed both.
+  Copying either would be copying the parts that are easy to get wrong: the cursor held as
+  moves rather than node ids, the FEN and the PGN each kept when they will not parse, the
+  two complaints that must not be one, `open here` refusing a cursor inside a variation.
+
+  So they are components, and the two screens that had them were **moved onto them** rather
+  than left alone — the same thing `useLineEditor` did when the exercise sheet needed the
+  cursor. `LineBoards` owns which example is showing, which is why `PatternStudy` lost that
+  piece of state: chips over one board is the reader's own rule, not the page's.
+
+  `split` is the one thing that differs between the two uses, and it is a layout question
+  rather than a behavioural one: the commentary goes beside the board in a panel with the
+  width of a page, and under it in the 26rem column the pattern write-up pins. A split
+  inside 26rem squeezes the board back to the size it was before it was made bigger.
+
+- **`onMainLine` moved to `lib/movetree.ts`, and it is not `!isVariation`.** That one asks
+  only about the last move, so a path can end on the first of its siblings having turned
+  off the main line three moves earlier. `startPly` counts along the main line, so what a
+  line editor has to ask is about the whole path.
+
+- **`normalizeLine` re-reads the moves from the PGN**, because the two are copies of one
+  thing and the PGN is the authority — the rule the exercise sheet already followed, now in
+  the domain module where the study's read could reach it. A PGN that will not play from
+  the stored position leaves the moves empty rather than throwing, since this runs on the
+  way out of Firestore. An unreadable `startFen` is **kept** rather than replaced with the
+  opening position: `lineTree` already falls back to move one, and swapping in a different
+  position would quietly change what the line is about.
 
 - **The panels of a study come from a table**, `STUDY_PANELS` in `lib/studies.ts`, for the
   reason `TRANSITIONS` and `GAME_NAMES` do. Each row carries the `hint` that renders as

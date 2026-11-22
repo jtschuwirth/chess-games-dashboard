@@ -15,8 +15,10 @@
  * Nimzo rather than being typed out three times.
  */
 import { emptyStudy, normalizeStudy, studyBody } from './study'
+import { lineBody, lineHasContent, normalizeLine } from './pattern'
 import type {
   ModelGameRef,
+  PatternLine,
   NewStudyRecord,
   OpeningColor,
   StudyKind,
@@ -89,6 +91,7 @@ export function newStudy(fields: {
     patternIds: [],
     related: [],
     games: [],
+    examples: [],
     body: emptyStudy(),
     createdAt: fields.createdAt,
   }
@@ -132,6 +135,10 @@ export function studyRecordBody(study: NewStudyRecord): NewStudyRecord {
         if (ref.note && ref.note.trim().length > 0) next.note = ref.note.trim()
         return next
       }),
+    // an empty board card is dropped here rather than refused in the form: a card you
+    // opened and left blank is not worth storing, and taking it away under the cursor
+    // while you think would be worse
+    examples: study.examples.filter(lineHasContent).map(lineBody),
     body: studyBody(study.body),
     createdAt: study.createdAt,
   }
@@ -192,6 +199,9 @@ export function normalizeStudyRecord(raw: StudyRecord): StudyRecord {
           : {}),
         ...(typeof ref.note === 'string' && ref.note.length > 0 ? { note: ref.note } : {}),
       })),
+    examples: (Array.isArray(stored.examples) ? stored.examples : [])
+      .map(normalizeLine)
+      .filter((line): line is PatternLine => line !== null),
     body: normalizeStudy(stored.body),
     createdAt: typeof stored.createdAt === 'number' ? stored.createdAt : 0,
     ...(typeof stored.updatedAt === 'number' ? { updatedAt: stored.updatedAt } : {}),
@@ -319,6 +329,7 @@ export function sortStudies(studies: StudyRecord[]): StudyRecord[] {
 /** How much is in a study, which is what a row in the finder reads under the name. */
 export function studySize(study: StudyRecord): {
   ideas: number
+  boards: number
   patterns: number
   games: number
   studies: number
@@ -326,6 +337,7 @@ export function studySize(study: StudyRecord): {
 } {
   return {
     ideas: study.body.ideas.filter(idea => idea.text.trim().length > 0).length,
+    boards: study.examples.length,
     patterns: study.patternIds.length,
     games: study.games.length,
     studies: study.related.length,
@@ -337,6 +349,7 @@ export function studySize(study: StudyRecord): {
 
 export type StudyPanelId =
   | 'overview'
+  | 'boards'
   | 'plans'
   | 'patterns'
   | 'leads'
@@ -368,6 +381,17 @@ export const STUDY_PANELS: StudyPanel[] = [
     id: 'overview',
     title: 'Overview',
     hint: 'What this is, and what it is trying to get.',
+  },
+  {
+    /*
+      The board, directly under the overview and above the plans, because that is the
+      order you read in: what this is, the position it is about, then what to do in it.
+      A plan written about a structure is a sentence you nod at until you can see the
+      structure, which is the whole reason this panel exists.
+    */
+    id: 'boards',
+    title: 'Boards',
+    hint: 'A line or a position to read the rest of this against — pasted as a PGN or a FEN.',
   },
   {
     id: 'plans',

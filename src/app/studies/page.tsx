@@ -62,6 +62,7 @@ function sizeLine(study: StudyRecord): string {
   return (
     [
       size.ideas > 0 ? `${size.ideas} idea${size.ideas === 1 ? '' : 's'}` : '',
+      size.boards > 0 ? `${size.boards} board${size.boards === 1 ? '' : 's'}` : '',
       size.patterns > 0 ? `${size.patterns} pattern${size.patterns === 1 ? '' : 's'}` : '',
       size.games > 0 ? `${size.games} game${size.games === 1 ? '' : 's'}` : '',
       size.studies > 0 ? `${size.studies} linked` : '',

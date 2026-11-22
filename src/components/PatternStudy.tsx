@@ -1,19 +1,12 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import LineBoards from '@/components/LineBoards'
 import MoveTreeBoard from '@/components/MoveTreeBoard'
-import {
-  ESSENTIALS_SECTIONS,
-  commentedNodes,
-  hasMethod,
-  lineHome,
-  lineOrientation,
-  lineTree,
-  pointText,
-} from '@/lib/pattern'
-import { emptyTree, moveLabel, type Path } from '@/lib/movetree'
+import { ESSENTIALS_SECTIONS, hasMethod, pointText } from '@/lib/pattern'
+import { emptyTree } from '@/lib/movetree'
 import { playLabel, sideToMove } from '@/lib/board'
-import type { PatternLine, PatternRecord } from '@/types/chess'
+import type { PatternRecord } from '@/types/chess'
 
 /**
  * (i), (ii), (iii) — how the method itself letters its points, which is why `pointText`
@@ -68,8 +61,6 @@ export default function PatternStudy({
   onTakeApart: () => void
 }) {
   const examples = pattern.examples
-  const [shown, setShown] = useState(0)
-  const example: PatternLine | undefined = examples[Math.min(shown, examples.length - 1)]
 
   /*
    * A boundary you are looking at, shown on the board instead of the example.
@@ -91,14 +82,8 @@ export default function PatternStudy({
       <div className="w-full max-w-[26rem] mx-auto lg:mx-0 lg:sticky lg:top-2">
         {preview ? (
           <PreviewBoard fen={preview} onClose={() => setPreview(null)} />
-        ) : example ? (
-          <ExampleBoard
-            key={shown}
-            line={example}
-            examples={examples}
-            shown={shown}
-            onShow={setShown}
-          />
+        ) : examples.length > 0 ? (
+          <LineBoards lines={examples} />
         ) : (
           <div className="aspect-square rounded-xl border border-dashed border-zinc-800 flex items-center justify-center p-6">
             <p className="text-sm text-zinc-600 text-center">
@@ -240,93 +225,6 @@ export default function PatternStudy({
           </button>
         )}
       </div>
-    </div>
-  )
-}
-
-/**
- * The board, whichever example is showing, and what is written on its moves.
- *
- * The cursor lives out here rather than inside the board for the reason it always has:
- * whatever shows what is written on a move has to know which move is on the board. The
- * example switcher is chips rather than a dropdown — there are two or three of these,
- * and a dropdown hides how many there are behind a press.
- */
-function ExampleBoard({
-  line,
-  examples,
-  shown,
-  onShow,
-}: {
-  line: PatternLine
-  examples: PatternLine[]
-  shown: number
-  onShow: (index: number) => void
-}) {
-  const tree = useMemo(() => lineTree(line), [line])
-  const home = useMemo(() => lineHome(tree, line.startPly), [tree, line.startPly])
-  const [moved, setMoved] = useState<Path | null>(null)
-  const path = moved ?? home
-
-  const notes = useMemo(() => commentedNodes(tree), [tree])
-  const standing = path.join('/')
-
-  return (
-    <div className="flex flex-col gap-3">
-      {examples.length > 1 && (
-        <div className="flex gap-1.5 flex-wrap">
-          {examples.map((entry, index) => (
-            <button
-              key={index}
-              type="button"
-              onClick={() => onShow(index)}
-              className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${
-                index === shown
-                  ? 'bg-zinc-200 text-zinc-900 border-zinc-200'
-                  : 'border-zinc-800 text-zinc-400 hover:border-zinc-600'
-              }`}
-            >
-              {entry.title.trim() || `Example ${index + 1}`}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {examples.length === 1 && line.title.trim().length > 0 && (
-        <h3 className="text-sm font-medium text-zinc-300">{line.title}</h3>
-      )}
-
-      <MoveTreeBoard
-        tree={tree}
-        path={path}
-        onPath={setMoved}
-        orientation={lineOrientation(line)}
-        home={home}
-      />
-
-      {line.note.trim().length > 0 && (
-        <p className="text-sm text-zinc-400 whitespace-pre-wrap leading-relaxed">{line.note}</p>
-      )}
-
-      {notes.length > 0 && (
-        <div className="flex flex-col divide-y divide-zinc-800 border border-zinc-800 rounded-lg overflow-hidden">
-          {notes.map(note => (
-            <button
-              key={note.path.join('/')}
-              type="button"
-              onClick={() => setMoved(note.path)}
-              className={`text-left px-3 py-2 flex flex-col gap-0.5 transition-colors ${
-                standing === note.path.join('/') ? 'bg-zinc-800/70' : 'hover:bg-zinc-800/40'
-              }`}
-            >
-              <span className="text-[11px] font-mono text-zinc-500">
-                {moveLabel(tree.startFen, note.path.length - 1, note.san, true)}
-              </span>
-              <span className="text-sm text-zinc-200 whitespace-pre-wrap">{note.text}</span>
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   )
 }

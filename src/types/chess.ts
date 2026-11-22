@@ -1104,6 +1104,20 @@ export interface StudyRecord {
   related: StudyRef[]
   /** Model games showing it, each pointed at the move it is cited for. */
   games: ModelGameRef[]
+  /**
+   * The boards: lines of this study's own, each a position with moves played on it.
+   *
+   * A `PatternLine`, because that is already exactly what a board here is — a PGN kept
+   * whole or a FEN with moves on top of it, branching where it depends on the reply, and
+   * a comment on any move. So an opening study's main line and an endgame study's
+   * position are one field rather than two, and the board, the variations and the
+   * commentary arrive working.
+   *
+   * One list, and nothing in it is *the* main line: they are boards showing the same
+   * study, and the first is first only because it was added first — the rule a pattern's
+   * examples already follow, for the reason an endgame study has no main line at all.
+   */
+  examples: PatternLine[]
   /** The written part: the ideas and the links. */
   body: OpeningStudy
   createdAt: number

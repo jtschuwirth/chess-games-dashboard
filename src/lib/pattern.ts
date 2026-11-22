@@ -492,6 +492,54 @@ export function lineHasContent(line: PatternLine): boolean {
 }
 
 /**
+ * A stored line in the shape the code expects, or null when it is not a line at all.
+ *
+ * The moves are **re-read from the PGN rather than trusted**, because the two are copies
+ * of one thing and the PGN is the authority — the same rule the exercise sheet follows.
+ * A PGN that will not play from the stored position leaves the moves empty rather than
+ * throwing: this runs on the way out of Firestore, and a hand-edited document must not be
+ * able to take a page down.
+ *
+ * An unreadable `startFen` is **kept** rather than replaced with the opening position:
+ * `lineTree` already falls back to move one for one it cannot read, and swapping in a
+ * different position would quietly change what the line is about. A line with no
+ * `startFen` at all is a whole game, which is the other half of what the field is for.
+ */
+export function normalizeLine(raw: unknown): PatternLine | null {
+  if (!raw || typeof raw !== 'object') return null
+  const stored = raw as Partial<PatternLine>
+
+  const pgn = typeof stored.pgn === 'string' ? stored.pgn : ''
+  const startFen = typeof stored.startFen === 'string' ? stored.startFen : undefined
+
+  let moves: string[] = []
+  try {
+    moves = parsePatternPgn(pgn, startFen && fenIsValid(startFen) ? startFen : undefined)
+  } catch {
+    moves = Array.isArray(stored.moves)
+      ? stored.moves.filter((san): san is string => typeof san === 'string')
+      : []
+  }
+
+  const line: PatternLine = {
+    ...emptyLine(),
+    title: typeof stored.title === 'string' ? stored.title : '',
+    note: typeof stored.note === 'string' ? stored.note : '',
+    pgn,
+    moves,
+    startPly: clampStartPly(typeof stored.startPly === 'number' ? stored.startPly : 0, moves),
+    comments: stored.comments && typeof stored.comments === 'object' ? stored.comments : {},
+  }
+
+  if (startFen !== undefined) line.startFen = startFen
+  if (stored.orientation === 'white' || stored.orientation === 'black') {
+    line.orientation = stored.orientation
+  }
+
+  return line
+}
+
+/**
  * A stored pattern in the shape the code expects, whatever shape it was written in.
  *
  * One shape has been replaced: a single `main` line beside a list of `examples`. A

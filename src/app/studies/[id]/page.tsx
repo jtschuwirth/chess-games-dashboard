@@ -7,6 +7,8 @@ import BackLink from '@/components/BackLink'
 import Chip from '@/components/Chip'
 import ColorDot from '@/components/ColorDot'
 import GameRow from '@/components/GameRow'
+import LineBoards from '@/components/LineBoards'
+import LineEditor from '@/components/LineEditor'
 import LinkPicker from '@/components/LinkPicker'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import Panel from '@/components/Section'
@@ -35,7 +37,14 @@ import {
   routeSteps,
   type RouteStep,
 } from '@/lib/opening'
-import { DESCRIPTION_LABEL, KIND_BADGE, KIND_LABEL, describedBy } from '@/lib/pattern'
+import {
+  DESCRIPTION_LABEL,
+  KIND_BADGE,
+  KIND_LABEL,
+  describedBy,
+  emptyLine,
+  emptyPositionLine,
+} from '@/lib/pattern'
 import { positionKeyMap, scopeGames } from '@/lib/scope'
 import { computeSplit } from '@/lib/stats'
 import { RANKS, RANK_LABEL, emptyIdea, ideasIn, linksIn, moveIdea } from '@/lib/study'
@@ -505,6 +514,83 @@ function StudyDocBody({ userId, studyId }: { userId: string; studyId: string }) 
           onMove={moveIdeaBy}
           onAdd={() => addIdea(emptyIdea('overview'))}
         />
+      </Panel>
+
+      {/*
+        The board the rest of the study is read against. "White pushes the isolani to d5"
+        is a claim about a position, and until it is in front of you it is a sentence you
+        nod at — which is the same argument the pattern write-up's pinned board makes, one
+        level up.
+
+        A PGN for an opening's main line, a FEN for an endgame you were handed out of its
+        game, and as many of either as the study needs: `examples` is a `PatternLine[]`, so
+        the branches, the per-move commentary and the two paste boxes all arrive working.
+      */}
+      <Panel
+        id={studyPanelId('boards')}
+        title={panel('boards').title}
+        meta={
+          study.examples.length > 0
+            ? `${study.examples.length} board${study.examples.length === 1 ? '' : 's'}`
+            : undefined
+        }
+      >
+        {study.examples.length === 0 ? (
+          !editing && <p className="text-sm text-zinc-600">{panel('boards').hint}</p>
+        ) : editing ? (
+          <div className="flex flex-col gap-2">
+            {study.examples.map((line, index) => (
+              <LineEditor
+                key={index}
+                line={line}
+                titlePlaceholder={`Board ${index + 1}`}
+                notePlaceholder="What to notice here — the pawn is weak the moment the queens come off"
+                onChange={next =>
+                  edit(current => ({
+                    ...current,
+                    examples: current.examples.map((entry, at) => (at === index ? next : entry)),
+                  }))
+                }
+                onRemove={() =>
+                  edit(current => ({
+                    ...current,
+                    examples: current.examples.filter((_, at) => at !== index),
+                  }))
+                }
+              />
+            ))}
+          </div>
+        ) : (
+          <LineBoards lines={study.examples} split />
+        )}
+
+        {editing && (
+          /*
+            Two buttons, because the two are not the same thing to write — the pattern
+            form's own rule. A line is the moves from the start, which is what an opening
+            study has; a position is the board you were handed without the game it came
+            from, which is what an endgame study is made of.
+          */
+          <div className="flex items-center gap-4">
+            <button
+              type="button"
+              onClick={() => edit(current => ({ ...current, examples: [...current.examples, emptyLine()] }))}
+              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              + Add a line
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                edit(current => ({ ...current, examples: [...current.examples, emptyPositionLine()] }))
+              }
+              title="Start from a FEN and play the moves on top of it"
+              className="text-xs text-zinc-500 hover:text-zinc-200 transition-colors"
+            >
+              + Add a position
+            </button>
+          </div>
+        )}
       </Panel>
 
       <Panel id={studyPanelId('plans')} title={panel('plans').title}>
