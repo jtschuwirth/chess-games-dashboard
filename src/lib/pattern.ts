@@ -112,7 +112,7 @@ export interface EssentialsSection {
 /**
  * The questions the essentials method asks, in the order it asks them.
  *
- * A table for the reason `TRANSITIONS`, `GAME_NAMES` and `STUDY_SECTIONS` are: the form
+ * A table for the reason `TRANSITIONS`, `GAME_NAMES` and `STUDY_PANELS` are: the form
  * and the page both render it, so a question cannot be described on a screen without
  * existing, and a fifth one is a row here and nothing else.
  */
@@ -562,8 +562,14 @@ export const PATTERN_OPTIONAL_FIELDS = ['motif', 'essentials'] as const
  */
 export const PATTERN_RETIRED_FIELDS = ['main', 'type', 'patternIds'] as const
 
-/** An example in the shape Firestore will take: no key is ever present and undefined. */
-function exampleBody(line: PatternLine): PatternLine {
+/**
+ * A line in the shape Firestore will take: no key is ever present and undefined.
+ *
+ * Exported because a pattern's example is not the only thing that is a line — an
+ * exercise's solution and a model game are the same shape, for the same reason — and the
+ * rule about which of its fields may be absent must have one statement.
+ */
+export function lineBody(line: PatternLine): PatternLine {
   const next: PatternLine = { ...line }
 
   const startFen = (next.startFen ?? '').trim()
@@ -591,7 +597,7 @@ export function patternBody(pattern: NewPattern): NewPattern {
     name: pattern.name.trim(),
     kind: pattern.kind,
     conditions: pattern.conditions.filter(condition => condition.trim().length > 0),
-    examples: pattern.examples.filter(lineHasContent).map(exampleBody),
+    examples: pattern.examples.filter(lineHasContent).map(lineBody),
     openingIds: [...new Set(pattern.openingIds)],
     createdAt: pattern.createdAt,
   }

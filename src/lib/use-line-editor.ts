@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from 'react'
 import { lineFromTree, lineHome, lineTree } from './pattern'
-import { nodeAt, pathOfLine, sansAlong, type MoveNode, type MoveTree, type Path } from './movetree'
+import {
+  mainPath,
+  nodeAt,
+  pathOfLine,
+  sansAlong,
+  type MoveNode,
+  type MoveTree,
+  type Path,
+} from './movetree'
 import type { PatternLine } from '@/types/chess'
 
 /**
@@ -25,8 +33,27 @@ import type { PatternLine } from '@/types/chess'
  * whose moves no longer exist — the PGN was edited under it — falls back there too,
  * rather than throwing.
  */
-export function useLineEditor(line: PatternLine, onChange: (next: PatternLine) => void) {
-  const [movedSans, setMovedSans] = useState<string[] | null>(null)
+export function useLineEditor(
+  line: PatternLine,
+  onChange: (next: PatternLine) => void,
+  /**
+   * The ply to open on, where the caller was sent to one.
+   *
+   * A model game cited from a study arrives pointed at the move it is cited for — the
+   * isolani appearing on move 11 — and that is not where the line itself opens. Read once
+   * in a lazy initialiser rather than applied in an effect: an effect would draw the home
+   * position for a frame and then jump, and setting state in one is what the purity rule
+   * forbids. It is a starting cursor and nothing more, so stepping away from it is
+   * ordinary and `⏮` still goes to the line's own home.
+   */
+  openPly?: number,
+) {
+  const [movedSans, setMovedSans] = useState<string[] | null>(() => {
+    if (openPly === undefined) return null
+    const tree = lineTree(line)
+    const at = mainPath(tree, openPly)
+    return at.length > 0 ? sansAlong(tree, at) : null
+  })
 
   const tree = useMemo(() => lineTree(line), [line])
   const home = useMemo(() => lineHome(tree, line.startPly), [tree, line.startPly])

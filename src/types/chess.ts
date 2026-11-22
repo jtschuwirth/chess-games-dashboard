@@ -900,7 +900,7 @@ export interface ProviderResponse {
  * "that move was bad" is not. They read as tags because that is what they will become.
  *
  * The table they come from is `METHOD_PASSES` in `lib/daily.ts`, the habit
- * `STUDY_SECTIONS` and `ESSENTIALS_SECTIONS` already follow — the screen that explains
+ * `STUDY_PANELS` and `ESSENTIALS_SECTIONS` already follow — the screen that explains
  * the method renders the same table the form asks from, so a step cannot be asked on one
  * and missing from the other.
  */
@@ -1026,3 +1026,129 @@ export interface DailyGame {
 }
 
 export type NewDailyGame = Omit<DailyGame, 'id'>
+
+/* ------------------------------------------------------------------- studies */
+
+/**
+ * What kind of thing a study is about. Deliberately short, the rule a pattern's kind
+ * already follows: a study you cannot file under one of these is usually two studies.
+ *
+ * The split that matters is the first two. An **opening** study is about a move order —
+ * it names saved lines and its games are the ones that reached them. A **structure**
+ * study is about a position type that several openings run into, which is why the Panov
+ * and the Queen's Gambit both point at one isolated-queen's-pawn study rather than each
+ * writing it out.
+ */
+export type StudyKind = 'opening' | 'structure' | 'endgame' | 'theme'
+
+/**
+ * Another study this one runs into — "this line of the Panov enters the IQP".
+ *
+ * One-directional and stored on the study that leads *in*, because that is where the
+ * sentence is written: the note says which line reaches it. The other end is derived by
+ * reading the handful of studies there are, so the IQP study lists every opening that
+ * arrives at it with nothing stored twice and no second place to be wrong.
+ */
+export interface StudyRef {
+  studyId: string
+  /** Why it is here: the line, or the moment, that leads into it. */
+  note?: string
+}
+
+/**
+ * A model game under a study, opened where the study wants it.
+ *
+ * `ply` is the whole point of the reference rather than a convenience: a model game is
+ * cited for the structure it reaches, so the board opens on the move the study is about
+ * — move 11, where the pawn is taken and the isolani appears — and not on move one.
+ * Absent falls back to the game's own `startPly`, which is where its author pointed it.
+ */
+export interface ModelGameRef {
+  /** A `ModelGame` id. */
+  gameId: string
+  ply?: number
+  note?: string
+}
+
+/**
+ * One study: what you know about an opening, a structure, an ending or a theme.
+ *
+ * The prose is an `OpeningStudy` body — the same ideas and links an opening write-up
+ * already used, so the sections, the idea rows and the link cards all arrive working.
+ * Everything else is a list of ids into collections that already exist: the saved lines
+ * it covers, the patterns that apply here, the studies it leads into, the model games
+ * showing it played. Nothing is a second copy of anything, which is the rule the opening
+ * study page was built on and the reason this one can be composed rather than written
+ * out.
+ */
+export interface StudyRecord {
+  id: string
+  name: string
+  kind: StudyKind
+  /** Which side you study it from. `any` for a structure both sides meet. */
+  color: OpeningColor
+  /** One line saying what the study is for — what the finder reads under the name. */
+  description: string
+  /** Saved opening lines this study covers, by `OpeningLine` id. */
+  openingIds: string[]
+  /**
+   * Patterns that apply here, by `PatternRecord` id.
+   *
+   * Stored on the study, which is the opposite of the opening study's own link — that
+   * one lives on the pattern as `openingIds`, because the pattern form had it first. A
+   * study is not an opening, so there is no field on a pattern to read, and one answer
+   * in one place is the point.
+   */
+  patternIds: string[]
+  /** Studies this one runs into. */
+  related: StudyRef[]
+  /** Model games showing it, each pointed at the move it is cited for. */
+  games: ModelGameRef[]
+  /** The written part: the ideas and the links. */
+  body: OpeningStudy
+  createdAt: number
+  /** When any device last saved it, for the draft comparison a plan makes. */
+  updatedAt?: number
+}
+
+export type NewStudyRecord = Omit<StudyRecord, 'id'>
+
+/* --------------------------------------------------------------- model games */
+
+/** How a PGN writes a result, which is what a game somebody else played carries. */
+export type PgnResult = '1-0' | '0-1' | '1/2-1/2' | '*'
+
+/**
+ * A game somebody else played, brought in to study.
+ *
+ * Its own collection rather than a `GameRecord` with `source: 'upload'`, and that is the
+ * whole decision here: an uploaded game is **yours** — it counts in every slice, every
+ * split and every rating pool, because `any` means any — and Karpov's games are not your
+ * record. Storing them there would put a hundred games you never played into the figure
+ * that answers how you are doing.
+ *
+ * The game itself is a `PatternLine`, because that is already exactly what it is: a PGN
+ * kept whole, the moves parsed off it, where the board opens, which way round to read it
+ * and a comment on any move. `line.title` and `line.note` are unused — the players name
+ * the game and `description` says what it was about — so that the two can never give two
+ * answers.
+ */
+export interface ModelGame {
+  id: string
+  white: string
+  black: string
+  /** Where it was played. Empty where the PGN did not say. */
+  event: string
+  /** Four digits, read off the PGN's `Date`. Absent where it could not be. */
+  year?: number
+  result: PgnResult
+  /** What the game was about, so the list says why it is here. */
+  description: string
+  /** The game: its PGN, moves, opening ply, orientation and per-move commentary. */
+  line: PatternLine
+  createdAt: number
+  /** When any device last saved it, for the draft comparison a plan makes. */
+  updatedAt?: number
+}
+
+export type NewModelGame = Omit<ModelGame, 'id'>

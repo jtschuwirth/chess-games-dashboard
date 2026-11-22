@@ -115,7 +115,15 @@ function sideOf(side: UploadSide, usernames: string[], white: string, black: str
   return 'white'
 }
 
-function headersOf(pgn: string): Record<string, string> {
+/**
+ * The headers of a pasted game, as a plain map.
+ *
+ * Exported because a model game needs exactly this and nothing else around it: who
+ * played, where, when and what the result was, read off the PGN rather than typed in
+ * again. An unreadable PGN gives an empty map rather than throwing — the caller is
+ * usually a form being typed into.
+ */
+export function pgnHeaders(pgn: string): Record<string, string> {
   const chess = new Chess()
   try {
     chess.loadPgn(pgn.trim())
@@ -144,7 +152,7 @@ export function parseUpload(
     return { game: null, warning: `${label}: no moves could be read — skipped.` }
   }
 
-  const headers = headersOf(pgn)
+  const headers = pgnHeaders(pgn)
   const white = headers.White ?? 'White'
   const black = headers.Black ?? 'Black'
   const color = sideOf(options.side, options.usernames, white, black)

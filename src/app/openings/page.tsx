@@ -4,7 +4,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
 import OpeningForm from '@/components/OpeningForm'
-import { deleteOpening, getGames, getOpenings, saveOpening, updateOpening } from '@/lib/firestore'
+import {
+  deleteOpening,
+  getGames,
+  getOpenings,
+  getStudies,
+  saveOpening,
+  updateOpening,
+} from '@/lib/firestore'
 import {
   buildOpeningTree,
   flattenTree,
@@ -14,12 +21,18 @@ import {
   type OpeningNode,
 } from '@/lib/opening'
 import { positionKeyMap } from '@/lib/scope'
-import { ideaCount } from '@/lib/study'
-import { COLOR_LABEL, type GameRecord, type NewOpeningLine, type OpeningLine } from '@/types/chess'
+import {
+  COLOR_LABEL,
+  type GameRecord,
+  type NewOpeningLine,
+  type OpeningLine,
+  type StudyRecord,
+} from '@/types/chess'
 
 function OpeningsBody({ userId }: { userId: string }) {
   const [openings, setOpenings] = useState<OpeningLine[] | null>(null)
   const [games, setGames] = useState<GameRecord[]>([])
+  const [studies, setStudies] = useState<StudyRecord[]>([])
   const [editingId, setEditingId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -42,6 +55,11 @@ function OpeningsBody({ userId }: { userId: string }) {
       .then(setGames)
       // a failed game read costs the counts, not the page
       .catch(() => setGames([]))
+
+    // which lines have been written up, from the other end: a study names its openings
+    getStudies(userId)
+      .then(setStudies)
+      .catch(() => setStudies([]))
 
     return lines.catch(caught =>
       setError(errorText(caught, 'Could not load your saved openings.')),
@@ -83,6 +101,16 @@ function OpeningsBody({ userId }: { userId: string }) {
     walk(tree)
     return map
   }, [games, tree])
+
+  /** How many studies cover each line, read from the other end of `openingIds`. */
+  const studyCounts = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const study of studies) {
+      for (const id of study.openingIds) map.set(id, (map.get(id) ?? 0) + 1)
+    }
+    return map
+  }, [studies])
+
   const editing = openings?.find(opening => opening.id === editingId) ?? null
 
   async function handleSubmit(opening: NewOpeningLine) {
@@ -171,12 +199,14 @@ function OpeningsBody({ userId }: { userId: string }) {
                     {children.length > 0 &&
                       ` · ${children.length} sub-variation${children.length === 1 ? '' : 's'}`}
                   </span>
-                  {ideaCount(opening.study) > 0 && (
+                  {(studyCounts.get(opening.id) ?? 0) > 0 && (
                     <span
-                      title="Written up"
+                      title={`${studyCounts.get(opening.id)} stud${
+                        studyCounts.get(opening.id) === 1 ? 'y covers' : 'ies cover'
+                      } this line`}
                       className="text-xs px-1.5 py-0.5 rounded border border-sky-500/30 bg-sky-500/15 text-sky-300"
                     >
-                      ✎ {ideaCount(opening.study)}
+                      📚 {studyCounts.get(opening.id)}
                     </span>
                   )}
                   {(counts.get(opening.id) ?? 0) > 0 && (

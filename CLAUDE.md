@@ -3,7 +3,9 @@
 ## Project Overview
 A dashboard over your own chess games. The user signs in with Google, links their chess.com and
 lichess usernames, syncs recent games into Firestore, saves named opening lines, and reads
-win/draw/loss splits for all games or for the games that followed one of those lines.
+win/draw/loss splits for all games or for the games that followed one of those lines. On top
+of that record sit the things they write: studies of the openings and structures they play,
+the patterns those studies are made of, and the model games showing them played.
 
 ## Core User Flow
 1. Sign in with Google (`/`)
@@ -19,15 +21,31 @@ win/draw/loss splits for all games or for the games that followed one of those l
    and one can carry **other ways in**: the move orders that reach the same idea from
    somewhere else, so the Panov is one entry with five routes rather than five entries
    called Panov nested inside each other.
-   Each one opens as a **study** at `/openings/{id}`: what the opening is for, the plans on
-   both sides, and the patterns you have written up for it — linked from here, so one press
-   opens the board and the drill behind it. Then what has actually happened, read off what
-   is already on disk: how the games have gone, with the same green/grey/red bar a
-   sub-variation carries, then the sub-variations under it and the games themselves. Under
-   those, the lichess studies where the lines are worked out, each playable on a board in
-   the page, and the references it came from. Writing is behind an Edit switch, saved by a button,
-   and what is unsaved is kept on the device.
-4. `/dashboard` — results, openings, clock and rating; what went wrong moved to
+   Each one opens at `/openings/{id}` as **the line and nothing else**: where it sits in
+   the repertoire, what it plays, its other ways in, and the lines saved under it. What you
+   *know* about it is a study, so the page lists the studies covering this line and starts
+   one from it in a press — carrying over anything written on the line before studies
+   existed.
+4. `/studies` — what you know, written up once and pointed at from everywhere else. A
+   study is a name, a **kind** — opening, structure, endgame or theme — a side and a line
+   saying what it is for; inside it, an overview, the plans for both sides ranked main or
+   alternative, and then five sets of links, none of which is stored twice. The **patterns**
+   that apply here, each a press from the board and the drill behind it. The **studies it
+   runs into**, with a note saying which line gets there — so the Panov says "after 5…e6
+   6.Nf3 Be7 7.cxd5" and the isolated-queen's-pawn study is one press away instead of being
+   written out inside every opening that reaches it; that study lists what reaches it with
+   nothing stored at its end. The **model games** showing it played, each opened on the move
+   it is cited for. The **saved lines** it covers, which is what lets the page read how your
+   own games there have gone, off the dashboard's own slice rule. Then the lichess studies
+   and the references. Writing is behind an Edit switch, saved by a button, and what is
+   unsaved is kept on the device.
+5. `/models` — games somebody else played, kept to study: paste a PGN and the players, the
+   event, the year and the result are read off its headers. Each one is a board with
+   variations, a **comment on any move** written as you step through it, and a line saying
+   what the game was about — plus where the board opens, set by standing on the move you
+   mean. They are reference material rather than your record, so they are their own
+   collection and nothing counting your games can see them.
+6. `/dashboard` — results, openings, clock and rating; what went wrong moved to
    `/mistakes`, which the page links to carrying the slice. Sync games sits at the top, folded, so bringing in new games does not
    mean leaving the page. The Opening dropdown picks "All games", any saved line, or "Not in a saved
    opening" as the last entry; narrow further by site, colour, time format, date window and your
@@ -42,7 +60,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    same filter, the way clicking a variation row sets the opening. A game the engine has
    never seen carries a control to analyse it right there in the list; press it on several
    and they queue up rather than fighting each other for the one engine.
-5. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
+7. `/mistakes` — what went wrong, under the same filters the games dashboard uses plus
    six of its own: which mark a move carried, which piece moved, which phase of the game
    it was played in, how long you thought before playing it, which band you were standing
    in when you did, and what the position asked for. A heatmap shows
@@ -50,7 +68,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    the mistakes that landed there. Under it, the engine's readings, the second pass's
    verdicts, the Mistake database and then every marked move as a row carrying what the
    second pass made of it, each linking to its game.
-6. `/games/{id}` — one game: the eval graph and what kind of game it was, folded away at the
+8. `/games/{id}` — one game: the eval graph and what kind of game it was, folded away at the
    top; a board you can step through, the engine's marks on the move list,
    and your own root-cause analysis of the one to three moves that decided it. A second
    pass over the marked moves says what *kind* of mistake each was — a line missed, a
@@ -58,7 +76,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    row in the dashboard's game list, which carries the filters along so Back returns to the same
    slice and Next walks it. The Mistake database panel on the dashboard adds up the tags those
    reviews carry; clicking a tag filters the games down to it.
-7. `/patterns` — write up the ideas themselves, found rather than scrolled: the same
+9. `/patterns` — write up the ideas themselves, found rather than scrolled: the same
    filter panel the dashboards use, with rows for the text, the kind, how it is written
    up and the motif. Every row says which description it carries — the four method
    questions as markers, lit where they have been answered, and the points they add up
@@ -79,7 +97,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    whether the pattern still works and why, scheduled so the ones you get wrong come back
    soonest. The board says whose move it is and you can push the pieces around on it to
    work the answer out.
-8. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
+10. `/plans` — a stretch of deliberate practice written down: a name, a start date, and weeks
    of days carrying the same tasks, editable from there. Above the weeks sits a **template
    week**: what each weekday asks for, shown on every day at that position and stored on
    none of them until you touch one — tick, change or mark a task and that day is written
@@ -98,12 +116,12 @@ win/draw/loss splits for all games or for the games that followed one of those l
    **by itself**, the way one exercise of a sheet can: a dot says which days are still
    only on this device, and the day you have just written up goes without taking the rest
    of the week with it.
-9. `/guides` — a coach's sheet of positions written up. A guide is a name, a line
+11. `/guides` — a coach's sheet of positions written up. A guide is a name, a line
    saying what the set trains, and the exercises themselves; an exercise is a diagram
    pasted in as a FEN and the board you solve it on, with variations, a comment on any
    move and a note on the whole thing. Tick one off when you have it, and the sheet says
    how far through you are.
-10. `/daily` — a game played at three days a move, with the thinking written down as it
+12. `/daily` — a game played at three days a move, with the thinking written down as it
    happens. A game is an opponent, a colour and a board you enter the moves on; standing
    in a position where it is your turn, the **move loop** is asked of you step by step —
    the book pass, the burger in its own three steps (material and the imbalances, the
@@ -119,7 +137,7 @@ win/draw/loss splits for all games or for the games that followed one of those l
    the ones the engine marked, and the ones where your read of the position was a whole
    band out. Each of those is filed under the step of the loop that should have caught
    it, and the tally of those steps is on the section itself.
-11. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
+13. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
    answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag. Find the move you
    wrote down and the drill plays their reply and asks what you do about it, down the
@@ -143,10 +161,14 @@ src/
 │   ├── page.tsx                # Sign-in + nav
 │   ├── profile/page.tsx        # Linked accounts + sync
 │   ├── openings/page.tsx       # Saved opening lines
-│   ├── openings/[id]/page.tsx  # One opening as a study: ideas, variants, games, links
+│   ├── openings/[id]/page.tsx  # One opening: the line, its ways in, the lines under it
 │   ├── dashboard/page.tsx      # Stats + opening filter + game list
 │   ├── mistakes/page.tsx       # Every marked move, the heatmap, the tag table
 │   ├── games/[id]/page.tsx     # One game: board, moves, your own review
+│   ├── studies/page.tsx        # Studies: the finder, and a new one
+│   ├── studies/[id]/page.tsx   # One study: the prose, and everything it points at
+│   ├── models/page.tsx         # Model games: the list, and a pasted PGN
+│   ├── models/[id]/page.tsx    # One model game: the board and the commentary
 │   ├── patterns/page.tsx       # Thematic patterns: list + create
 │   ├── patterns/drill/page.tsx # Does the pattern still work here?
 │   ├── guides/page.tsx         # Exercise guides: list + create
@@ -171,7 +193,7 @@ src/
 │                               # MoveTreeBoard, MoveNoteCard, ProposedMoves, TagPicker,
 │                               # PatternStudy, ExerciseCard, FilterPanel, MistakeHeatmap,
 │                               # EnginePanel, EngineMode, PatternForm, TagGroupsPanel,
-│                               # StudyIdeaList, StudyIdeaRow, StudyLinks,
+│                               # StudyIdeaList, StudyIdeaRow, StudyLinks, LinkPicker,
 │                               # UploadPanel, AccuracyPanel, StatusTag, Section,
 │                               # PlanDayCard, PlanWeekCard, PlanTemplateCard,
 │                               # TemplateEditor,
@@ -208,7 +230,9 @@ src/
 │   ├── firestore.ts            # profile, games, openings CRUD
 │   ├── sync.ts                 # client calls to the provider routes
 │   ├── opening.ts              # position keys, opening parsing, matching
-│   ├── study.ts                # an opening written up: the sections table, ideas, links
+│   ├── study.ts                # a write-up's body: the ideas, the links, the sections
+│   ├── studies.ts              # the study document: kinds, the links, the panels
+│   ├── model-game.ts           # a game somebody else played: headers, commentary, plies
 │   ├── movetree.ts             # the branch model: one tree behind every board
 │   ├── game-tree.ts            # a game's played moves, variations and proposals as one tree
 │   ├── draft.ts                # anything edited and not yet saved, kept on the device
@@ -1353,31 +1377,111 @@ src/
   the copy it showed predated its own comments. `readDocs` trusts any cache that is
   not empty, so a partial one is indistinguishable from a complete one.
 
-- **A study is the saved opening line with what you know written on it.** Not a document
-  store of its own: the line is already in a repertoire tree and already matching games by
-  position, so the only new thing is the prose and everything else is read off disk. The
-  variants are the node's children, the games are the slice the dashboard would show, the
-  patterns are the ones naming this opening — none of it stored twice, so none of it can
-  drift. `study` and `updatedAt` are optional fields on `OpeningLine`, and openings finally
-  gained a `normalizeOpening` on read, which was a bare cast while the type was six
-  required fields and is not one now.
+- **A study is its own document, because what you know is not about a move order.** It
+  was a field on the saved opening line — `study` on `OpeningLine`, the prose written
+  where the line was — and the first real use broke it the way the pattern essentials
+  broke: the Panov reaches an isolated queen's pawn and so does the Queen's Gambit, so
+  the half of the write-up that is *about the isolani* had nowhere to live but inside one
+  of those two openings, typed out again in the other, with nothing keeping them in step.
+  A pawn structure is not a line, and it is what several lines run into.
 
-  The study page is the one place openings are read `{ fresh: true }`. It is the plans
-  lesson: a document you write on a phone and open on a laptop must not come from the
-  laptop's cache. The dashboard's hot path keeps the cache-first default.
+  So `studies` is a collection, a study carries a **kind** — opening, structure, endgame,
+  theme — and the link to a line is `openingIds` on the study rather than the study being
+  on the line. An opening study names the lines it covers; a structure study is pointed
+  *at* by the openings that reach it. `/openings/{id}` is the line and nothing else again:
+  where it sits, what it plays, its other ways in, the lines under it, and which studies
+  cover it.
 
-- **The sections of a study come from a table**, `STUDY_SECTIONS` in `lib/study.ts`, for
-  the reason `TRANSITIONS` and `GAME_NAMES` do. Each row says what it holds — `ideas`
-  written here, `links` written here, or `derived` and read off something else — and
-  carries the `hint` that renders as its own empty state, so an unwritten section says
-  what belongs in it. Adding one is a row plus a panel; it is deliberately short, because
-  what makes a study standard is the *shape of an idea* — a side, a rank, the pattern it
+  **Everything else about it is still read off disk**, which is the one thing that did not
+  change and the reason the page could be composed rather than written: the games are the
+  dashboard's own slice for the lines it covers (the union, deduplicated by id, so a game
+  reaching two of them is one game), the patterns are documents the patterns page holds,
+  the model games are documents of their own. A study is a name, a kind, some prose and
+  five lists of ids.
+
+  `study` on `OpeningLine` is **left on the documents, inert**, like `ignored` before it.
+  `New study` on an opening carries it over into a real study in one press; deleting it on
+  the way past would make that move irreversible for the sake of tidiness.
+
+  Studies and openings are both read `{ fresh: true }`. It is the plans lesson: a document
+  you write on a phone and open on a laptop must not come from the laptop's cache. The
+  dashboard's hot path keeps the cache-first default.
+
+- **`lib/study.ts` is the body and `lib/studies.ts` is the document.** The sections, the
+  ideas, the links, `studyBody`, `normalizeStudy` — all of that was written for the
+  opening write-up and is unchanged, because an `OpeningStudy` was always just the prose.
+  So the new document holds one as its `body` field, and `StudyIdeaList`, `StudyIdeaRow`
+  and `StudyLinks` arrived working, embeds and all.
+
+- **A link between studies is stored once, at the end that has something to say.**
+  `related` lives on the study that runs *in*, because the sentence belongs there: "after
+  5…e6 6.Nf3 Be7 7.cxd5" is a fact about the Panov's move order, not about the isolani.
+  The other end is `studiesLeadingTo`, derived by reading the handful of studies there
+  are — so the structure study lists every opening that arrives at it, each carrying the
+  note that opening wrote, and not one of those sentences is stored twice. A study
+  claiming to run into itself is dropped on read, since the row would link to the page
+  you are standing on.
+
+- **A study's patterns are stored on the study; an opening's were stored on the pattern.**
+  The two are opposite and both are right. `openingIds` has always been a field on a
+  pattern, so the opening write-up's control was the pattern form's own reached from the
+  other end — which is why it saved at once rather than with the study. A pattern has no
+  field naming a study, so a study holds `patternIds` and it saves with everything else on
+  the page. The rule is the same either way: one answer in one place.
+
+- **Model games are their own collection, and that is the whole decision.** They are not
+  `GameRecord`s with `source: 'upload'`, because an uploaded game is **yours** — `any`
+  means any, so it counts in every slice, every split and every rating pool — and a
+  hundred of Karpov's games inside the figure that answers how you are doing would quietly
+  be answering a different question.
+
+  The game itself is a `PatternLine`, which is already exactly what it is: a PGN kept
+  whole, the moves parsed off it, where the board opens, which way round to read it and a
+  comment on any move. So the board, the variations, the PGN round trip, the commentary
+  list and `useLineEditor` all arrived working — the same reuse an exercise's solution
+  makes. `line.title` and `line.note` are left unused, because the players name the game
+  and `description` says what it was about, and two answers to one question is what this
+  codebase keeps finding.
+
+  The players, the event, the year and the result are **read off the PGN's headers**
+  (`pgnHeaders`, exported from `lib/upload.ts` rather than copied), since a game pasted
+  from a database carries all four and asking for them is asking for what the paste
+  already said. Re-pasting fills only the fields nothing has been typed into: a
+  correction made by hand must not be undone by the paste it was correcting.
+
+- **A citation carries the ply, and that is the point of it rather than a convenience.**
+  A model game is cited for the structure it reaches, so the board opens on move 11 where
+  the pawn is taken and the isolani appears — not on move one, and not necessarily where
+  the game's own `startPly` points, which is the game's answer rather than this study's.
+  `useLineEditor` therefore takes an `openPly`, read once in a lazy initialiser: an effect
+  would draw the home position for a frame and then jump, and setting state in one is what
+  the purity rule forbids. An empty ply box means "wherever the game itself opens", which
+  is not the same thing as ply 0 — so `withGameRef` takes a patch, where `undefined` is
+  expressible.
+
+- **One picker for every link on the page, and the rows are each panel's own.** Linking a
+  pattern, a study, a model game and a saved line are the same act — find the one you mean
+  in a list of sixty, press it, carry on — so `LinkPicker` is one control, folded until
+  asked for, with a search box because a list that long is searched rather than scrolled.
+  What differs is the rows *already* linked, which each panel draws itself: a pattern row
+  says how far it has been taken apart, a model game row says which move it opens on, and
+  a study row carries the sentence about how you get there.
+
+- **The panels of a study come from a table**, `STUDY_PANELS` in `lib/studies.ts`, for the
+  reason `TRANSITIONS` and `GAME_NAMES` do. Each row carries the `hint` that renders as
+  its own empty state, so an unwritten panel says what belongs in it rather than reading
+  as a gap. Adding one is a row plus a panel; the list is deliberately short, because what
+  makes a study standard is the *shape of an idea* — a side, a rank, the pattern it
   belongs to, the games showing it — rather than eight boxes left empty.
 
-  The order reads as three groups: what you know (overview, plans, patterns), what
-  happened (results, variants, games), and where it is written up elsewhere (lines,
-  references). A check asserts the whole list rather than leaving it to a diff, because
-  the order *is* the page.
+  The order reads as three groups: what you know (overview, plans, patterns), what it
+  connects to (studies, model games, openings and what your own games did there), and
+  where it is written up elsewhere (lines, references). The order *is* the page.
+
+  `studyPanelId` prefixes the fold key, because `useFolded` keeps one record for the whole
+  app and `games`, `patterns` and `results` already belong to other pages — an unprefixed
+  key folds two unrelated panels together. It is deliberately not keyed by study: folding
+  Model games away says you do not want that panel, not that you do not want it here.
 
 - **What the opening has been worth is its own section, above the breakdown.** The three
   splits sat inside **Your games here**, under the list they are a summary of and below
@@ -1406,18 +1510,19 @@ src/
   this links rather than describing — the board, the boundaries and the drill are already
   there.
 
-  **A study stores no list of patterns.** The link has always been `openingIds` on the
-  pattern, so this is the pattern form's own control reached from the other end; a field
-  here would be two answers to one question, on the one page whose whole design is that
-  nothing is stored twice. `setPatternOpenings` writes that one field — deliberately not
-  `updatePattern`, which takes a whole body and clears every optional field the body did
-  not set, so handing it a copy read when the page loaded would quietly drop whatever had
-  been written to that pattern since.
+  **An *opening* stores no list of patterns.** The link has always been `openingIds` on
+  the pattern, so the opening write-up's control was the pattern form's own reached from
+  the other end; a field there would have been two answers to one question.
+  `setPatternOpenings` writes that one field — deliberately not `updatePattern`, which
+  takes a whole body and clears every optional field the body did not set, so handing it a
+  copy read when the page loaded would quietly drop whatever had been written to that
+  pattern since. It therefore saved at once, which was the one control on that page not
+  waiting for Save.
 
-  **It therefore saves at once**, which is the one control on this page that does not wait
-  for Save, and it says so in a line. The alternative was to hold pending links in the
-  draft and write N pattern documents on Save — which buys a consistency nobody asked for
-  and loses the one that matters, the screen agreeing with the pattern it is describing.
+  This panel now lives on a study instead, where the link is `patternIds` on the study and
+  saves with everything else — a pattern has no field naming a study, so there is nothing
+  at the other end to read. `setPatternOpenings` stays as the only single-field writer for
+  the opening link, which is what the pattern form wants if it ever needs one.
 
 - **References are cards; line studies are boards.** They are two sections rather than one
   because they are reached for at different moments. A reference is a video or an article:
@@ -3682,6 +3787,13 @@ yarn lint
   A re-sync fixes them; nothing can at read time, because the rating change was never stored.
 
 ## Not built yet
+- A drill over a study. The pieces are all there — a study names its patterns, and those
+  already have the boundary drill behind them — but nothing yet asks a question *about a
+  study*, and it is not obvious what the question would be.
+- Any reading of a model game by the engine. They are somebody else's games, so the first
+  pass has nothing to say about *your* mistakes in them; what it could give is the
+  evaluation beside the commentary, which is a different feature from the one the engine
+  panel is.
 - Any reading of the step tally beyond the count: which steps fail together, whether a
   step stops failing after it has been named, how the calibration moves over months. The
   record is there for it now.

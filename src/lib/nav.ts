@@ -54,11 +54,25 @@ export const NAV_SECTIONS: NavSection[] = [
     description: 'Save the lines you play and name them',
   },
   {
+    href: '/studies',
+    title: 'Studies',
+    short: 'Studies',
+    icon: '📚',
+    description: 'Write up an opening, a structure, an ending — and link the rest to it',
+  },
+  {
     href: '/patterns',
     title: 'Patterns',
     short: 'Patterns',
     icon: '🧩',
     description: 'Write up the ideas you keep missing, and tag mistakes with them',
+  },
+  {
+    href: '/models',
+    title: 'Model games',
+    short: 'Models',
+    icon: '♟️',
+    description: 'Games somebody else played, commented move by move and cited from a study',
   },
   {
     href: '/guides',

@@ -32,7 +32,7 @@
  * have caught it, and that is a row you can count over months.
  *
  * One table serves the form and the page that explains the method, the habit
- * `STUDY_SECTIONS` and `ESSENTIALS_SECTIONS` already follow: a screen that explains a
+ * `STUDY_PANELS` and `ESSENTIALS_SECTIONS` already follow: a screen that explains a
  * rule renders the rule, or it explains what the rule used to be.
  */
 import { colorAt, fromPgn, mainLine, START_FEN, toPgn, type MoveTree } from './movetree'

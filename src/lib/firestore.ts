@@ -24,7 +24,6 @@ import {
   normalizePattern,
   patternBody,
 } from './pattern'
-import { studyBody, studyHasContent } from './study'
 import {
   normalizeSettings,
   applySettings,
@@ -34,6 +33,8 @@ import { applyTagGroups, normalizeTagGroups, type TagGroup } from './tags'
 import { normalizePlan } from './plan'
 import { normalizeGuide } from './exercise'
 import { normalizeDailyGame } from './daily'
+import { normalizeStudyRecord, studyRecordBody } from './studies'
+import { modelGameBody, normalizeModelGame } from './model-game'
 import {
   closingRatings,
   joinYears,
@@ -48,19 +49,22 @@ import type {
   ExerciseGuide,
   GameRecord,
   GameReview,
+  ModelGame,
   MoveVerdict,
   NewDailyGame,
   NewExerciseGuide,
   NewOpeningLine,
   NewPattern,
+  NewModelGame,
   NewStudyPlan,
+  NewStudyRecord,
   OpeningLine,
-  OpeningStudy,
   PatternDrillStat,
   PatternRecord,
   Source,
   StoredAnalysis,
   StudyPlan,
+  StudyRecord,
   SyncedGame,
   TimeClass,
   UserProfile,
@@ -585,31 +589,6 @@ export async function updateOpening(
   })
 }
 
-/**
- * The study alone, without the line it sits on.
- *
- * Narrower than `updateOpening` on purpose: writing what you know about an opening must
- * not be able to touch its `moves` or its `positionKey`, because those are what every
- * game is matched against and they were computed once, at save time, in the browser.
- *
- * A study with nothing in it is deleted rather than stored as an empty map, so a line
- * nobody has written up reads as exactly that.
- */
-export async function saveStudy(
-  userId: string,
-  openingId: string,
-  study: OpeningStudy,
-): Promise<number> {
-  const body = studyBody(study)
-  const updatedAt = Date.now()
-
-  await updateDoc(doc(db, 'users', userId, 'patterns', openingId), {
-    study: studyHasContent(body) ? body : deleteField(),
-    updatedAt,
-  })
-
-  return updatedAt
-}
 
 export async function deleteOpening(userId: string, openingId: string): Promise<void> {
   await deleteDoc(doc(db, 'users', userId, 'patterns', openingId))
@@ -906,4 +885,98 @@ export async function saveRatingHistory(userId: string, history: RatingHistory):
     batch.set(doc(db, 'users', userId, RATINGS, year.year), { days: year.days }, { merge: true })
   }
   await batch.commit()
+}
+
+/* ------------------------------------------------------------------- studies */
+
+/**
+ * The studies. `studies` as a collection id is free — `patterns` belongs to the saved
+ * opening lines, which held it first, and the written-up patterns are under
+ * `thematicPatterns`.
+ */
+const STUDIES = 'studies'
+
+/** The model games, which are reference material rather than anything you played. */
+const MODELS = 'modelGames'
+
+/**
+ * The studies, from the server. The plans argument, and for the same two reasons: there
+ * are a handful of them rather than a thousand, so a fresh read costs almost nothing, and
+ * this is a document you write on a laptop and open on a phone — where a cache-first read
+ * shows you whatever that device last saw.
+ */
+export async function getStudies(
+  userId: string,
+  options?: ReadOptions,
+): Promise<StudyRecord[]> {
+  const ref = collection(db, 'users', userId, STUDIES)
+  const snapshot = await readDocs(query(ref, orderBy('name')), { fresh: true, ...options })
+  return snapshot.docs.map(d => normalizeStudyRecord({ ...d.data(), id: d.id } as StudyRecord))
+}
+
+export async function saveStudyRecord(userId: string, study: NewStudyRecord): Promise<string> {
+  const ref = collection(db, 'users', userId, STUDIES)
+  const docRef = await addDoc(ref, { ...studyRecordBody(study), updatedAt: Date.now() })
+  return docRef.id
+}
+
+/**
+ * The whole document goes back on every change, like a plan and a guide: a study is a few
+ * kilobytes, a write is a write whatever its size, and rewriting it removes every question
+ * about two edits racing on one document.
+ *
+ * Returns when it was stamped, so the page can tell a draft written after this save from
+ * one the save moved past.
+ */
+export async function updateStudyRecord(
+  userId: string,
+  studyId: string,
+  study: NewStudyRecord,
+): Promise<number> {
+  // stamped here so a save can neither forget it nor round-trip a stale one
+  const updatedAt = Date.now()
+  await setDoc(doc(db, 'users', userId, STUDIES, studyId), {
+    ...studyRecordBody(study),
+    updatedAt,
+  })
+  return updatedAt
+}
+
+export async function deleteStudyRecord(userId: string, studyId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, STUDIES, studyId))
+}
+
+/* --------------------------------------------------------------- model games */
+
+/** Read from the server for the studies reason — there are a handful, written anywhere. */
+export async function getModelGames(
+  userId: string,
+  options?: ReadOptions,
+): Promise<ModelGame[]> {
+  const ref = collection(db, 'users', userId, MODELS)
+  const snapshot = await readDocs(query(ref, orderBy('createdAt', 'desc')), {
+    fresh: true,
+    ...options,
+  })
+  return snapshot.docs.map(d => normalizeModelGame({ ...d.data(), id: d.id } as ModelGame))
+}
+
+export async function saveModelGame(userId: string, game: NewModelGame): Promise<string> {
+  const ref = collection(db, 'users', userId, MODELS)
+  const docRef = await addDoc(ref, { ...modelGameBody(game), updatedAt: Date.now() })
+  return docRef.id
+}
+
+export async function updateModelGame(
+  userId: string,
+  gameId: string,
+  game: NewModelGame,
+): Promise<number> {
+  const updatedAt = Date.now()
+  await setDoc(doc(db, 'users', userId, MODELS, gameId), { ...modelGameBody(game), updatedAt })
+  return updatedAt
+}
+
+export async function deleteModelGame(userId: string, gameId: string): Promise<void> {
+  await deleteDoc(doc(db, 'users', userId, MODELS, gameId))
 }

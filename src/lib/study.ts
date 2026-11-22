@@ -1,15 +1,11 @@
 /**
- * What you know about an opening, written on the line you already saved.
+ * The body of a write-up: the ideas and the links.
  *
- * A study is not a document store of its own. The line is already there, already nested
- * in a repertoire tree, already matching your games by position — so the only new thing
- * is the prose, and everything around it is read off what is on disk. Variants are the
- * node's children, the games are the slice the dashboard would show, and the patterns are
- * the ones naming this opening. None of that is stored twice and none of it can drift.
- *
- * The sections come from a table rather than from the page, for the reason `TRANSITIONS`
- * and `GAME_NAMES` do: a screen that describes a rule in prose describes what the rule
- * used to be. Adding a section is one row here.
+ * Written when a study was a field on the saved opening line — `study` on `OpeningLine`,
+ * which is where the prose lived — and unchanged now that a study is a document of its
+ * own, because an `OpeningStudy` was always just the prose. `lib/studies.ts` holds the
+ * document around it, and `STUDY_PANELS` there is where the page's sections are listed.
+ * What is left here is the shape of an idea and of a link, which both of them use.
  */
 import type {
   Color,
@@ -21,113 +17,6 @@ import type {
   StudyLinkSectionId,
   StudySectionId,
 } from '@/types/chess'
-
-export interface StudySection {
-  id: StudySectionId | 'results' | 'patterns' | 'variants' | 'games' | StudyLinkSectionId
-  title: string
-  /** What belongs here, shown where the section is empty. The section's own prompt. */
-  hint: string
-  /** Written here, or read off something else. */
-  holds: 'ideas' | 'links' | 'derived'
-  /** Ideas in this section belong to one side, and are offered under both. */
-  sided?: boolean
-  /** Ideas in this section are a main plan or a sideline. */
-  ranked?: boolean
-}
-
-/**
- * Every section of a study, in the order they read.
- *
- * Deliberately short. The sections that hold prose are two, because a form with eight
- * boxes is eight boxes left empty — what makes a study standard is the *shape of an
- * idea*, which carries a side, a rank, the pattern it belongs to and the games showing
- * it. A new section is one row here and nothing else.
- */
-export const STUDY_SECTIONS: StudySection[] = [
-  {
-    id: 'overview',
-    title: 'Overview',
-    hint: 'What this opening is for, and what it is trying to get.',
-    holds: 'ideas',
-  },
-  {
-    id: 'plans',
-    title: 'Plans and ideas',
-    hint: 'What each side is trying to do, and what to punish when they get it wrong.',
-    holds: 'ideas',
-    sided: true,
-    ranked: true,
-  },
-  {
-    /*
-      The ideas themselves, which are not the same thing as a plan.
-
-      A plan is what this opening is trying to do and is only ever read here. A pattern is
-      a write-up with a board, boundaries and a drill behind it, and the whole value of
-      naming one here is that it is the *same* document the patterns finder lists — so
-      this section links rather than describing, and anything you want to train is one
-      press from where you wrote it down.
-    */
-    id: 'patterns',
-    title: 'Patterns here',
-    hint: 'Ideas written up on the patterns page. Link one and it can be drilled there.',
-    holds: 'derived',
-  },
-  {
-    /*
-      What the opening has actually been worth, above the breakdown rather than inside
-      the games list. It is the figure the variants below are each a share of, so it has
-      to be read before them — and it is the one line you fold the whole study down to.
-    */
-    id: 'results',
-    title: 'Results',
-    hint: 'How these games have gone, once any of them have.',
-    holds: 'derived',
-  },
-  {
-    id: 'variants',
-    title: 'Variants',
-    hint: 'Save a longer line on the openings page and it files itself under this one.',
-    holds: 'derived',
-  },
-  {
-    id: 'games',
-    title: 'Your games here',
-    hint: 'Every game that reached this position, transpositions included.',
-    holds: 'derived',
-  },
-  {
-    id: 'lines',
-    title: 'Line studies',
-    // says what belongs here *and* the thing that decides what you get: a chapter plays
-    // on a board, a bare study link can only be a link
-    hint: 'A lichess study of these lines. Paste a chapter and it plays here on a board.',
-    holds: 'links',
-  },
-  {
-    id: 'references',
-    title: 'References',
-    hint: 'Where else this is written up — a video, a study, an article.',
-    holds: 'links',
-  },
-]
-
-export const SECTION_BY_ID = new Map(STUDY_SECTIONS.map(section => [section.id, section]))
-
-/**
- * The key a section's panel remembers its fold state under.
- *
- * Prefixed because `useFolded` keeps one record for the whole app: `games` and
- * `variations` already belong to the dashboard, and sharing them would fold two
- * unrelated panels together. It is derived here rather than written out on the page so
- * that the rule is somewhere a test can reach.
- *
- * Deliberately *not* keyed by opening: folding Variants away says you do not want that
- * section, not that you do not want it on this one line.
- */
-export function panelId(section: StudySection['id']): string {
-  return `study-${section}`
-}
 
 /** The sections an idea may be filed under — the ones that hold prose. */
 export const IDEA_SECTIONS: StudySectionId[] = ['overview', 'plans']
@@ -293,18 +182,6 @@ export function studyBody(study: OpeningStudy): OpeningStudy {
       })),
     alsoReaches: [...new Set(study.alsoReaches)],
   }
-}
-
-/**
- * Whether two studies differ, which is what "unsaved" means.
- *
- * Compared as JSON through `studyBody`, so what is compared is what would be written —
- * typing a space into an empty bullet is not an unsaved change. Both sides are built by
- * the same function, so the key order matches; a hand-written deep equal would be a
- * second definition of what a study is, and it would rot against this one.
- */
-export function studyChanged(a: OpeningStudy, b: OpeningStudy): boolean {
-  return JSON.stringify(studyBody(a)) !== JSON.stringify(studyBody(b))
 }
 
 /**
