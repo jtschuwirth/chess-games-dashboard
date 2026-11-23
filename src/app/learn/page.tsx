@@ -19,6 +19,8 @@ import {
   drillProgress,
   fromGuides,
   isDrillSource,
+  sheetsToDrill,
+  shuffleByWeight,
   type DrillSource,
 } from '@/lib/drill'
 import type { DrillStat, ExerciseGuide, GameRecord, OpeningLine } from '@/types/chess'
@@ -30,6 +32,11 @@ const SOURCES: { value: DrillSource; label: string; hint: string }[] = [
     hint: 'Positions you have taken apart and written alternatives for',
   },
   {
+    value: 'starred',
+    label: 'from my starred moves',
+    hint: 'Only the reviewed moves you marked with a star as worth meeting again',
+  },
+  {
     value: 'all',
     label: 'from every flagged mistake',
     hint: 'Adds the blunders and mistakes you never got round to reviewing',
@@ -38,6 +45,11 @@ const SOURCES: { value: DrillSource; label: string; hint: string }[] = [
     value: 'exercises',
     label: 'from my solved exercises',
     hint: 'The positions off your coach’s sheets, once you have ticked them Solved',
+  },
+  {
+    value: 'starred-sheets',
+    label: 'from my starred sheets',
+    hint: 'The same positions, narrowed to the sheets you starred on the guides page',
   },
 ]
 
@@ -59,6 +71,13 @@ function LearnBody({ userId }: { userId: string }) {
   const [index, setIndex] = useState(0)
   /** This session's attempts, so answering never re-sorts the queue under you. */
   const [results, setResults] = useState<Record<string, DrillStat>>({})
+  /*
+    The deal. Held in state rather than drawn in the memo so that the order is a function
+    of its inputs — the queue is read on every render, and an order that redrew itself
+    would move the next card while you were looking at this one. Going round again takes
+    a fresh one, which is what asking for another pass means.
+  */
+  const [seed, setSeed] = useState(() => Math.floor(Math.random() * 0x7fffffff))
 
   const filters = useMemo(() => readFilters(searchParams), [searchParams])
 
@@ -128,9 +147,16 @@ function LearnBody({ userId }: { userId: string }) {
    * of them. Leaving them applied would have the sheet empty itself the moment you
    * narrowed to blitz.
    */
+  /** A sheet's star narrows which of them are drilled; everything else here ignores it. */
+  const sheets = useMemo(() => sheetsToDrill(guides, source), [guides, source])
+
   const queue = useMemo(
-    () => (fromGuides(source) ? buildExerciseCards(guides) : buildDrillCards(scoped, source)),
-    [scoped, source, guides],
+    () =>
+      shuffleByWeight(
+        fromGuides(source) ? buildExerciseCards(sheets) : buildDrillCards(scoped, source),
+        seed,
+      ),
+    [scoped, source, sheets, seed],
   )
   const cards = useMemo(
     () => queue.map(card => ({ ...card, stat: results[card.key] ?? card.stat })),
@@ -144,6 +170,7 @@ function LearnBody({ userId }: { userId: string }) {
   function restart() {
     setIndex(0)
     setResults({})
+    setSeed(Math.floor(Math.random() * 0x7fffffff))
   }
 
   function pick(next: DrillSource) {
@@ -220,7 +247,7 @@ function LearnBody({ userId }: { userId: string }) {
           {/* the exercises are not drawn from the games, so they are not counted off them */}
           {fromGuides(source) ? (
             <>
-              {guides.length} sheet{guides.length === 1 ? '' : 's'}
+              {sheets.length} sheet{sheets.length === 1 ? '' : 's'}
             </>
           ) : (
             <>
@@ -253,14 +280,27 @@ function LearnBody({ userId }: { userId: string }) {
       ) : cards.length === 0 ? (
         <div className="py-16 text-center text-zinc-500 flex flex-col items-center gap-2">
           <p>
-            {source === 'exercises'
+            {source === 'starred-sheets'
+              ? 'No starred sheets to drill yet.'
+              : source === 'exercises'
               ? 'No solved exercises to drill yet.'
               : source === 'reviewed'
                 ? 'No reviewed positions in this slice yet.'
-                : 'No flagged mistakes in this slice yet.'}
+                : source === 'starred'
+                  ? 'No starred moves in this slice yet.'
+                  : 'No flagged mistakes in this slice yet.'}
           </p>
           <p className="text-xs text-zinc-600">
-            {source === 'exercises' ? (
+            {source === 'starred-sheets' ? (
+              <>
+                Star a{' '}
+                <Link href="/guides" className="underline">
+                  sheet
+                </Link>{' '}
+                to drill it on its own — the star is on the sheet rather than the position,
+                since the sheet is what you pick between.
+              </>
+            ) : source === 'exercises' ? (
               <>
                 Work one out on a{' '}
                 <Link href="/guides" className="underline">
@@ -276,6 +316,11 @@ function LearnBody({ userId }: { userId: string }) {
                   dashboard
                 </Link>
                 , or drill from every flagged mistake instead.
+              </>
+            ) : source === 'starred' ? (
+              <>
+                Star a move while you are reviewing a game — the ones worth meeting again,
+                which is you writing yourself a sheet out of your own games.
               </>
             ) : (
               <>

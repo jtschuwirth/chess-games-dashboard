@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
 import PageShell, { LoadError, Spinner, errorText } from '@/components/PageShell'
-import { getGuides, saveGuide } from '@/lib/firestore'
+import StarToggle from '@/components/StarToggle'
+import { getGuides, saveGuide, setGuideStarred } from '@/lib/firestore'
 import { guideProgress } from '@/lib/exercise'
 import type { ExerciseGuide } from '@/types/chess'
 
@@ -33,6 +34,29 @@ function GuidesBody({ userId }: { userId: string }) {
   useEffect(() => {
     load()
   }, [load])
+
+  /**
+   * The star saves at once and on its own, like the pattern form's opening links: it is
+   * one field, it is the only thing on this page that writes, and a sheet starred on a
+   * phone has to be starred when the laptop opens `/learn`. The list is updated in place
+   * rather than re-read — a billed read per sheet to learn what was just pressed.
+   */
+  async function star(guide: ExerciseGuide) {
+    const next = !guide.starred
+    setGuides(current =>
+      (current ?? []).map(entry => (entry.id === guide.id ? { ...entry, starred: next } : entry)),
+    )
+    try {
+      await setGuideStarred(userId, guide.id, next)
+    } catch (caught) {
+      setError(errorText(caught, 'Could not star that guide.'))
+      setGuides(current =>
+        (current ?? []).map(entry =>
+          entry.id === guide.id ? { ...entry, starred: !next } : entry,
+        ),
+      )
+    }
+  }
 
   async function create() {
     if (name.trim().length === 0) return
@@ -77,6 +101,9 @@ function GuidesBody({ userId }: { userId: string }) {
           </button>
         )}
       </div>
+
+      {/* the form has its own copy; a star failure happens with the form closed */}
+      {error && !adding && <p className="text-xs text-red-400">{error}</p>}
 
       {adding && (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
@@ -133,26 +160,43 @@ function GuidesBody({ userId }: { userId: string }) {
             const progress = guideProgress(guide)
 
             return (
-              <Link
+              /*
+                The star sits beside the link rather than inside it: a button within an
+                anchor is a press that has to cancel the navigation it is already part of,
+                and the row is the thing you open.
+              */
+              <div
                 key={guide.id}
-                href={`/guides/${guide.id}`}
-                className="flex flex-col gap-1 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors"
+                className="flex items-start gap-3 px-4 py-3 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-zinc-700 transition-colors"
               >
-                <div className="flex items-baseline gap-3 flex-wrap">
-                  <span className="text-sm font-medium text-zinc-100">{guide.name}</span>
-                  <span className="text-xs text-zinc-500">
-                    {progress.total === 0
-                      ? 'no positions yet'
-                      : `${progress.solved} of ${progress.total} solved`}
-                    {progress.attempted > 0 && (
-                      <span className="text-zinc-600"> · {progress.attempted} started</span>
-                    )}
-                  </span>
-                </div>
-                {guide.description.trim().length > 0 && (
-                  <span className="text-xs text-zinc-500 line-clamp-2">{guide.description}</span>
-                )}
-              </Link>
+                <Link href={`/guides/${guide.id}`} className="flex flex-col gap-1 min-w-0 flex-1">
+                  <div className="flex items-baseline gap-3 flex-wrap">
+                    <span className="text-sm font-medium text-zinc-100">{guide.name}</span>
+                    <span className="text-xs text-zinc-500">
+                      {progress.total === 0
+                        ? 'no positions yet'
+                        : `${progress.solved} of ${progress.total} solved`}
+                      {progress.attempted > 0 && (
+                        <span className="text-zinc-600"> · {progress.attempted} started</span>
+                      )}
+                    </span>
+                  </div>
+                  {guide.description.trim().length > 0 && (
+                    <span className="text-xs text-zinc-500 line-clamp-2">{guide.description}</span>
+                  )}
+                </Link>
+                <StarToggle
+                  on={guide.starred === true}
+                  onToggle={() => void star(guide)}
+                  label="Star this sheet to drill it on its own"
+                  title={
+                    guide.starred
+                      ? 'Starred — drilled by “from my starred sheets”'
+                      : 'Star this sheet to drill it on its own'
+                  }
+                  size="w-[1.1rem] h-[1.1rem]"
+                />
+              </div>
             )
           })}
         </div>

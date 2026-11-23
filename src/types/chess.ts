@@ -142,6 +142,16 @@ export interface ReviewedMistake {
    * record but left out of the tag counts, since there is no pattern to train.
    */
   unreasonable: boolean
+  /**
+   * A position worth meeting again — the exercise this mistake turned out to be.
+   *
+   * Every reviewed move is already drillable, so this is not about whether it *can* be
+   * asked: it is the handful you would set yourself if you were writing a sheet, and
+   * `/learn` can drill those alone. Set only when true, since an entry that was never
+   * starred is not wrong for carrying nothing — and the field was added after reviews
+   * had been written.
+   */
+  starred?: boolean
   /** The engine's numbers when you reviewed it, so the entry survives a re-analysis. */
   cpBefore: number | null
   cpAfter: number | null
@@ -875,6 +885,16 @@ export interface ExerciseGuide {
    * writes `exercises` without touching this.
    */
   drills?: Record<string, DrillStat>
+  /**
+   * A sheet you want to drill, which is the same mark a review entry carries one level
+   * down — and it is on the **guide** rather than the exercise deliberately: a sheet is
+   * the unit you work through and the unit you choose between, so "this handout, not
+   * that chapter" is the decision actually being made. Starring the positions one at a
+   * time would be a second answer to a question the sheet already answers.
+   *
+   * Set only when true, so a sheet nobody starred stores nothing.
+   */
+  starred?: boolean
 }
 
 export type NewExerciseGuide = Omit<ExerciseGuide, 'id'>

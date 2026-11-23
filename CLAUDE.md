@@ -124,7 +124,8 @@ the patterns those studies are made of, and the model games showing them played.
    saying what the set trains, and the exercises themselves; an exercise is a diagram
    pasted in as a FEN and the board you solve it on, with variations, a comment on any
    move and a note on the whole thing. Tick one off when you have it, and the sheet says
-   how far through you are.
+   how far through you are. A sheet can also be **starred**, which is how you say that
+   this handout and not that chapter is what you want drilled.
 12. `/daily` — a game played at three days a move, with the thinking written down as it
    happens. A game is an opponent, a colour and a board you enter the moves on; standing
    in a position where it is your turn, the **move loop** is asked of you step by step —
@@ -142,12 +143,16 @@ the patterns those studies are made of, and the model games showing them played.
    band out. Each of those is filed under the step of the loop that should have caught
    it, and the tally of those steps is on the section itself.
 13. `/learn` — the positions from those reviews put back in front of you, one at a time, with the
-   answer withheld until you have tried. Drill `from my reviews` or `from every flagged mistake`,
+   answer withheld until you have tried. Drill `from my reviews`, `from my starred moves`
+   or `from every flagged mistake`,
    under the same dashboard filters, and read what is sticking by tag. Find the move you
    wrote down and the drill plays their reply and asks what you do about it, down the
-   whole line you recorded. A third source is `from my solved exercises`: the positions
-   off your coach's sheets, once you have ticked them Solved, with what you wrote about
-   each move shown only after you have answered.
+   whole line you recorded. Two more sources come off your coach's sheets rather than
+   your games: `from my solved exercises`, once you have ticked them Solved, and `from my
+   starred sheets`, the same thing narrowed to the sheets you starred — with what you
+   wrote about each move shown only after you have answered. Whichever source, they are
+   dealt in a different order every session, with the ones you keep getting right coming
+   up rarely.
 
 ## Tech Stack
 - **Framework**: Next.js 16 (App Router)
@@ -1089,10 +1094,43 @@ src/
   the engine flagged and you never wrote up can still be drilled, and it needs somewhere to keep
   score; keying by ply also survives a re-analysis. `merge` on a map field merges keys, so two
   positions from one game never overwrite each other.
-- **Hardest first, and the queue never re-sorts under you.** Positions you have never seen lead,
-  then the ones you keep missing, then the longest ago. A session's answers are layered over the
-  queue rather than written back into it, because re-sorting after every answer would move the
-  next card while you were looking at it.
+- **The cards are dealt rather than ranked, and the deal never re-sorts under you.** It
+  was a total order — never-seen first, then what you keep missing, then the longest ago —
+  and the ranking is right while the *order* was wrong: the same three positions opened
+  every session and the tail of the queue was never reached at all. Variety with a bias
+  is what a drill wants, so `drillWeight` is a share of the deal instead. A position you
+  have never seen weighs 1; one you have seen weighs by how often you miss it, floored at
+  `SETTLED_WEIGHT` so the ones you have settled still turn up occasionally rather than
+  dropping out of the rotation; and getting it right *last time* halves it again, which is
+  the one thing a rate cannot say — six right and one wrong reads the same whichever order
+  they came in. Measured over 400 deals of ten new, ten settled and ten missed positions:
+  new and missed take 96% of the first five cards between them, settled 4%, and 29 of the
+  30 lead at least one deal.
+
+  `shuffleByWeight` is weighted sampling without replacement, by the standard `u^(1/w)`
+  key taken largest first — one sort rather than a loop re-normalising after each pick.
+
+  It takes a **seed** rather than calling `Math.random`, and that is what keeps the old
+  rule: the queue is built in a memo and read on every render, so an order that redrew
+  itself would move the next card while you were looking at this one. A session's answers
+  are still layered over the queue rather than written back into it, for the same reason.
+  Going round again takes a fresh seed, which is what asking for another pass means.
+- **A star on an entry is you writing yourself a sheet out of your own games.** Every
+  reviewed move is already drillable, so this is not about whether a position *can* be
+  asked — it is about the handful you would set yourself, and `/learn`'s `from my starred
+  moves` draws on those alone. It sits in the entry's header beside the move and the
+  evaluation, because it is a judgement about the whole entry rather than one of the
+  questions in it, and it is drawn as an SVG rather than set as ★, the board's own lesson
+  about glyphs: the filled and hollow states reading apart is the entire control.
+  `StarToggle` is that control once rather than twice, since a sheet of exercises carries
+  the same mark — a hue meaning two shades of one thing is a mark you have to stop and
+  read.
+
+  `starred` is written **only when true**, the rule every optional field here follows —
+  an entry nobody starred stores nothing, reviews written before the field existed read
+  back as unstarred, and an `undefined` value would reject the whole document. It is read
+  by `buildDrillCards` and nowhere else, so nothing that counts a mistake can see it: a
+  star says what you want to practise, not what went wrong.
 - **"Hard to find — no clear way I could have seen it" is the escape hatch, and it is not a
   shrug.** It sits last in an entry, after the tags, because it is the conclusion you reach once
   you have tried to name the pattern and found there isn't one. The wording deliberately says
@@ -1753,6 +1791,33 @@ src/
   returns the list unchanged, so no caller has to range-check first. The buttons stay in
   the layout when they cannot be used, or the row would shift under the cursor as you walk
   something down the list.
+
+  **A sheet is starred, not a position on it.** The star says which positions to drill
+  now, and the unit that decision is actually made in is the sheet: this handout and not
+  that chapter, one ticked and one not. Starring positions one at a time would be a
+  second answer to a question the sheet already answers — and the sheet is the thing you
+  work through, so it is also the thing you choose between. So `starred` is a field on the
+  **guide**, pressed on the list where the sheets are side by side, and `/learn` grows
+  `from my starred sheets` beside `from my solved exercises` rather than a second control
+  shape: the ways to drill are chips, and this is one of them.
+
+  `sheetsToDrill` is the whole rule, and it narrows **nothing else**. An unstarred sheet
+  is not excluded from `from my solved exercises`, because the star says what you want
+  *now* rather than what is worth drilling, and turning one off must never take a position
+  out of the full set.
+
+  `setGuideStarred` writes the one field with a `merge`, deliberately not `updateGuide` —
+  which takes a whole body, so handing it a copy read when the list loaded would write
+  that copy back and drop whatever the sheet's own editor had saved since. The same reason
+  `setPatternOpenings` exists. Unstarring **deletes** the field rather than writing false,
+  so an unstarred sheet carries nothing, which is also the shape `guideBody` writes.
+
+  **`updateGuide` had to become a merge write, and that was a real bug of its own.**
+  `drills` is a map the drill writes a key at a time and the editor has no copy of, so a
+  plain `setDoc` erased every record on a sheet the next time anything on it was saved.
+  Merging costs nothing here: `guideBody` writes all of its own fields every time, and an
+  array field is replaced wholesale rather than merged, so removing an exercise still
+  removes it.
 
   **Solved is what you said, not what the app worked out.** Nothing here checks an answer:
   a position you solved in your head and wrote one line for is as done as one annotated to

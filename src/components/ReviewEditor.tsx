@@ -7,6 +7,7 @@ import ProposedMoves, {
   type ProposedRow,
   type Verdict,
 } from '@/components/ProposedMoves'
+import StarToggle from '@/components/StarToggle'
 import TagPicker from '@/components/TagPicker'
 import { lineTokens, parseLine, playMove, plyLabel, sanFromUci, type Ply } from '@/lib/board'
 import { THINK_INK, formatDuration, longestThinks, type LongThink } from '@/lib/clocks'
@@ -74,6 +75,8 @@ interface Draft {
   better: ProposedRow[]
   tags: string[]
   unreasonable: boolean
+  /** Worth meeting again: `/learn` can drill the starred moves alone. */
+  starred: boolean
   cpBefore: number | null
   cpAfter: number | null
 }
@@ -94,6 +97,7 @@ function draftFrom(mistake: ReviewedMistake): Draft {
     })),
     tags: mistake.tags,
     unreasonable: mistake.unreasonable,
+    starred: mistake.starred === true,
     cpBefore: mistake.cpBefore,
     cpAfter: mistake.cpAfter,
   }
@@ -110,7 +114,6 @@ function Label({ children, hint }: { children: React.ReactNode; hint?: string })
 
 const FIELD =
   'bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600'
-
 /**
  * Root-cause analysis of one game: pick the moves that decided it, say why each went
  * wrong, what was there to see, and what you would play instead. The tags are what
@@ -455,6 +458,7 @@ export default function ReviewEditor({
           better: [EMPTY_ROW],
           tags: [],
           unreasonable: false,
+          starred: false,
           cpBefore,
           cpAfter,
         },
@@ -632,6 +636,9 @@ export default function ReviewEditor({
       betterMoves,
       tags: draft.tags,
       unreasonable: draft.unreasonable,
+      // set only when true, the rule every optional field here follows: an entry nobody
+      // starred stores nothing, and Firestore rejects a document carrying `undefined`
+      ...(draft.starred ? { starred: true } : {}),
       cpBefore: draft.cpBefore,
       cpAfter: draft.cpAfter,
     }
@@ -1041,6 +1048,16 @@ export default function ReviewEditor({
                     {formatEval(shownBefore, game.color)} → {formatEval(shownAfter, game.color)}
                   </span>
                 )}
+                <StarToggle
+                  on={draft.starred}
+                  onToggle={() => patch(draft.ply, { starred: !draft.starred })}
+                  label="Star this move as an exercise"
+                  title={
+                    draft.starred
+                      ? 'Starred — drill this one on its own'
+                      : 'Star this move as an exercise'
+                  }
+                />
                 <span className="ml-auto flex items-center gap-3">
                   {moveSave(
                     draft.ply,

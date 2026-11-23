@@ -755,6 +755,13 @@ export async function saveGuide(userId: string, guide: NewExerciseGuide): Promis
  * The whole guide goes back on every change, like a plan: a sheet is a few kilobytes,
  * a write is a write whatever its size, and rewriting it removes every question about
  * two edits racing on one document.
+ *
+ * It **merges**, which is what keeps that true of the editor's fields only. `drills` is a
+ * map written a key at a time by the drill, and the editor has no copy of it to put back
+ * — a plain `setDoc` therefore erased everything you had learned on the sheet the next
+ * time anything on it was saved. Merging costs nothing here: `guideBody` writes all of
+ * its own fields on every save, and an array field is replaced wholesale rather than
+ * merged, so removing an exercise still removes it.
  */
 export async function updateGuide(
   userId: string,
@@ -762,7 +769,33 @@ export async function updateGuide(
   guide: NewExerciseGuide,
 ): Promise<void> {
   // stamped here so a save can neither forget it nor round-trip a stale one
-  await setDoc(doc(db, 'users', userId, GUIDES, guideId), { ...guide, updatedAt: Date.now() })
+  await setDoc(
+    doc(db, 'users', userId, GUIDES, guideId),
+    { ...guide, updatedAt: Date.now() },
+    { merge: true },
+  )
+}
+
+/**
+ * The one field, on its own, because the list is where a sheet is starred.
+ *
+ * Deliberately not `updateGuide`, which takes a whole body: handing it a copy read when
+ * the list loaded would write back whatever was in that copy and quietly drop anything
+ * the sheet's own editor had saved since. The same reason `setPatternOpenings` exists.
+ *
+ * Unstarring **deletes** rather than writing false, so an unstarred sheet carries nothing
+ * — the shape `guideBody` writes, and what `normalizeGuide` reads back as unstarred.
+ */
+export async function setGuideStarred(
+  userId: string,
+  guideId: string,
+  starred: boolean,
+): Promise<void> {
+  await setDoc(
+    doc(db, 'users', userId, GUIDES, guideId),
+    { starred: starred ? true : deleteField(), updatedAt: Date.now() },
+    { merge: true },
+  )
 }
 
 export async function deleteGuide(userId: string, guideId: string): Promise<void> {

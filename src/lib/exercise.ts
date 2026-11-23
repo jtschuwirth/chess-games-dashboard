@@ -102,6 +102,8 @@ export function normalizeGuide(raw: ExerciseGuide): ExerciseGuide {
       .map(normalizeExercise)
       .filter((entry): entry is Exercise => entry !== null)
       .slice(0, MAX_EXERCISES),
+    // absent on every sheet written before the star existed, and read as unstarred
+    starred: raw.starred === true,
   }
 }
 
@@ -117,6 +119,9 @@ export function guideBody(guide: ExerciseGuide): NewExerciseGuide {
     description: guide.description,
     exercises: guide.exercises,
     createdAt: guide.createdAt,
+    // set only when true: an unstarred sheet stores nothing, and Firestore rejects a
+    // document carrying `undefined` rather than the field
+    ...(guide.starred ? { starred: true } : {}),
   }
 }
 

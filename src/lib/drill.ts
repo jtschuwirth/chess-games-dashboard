@@ -15,17 +15,43 @@ import type {
 /**
  * Which positions to drill. `reviewed` is the set you have taken apart and written
  * alternatives for; `all` adds every position the engine flagged and you never got to,
- * where the engine's own move is the only answer available.
+ * where the engine's own move is the only answer available. `starred` is the other
+ * direction — the reviewed moves you marked as worth meeting again, which is you
+ * writing yourself a sheet out of your own games.
+ *
+ * `exercises` is every solved position off your coach's sheets and `starred-sheets` is
+ * the same thing narrowed to the sheets you starred. The star is on the **guide** there
+ * rather than on each position, because a sheet is the unit you choose between: this
+ * handout and not that chapter.
  */
-export type DrillSource = 'reviewed' | 'all' | 'exercises'
+export type DrillSource = 'reviewed' | 'starred' | 'all' | 'exercises' | 'starred-sheets'
+
+const SOURCE_VALUES: DrillSource[] = [
+  'reviewed',
+  'starred',
+  'all',
+  'exercises',
+  'starred-sheets',
+]
 
 export function isDrillSource(value: string): value is DrillSource {
-  return value === 'reviewed' || value === 'all' || value === 'exercises'
+  return (SOURCE_VALUES as string[]).includes(value)
 }
 
 /** Whether a source draws on the guides rather than on the games. */
 export function fromGuides(source: DrillSource): boolean {
-  return source === 'exercises'
+  return source === 'exercises' || source === 'starred-sheets'
+}
+
+/**
+ * The sheets a source draws on, which is the whole of what the star does here.
+ *
+ * A sheet with no star is not excluded from `exercises` — the star says which to drill
+ * *now*, not which are worth drilling, so turning one off must never take a position out
+ * of the full set.
+ */
+export function sheetsToDrill(guides: ExerciseGuide[], source: DrillSource): ExerciseGuide[] {
+  return source === 'starred-sheets' ? guides.filter(guide => guide.starred) : guides
 }
 
 /**
@@ -88,14 +114,78 @@ export interface DrillCard {
   url: string
 }
 
-/** Never-seen first, then whatever you keep getting wrong, then the longest ago. */
-function drillRank(card: DrillCard): number {
-  if (!card.stat || card.stat.attempts === 0) return -1
-  return card.stat.correct / card.stat.attempts
+/**
+ * How likely a position is to come up, which is not the same as how badly you need it.
+ *
+ * Hardest-first was the rule and it had one failure mode that mattered: the order was a
+ * *total* one, so the same three positions opened every session and the tail was never
+ * reached at all. The thing wanted here is variety with a bias, so the weight is a
+ * share of the deal rather than a place in a queue.
+ *
+ * A position you have never seen weighs a full 1. One you have seen weighs by how often
+ * you miss it, floored at `SETTLED_WEIGHT` so a position you always get right still
+ * turns up occasionally — it is dropping out of the rotation that would make a drill
+ * stop finding what has gone stale. Getting it right *last time* halves it again, which
+ * is the one thing a rate cannot say: six right and one wrong reads the same whichever
+ * order they came in.
+ */
+const SETTLED_WEIGHT = 0.15
+
+export function drillWeight(stat: DrillStat | null): number {
+  if (!stat || stat.attempts === 0) return 1
+
+  const missRate = 1 - stat.correct / stat.attempts
+  const weight = SETTLED_WEIGHT + (1 - SETTLED_WEIGHT) * missRate
+  return stat.lastCorrect ? weight / 2 : weight
+}
+
+/** FNV-1a over the card's own key, so one card's draw does not depend on the others'. */
+function keyHash(key: string, seed: number): number {
+  let hash = (0x811c9dc5 ^ seed) >>> 0
+  for (let i = 0; i < key.length; i++) {
+    hash ^= key.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash
+}
+
+/** A number in (0,1) for this card in this session, stable across every render of it. */
+function draw(key: string, seed: number): number {
+  let state = keyHash(key, seed)
+  state = Math.imul(state ^ (state >>> 15), state | 1) >>> 0
+  state ^= state + Math.imul(state ^ (state >>> 7), state | 61)
+  return (((state ^ (state >>> 14)) >>> 0) + 0.5) / 0x100000000
 }
 
 /**
- * The positions to put in front of you, hardest first.
+ * The order to deal the cards in: random, weighted by `drillWeight`.
+ *
+ * Weighted sampling without replacement, by the standard key `u^(1/w)` taken largest
+ * first — which is one sort rather than a loop that re-normalises after every pick, and
+ * gives every card a chance at every position with the weights deciding the odds.
+ *
+ * It takes a **seed** rather than calling `Math.random` so that the order is a function
+ * of its inputs: the queue is built in a memo and read on every render, and an order
+ * that redrew itself would move the next card while you were looking at this one — the
+ * rule the old sort already kept by being deterministic. A new seed is a new session,
+ * which is what going round again asks for.
+ */
+export function shuffleByWeight(cards: DrillCard[], seed: number): DrillCard[] {
+  return [...cards]
+    .map(card => ({
+      card,
+      key: Math.pow(draw(card.key, seed), 1 / drillWeight(card.stat)),
+    }))
+    .sort((a, b) => b.key - a.key)
+    .map(entry => entry.card)
+}
+
+/**
+ * The positions available to drill, in the games' own order.
+ *
+ * The order you *meet* them in is `shuffleByWeight`, which the caller applies once per
+ * session: a builder cannot own it, since the order has to be a function of a seed the
+ * session holds rather than of the moment the list happened to be built.
  *
  * A move you marked as beyond reasonable reach is never drilled: you already decided
  * there was nothing to find, and asking again would only teach you to distrust the
@@ -119,14 +209,16 @@ export function buildDrillCards(games: GameRecord[], source: DrillSource): Drill
     const plies =
       source === 'reviewed'
         ? [...reviewed.keys()]
-        : [
-            ...new Set([
-              ...reviewed.keys(),
-              ...(game.analysis?.moves ?? [])
-                .filter(move => isFault(move.tag) && !beyondReach.has(move.ply))
-                .map(move => move.ply),
-            ]),
-          ]
+        : source === 'starred'
+          ? [...reviewed.values()].filter(mistake => mistake.starred).map(mistake => mistake.ply)
+          : [
+              ...new Set([
+                ...reviewed.keys(),
+                ...(game.analysis?.moves ?? [])
+                  .filter(move => isFault(move.tag) && !beyondReach.has(move.ply))
+                  .map(move => move.ply),
+              ]),
+            ]
 
     if (plies.length === 0) continue
 
@@ -169,7 +261,7 @@ export function buildDrillCards(games: GameRecord[], source: DrillSource): Drill
     }
   }
 
-  return cards.sort((a, b) => drillRank(a) - drillRank(b) || (a.stat?.lastAt ?? 0) - (b.stat?.lastAt ?? 0))
+  return cards
 }
 
 /**
@@ -260,8 +352,7 @@ export function stepsAlong(fen: string, ply: number, line: string[]): DrillStep[
  * here with nothing new, because an exercise was always a position with moves on top of
  * it and so was an alternative you wrote in a review.
  *
- * Ordered by the same rule as the games: never seen first, then the ones you keep
- * missing, then the longest ago. The caller sorts, as it does for a game.
+ * Dealt by the same rule as the games, which the caller applies: `shuffleByWeight`.
  */
 export function buildExerciseCards(guides: ExerciseGuide[]): DrillCard[] {
   const cards: DrillCard[] = []
@@ -310,9 +401,7 @@ export function buildExerciseCards(guides: ExerciseGuide[]): DrillCard[] {
     }
   }
 
-  return cards.sort(
-    (a, b) => drillRank(a) - drillRank(b) || (a.stat?.lastAt ?? 0) - (b.stat?.lastAt ?? 0),
-  )
+  return cards
 }
 
 /**
