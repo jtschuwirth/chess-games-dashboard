@@ -929,10 +929,20 @@ export type MoveStepId =
   | 'material'
   | 'threats'
   | 'candidates'
-  | 'side'
-  | 'fantasy'
-  | 'plan-choice'
+  | 'technique'
+  | 'lead'
   | 'blunder-check'
+
+/**
+ * The five points of Azel Chua's evaluation technique, in the order they rank.
+ *
+ * The order is a hierarchy rather than a list: a lead higher up is worth more than one
+ * lower down, so it is the one the position is played for.
+ */
+export type TechniquePointId = 'material' | 'king-safety' | 'activity' | 'centre' | 'structure'
+
+/** Who is better at one point of the technique. */
+export type TechniqueVerdict = 'white' | 'equal' | 'black'
 
 /**
  * What you wrote before playing one move.
@@ -971,6 +981,12 @@ export interface MoveLog {
   line: string
   /** One answer per step of the loop, by step id. Steps you skipped are absent. */
   answers: Partial<Record<MoveStepId, string>>
+  /**
+   * The quiet pass's verdict on each point of the technique. Absent until one is
+   * pressed, and a point nobody pressed is absent rather than `equal` — not yet judged
+   * is a different answer from judged level.
+   */
+  technique?: Partial<Record<TechniquePointId, TechniqueVerdict>>
   /** How long you spent on it, in minutes. Yours to write; nothing times you. */
   minutes?: number
   /**
@@ -988,7 +1004,7 @@ export interface MoveLog {
 /**
  * What a move is filed under in the post-mortem.
  *
- * The eight steps, plus two things that are failures and are not steps.
+ * The steps, plus two things that are failures and are not steps.
  *
  * `gate` is the branch going the wrong way: a quiet position you read as having
  * something concrete in it, or a tactic you had and talked yourself out of. It has no

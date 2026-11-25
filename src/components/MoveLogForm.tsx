@@ -1,11 +1,25 @@
 'use client'
 
 import Chip from '@/components/Chip'
-import { formatEvalGuess, parseEvalInput, passesFor } from '@/lib/daily'
-import type { MoveLog, MoveStepId } from '@/types/chess'
+import { FilterGrid, FilterRow } from '@/components/FilterPanel'
+import {
+  formatEvalGuess,
+  parseEvalInput,
+  passesFor,
+  TECHNIQUE_POINTS,
+  techniqueLead,
+  withVerdict,
+} from '@/lib/daily'
+import { COLOR_LABEL, type Color, type MoveLog, type MoveStepId, type TechniqueVerdict } from '@/types/chess'
 
 const INPUT =
   'bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-600 placeholder:text-zinc-600'
+
+const VERDICTS: { verdict: TechniqueVerdict; label: string }[] = [
+  { verdict: 'white', label: 'White' },
+  { verdict: 'equal', label: 'equal' },
+  { verdict: 'black', label: 'Black' },
+]
 
 /**
  * The loop as a form: what you write before playing one move.
@@ -16,22 +30,25 @@ const INPUT =
  *
  * **The gate is a control rather than a note**, and it is what makes filling this in
  * the same act as running the method: answering *yes, something concrete* takes the
- * reassessment off the form, because there was nothing quiet to reassess. Answering
- * *no* puts it back. The form therefore branches where the method branches, instead of
- * showing every box and trusting you to know which half to skip.
+ * evaluation pass off the form, because there was nothing quiet to evaluate. Answering
+ * *no* puts it back.
  *
- * The evaluation sits at the top rather than at the end, because it is asked on every
- * move whichever way the gate went — and because writing it before the commit check
- * keeps it an estimate of the position rather than a note about the move you had
- * already settled on.
+ * **The evaluation is asked last, at the head of Pass 3.** It sat at the top of the form,
+ * which asked for a number before anything had been read — and a number written first is
+ * a guess the reading then has to argue with. It comes after either branch, once the
+ * position has been taken apart, and before the blunder check, which is about the move
+ * rather than the position.
  */
 export default function MoveLogForm({
   log,
+  color,
   inBook,
   onBook,
   onChange,
 }: {
   log: MoveLog
+  /** Your side, so the technique can say which lead is yours to press. */
+  color: Color
   /** Whether your preparation still covers this move. */
   inBook: boolean
   /** Move the end of the book to this move, or past it. */
@@ -39,6 +56,8 @@ export default function MoveLogForm({
   onChange: (update: (current: MoveLog) => MoveLog) => void
 }) {
   const passes = passesFor(log.concrete, inBook)
+  const mine = techniqueLead(log.technique, color)
+  const theirs = techniqueLead(log.technique, color === 'white' ? 'black' : 'white')
 
   function setAnswer(id: MoveStepId, text: string) {
     onChange(current => {
@@ -51,38 +70,67 @@ export default function MoveLogForm({
     })
   }
 
-  return (
-    <div className="flex flex-col gap-5">
-      {/*
-        Out of book, the fact is a line rather than a control: it is true of the whole
-        rest of the game and you are not deciding it again on every move. It stays
-        pressable because a mispress has to be undoable from the move it was made on.
-      */}
-      {/*
-        The evaluation is not asked in book either. You are recalling a move rather than
-        judging a position, and a number written to fill a box is worse than no number at
-        all — the post-mortem would score it as an opinion you never held.
-      */}
-      {!inBook && (
-        <>
-          <p className="text-xs text-zinc-600">
-            Past your preparation.{' '}
-            <button
-              type="button"
-              onClick={() => onBook(false)}
-              className="underline hover:text-zinc-300 transition-colors"
-            >
-              this move was still book
-            </button>
-          </p>
+  /** The five points as rows of chips, and what they add up to under them. */
+  function renderTechnique() {
+    return (
+      <div className="flex flex-col gap-2">
+        <FilterGrid>
+          {TECHNIQUE_POINTS.map((point, index) => (
+            <FilterRow key={point.id} label={`${index + 1}. ${point.label}`}>
+              {VERDICTS.map(({ verdict, label }) => (
+                <Chip
+                  key={verdict}
+                  active={log.technique?.[point.id] === verdict}
+                  onClick={() => onChange(current => withVerdict(current, point.id, verdict))}
+                >
+                  {label}
+                </Chip>
+              ))}
+            </FilterRow>
+          ))}
+        </FilterGrid>
 
-          <div className="flex flex-wrap items-end gap-4">
+        {/*
+          The hierarchy's answer, derived rather than asked: the highest point you lead on
+          is what you play for, and the highest point they lead on is what you must not
+          let grow. Saying it here is what makes pressing the chips the same act as
+          deciding the plan.
+        */}
+        {(mine || theirs) && (
+          <p className="text-xs text-zinc-400">
+            {mine ? (
+              <>
+                Play for{' '}
+                <span className="text-emerald-300 font-semibold">
+                  {mine.point.label.toLowerCase()}
+                </span>
+              </>
+            ) : (
+              'No lead of yours yet'
+            )}
+            {theirs && (
+              <>
+                {' · '}keep {COLOR_LABEL[theirs.side]}&rsquo;s{' '}
+                <span className="text-rose-300">{theirs.point.label.toLowerCase()}</span>{' '}
+                from growing
+              </>
+            )}
+          </p>
+        )}
+      </div>
+    )
+  }
+
+  /** The number and the line it is the value of — asked once the reading is done. */
+  function renderEvaluation() {
+    return (
+      <div className="flex flex-wrap items-end gap-4">
         <label className="flex flex-col gap-1.5">
           <span
-            className="text-xs uppercase tracking-wide text-zinc-500"
+            className="text-xs text-zinc-300"
             title="From White's side, which is the frame every board and engine reading in the app shows"
           >
-            My eval
+            What is it worth?
           </span>
           <input
             defaultValue={formatEvalGuess(log.evaluation)}
@@ -100,42 +148,60 @@ export default function MoveLogForm({
         </label>
 
         <label className="flex flex-col gap-1.5 flex-1 min-w-[16rem]">
-          <span className="text-xs uppercase tracking-wide text-zinc-500">
-            of the position after
-          </span>
+          <span className="text-xs text-zinc-300">of the position after</span>
           <input
             value={log.line}
-            onChange={event =>
-              onChange(current => ({ ...current, line: event.target.value }))
-            }
+            onChange={event => onChange(current => ({ ...current, line: event.target.value }))}
             placeholder="Nd5 Bxe7 Qxe7 — the line the number is the value of"
             className={INPUT}
           />
         </label>
+      </div>
+    )
+  }
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-wide text-zinc-500">Minutes</span>
-          <input
-            defaultValue={log.minutes === undefined ? '' : String(log.minutes)}
-            key={`minutes-${log.ply}`}
-            onBlur={event => {
-              const value = Number(event.target.value.trim())
-              onChange(current => {
-                const next = { ...current }
-                if (event.target.value.trim().length === 0 || !Number.isFinite(value)) {
-                  delete next.minutes
-                } else {
-                  next.minutes = Math.max(0, Math.round(value))
-                }
-                return next
-              })
-            }}
-            placeholder="12"
-            className={`${INPUT} w-20`}
-          />
+  return (
+    <div className="flex flex-col gap-5">
+      {/*
+        Out of book, the fact is a line rather than a control: it is true of the whole
+        rest of the game and you are not deciding it again on every move. It stays
+        pressable because a mispress has to be undoable from the move it was made on.
+      */}
+      {!inBook && (
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <p className="text-xs text-zinc-600">
+            Past your preparation.{' '}
+            <button
+              type="button"
+              onClick={() => onBook(false)}
+              className="underline hover:text-zinc-300 transition-colors"
+            >
+              this move was still book
+            </button>
+          </p>
+
+          <label className="flex items-center gap-2">
+            <span className="text-xs uppercase tracking-wide text-zinc-500">Minutes</span>
+            <input
+              defaultValue={log.minutes === undefined ? '' : String(log.minutes)}
+              key={`minutes-${log.ply}`}
+              onBlur={event => {
+                const value = Number(event.target.value.trim())
+                onChange(current => {
+                  const next = { ...current }
+                  if (event.target.value.trim().length === 0 || !Number.isFinite(value)) {
+                    delete next.minutes
+                  } else {
+                    next.minutes = Math.max(0, Math.round(value))
+                  }
+                  return next
+                })
+              }}
+              placeholder="12"
+              className={`${INPUT} w-20`}
+            />
           </label>
-          </div>
-        </>
+        </div>
       )}
 
       {passes.map(pass => (
@@ -145,20 +211,29 @@ export default function MoveLogForm({
             <span className="text-sm font-semibold text-zinc-100">{pass.title}</span>
           </div>
 
+          {/*
+            Not in book: there you are recalling a move rather than judging a position,
+            and a number written to fill a box would be scored by the post-mortem as an
+            opinion you never held.
+          */}
+          {pass.evaluates && !inBook && renderEvaluation()}
+
           {pass.steps.map(step => (
             <div key={step.id} className="flex flex-col gap-1.5">
               <label className="text-xs text-zinc-300" htmlFor={`${log.ply}-${step.id}`}>
                 {step.label}
               </label>
+              {step.id === 'technique' && renderTechnique()}
               <textarea
                 id={`${log.ply}-${step.id}`}
                 value={log.answers[step.id] ?? ''}
                 onChange={event => setAnswer(step.id, event.target.value)}
-                rows={step.checklist ? 3 : 2}
+                rows={step.id === 'technique' ? 2 : step.checklist ? 3 : 2}
                 placeholder={step.prompt}
                 className={`${INPUT} resize-y`}
               />
-              {step.checklist && (
+              {/* the technique's checklist is the five rows above it */}
+              {step.checklist && step.id !== 'technique' && (
                 <p className="text-[11px] text-zinc-600">{step.checklist.join(' · ')}</p>
               )}
             </div>
@@ -166,9 +241,9 @@ export default function MoveLogForm({
 
           {/*
             The book gate, at the foot of Pass 0 where it is answered. It is terminal:
-            a move your preparation decided takes the burger and the reassessment off the form
-            entirely, leaving the line you are in and the check that it still survives
-            their reply.
+            a move your preparation decided takes the burger and the evaluation off the
+            form entirely, leaving the line you are in and the check that it still
+            survives their reply.
           */}
           {pass.id === 'book' && (
             <div className="flex items-center gap-2 flex-wrap pt-1">
@@ -176,7 +251,7 @@ export default function MoveLogForm({
               <Chip
                 active
                 onClick={() => onBook(false)}
-                title="Still book — the burger and the reassessment are not asked"
+                title="Still book — the burger and the evaluation are not asked"
               >
                 yes
               </Chip>
@@ -202,14 +277,14 @@ export default function MoveLogForm({
               <Chip
                 active={log.concrete}
                 onClick={() => onChange(current => ({ ...current, concrete: true }))}
-                title="Something concrete turned up — the reassessment is not asked"
+                title="Something concrete turned up — the evaluation pass is not asked"
               >
                 yes
               </Chip>
               <Chip
                 active={!log.concrete}
                 onClick={() => onChange(current => ({ ...current, concrete: false }))}
-                title="Quiet — the reassessment is asked"
+                title="Quiet — the evaluation pass is asked"
               >
                 no, it is quiet
               </Chip>

@@ -408,6 +408,7 @@ function DailyGameBody({ userId, gameId }: { userId: string; gameId: string }) {
 
               <MoveLogForm
                 log={log}
+                color={game.color}
                 inBook={inBook}
                 onBook={out => edit(current => withBookEnd(current, ply, out))}
                 onChange={editLog}

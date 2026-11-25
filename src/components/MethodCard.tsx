@@ -41,10 +41,24 @@ export default function MethodCard() {
             <p className="text-xs text-zinc-500 max-w-2xl">{pass.summary}</p>
 
             <ol className="flex flex-col gap-1.5">
+              {pass.evaluates && (
+                <li className="text-xs text-zinc-300 flex gap-2">
+                  <span className="text-zinc-600 font-mono shrink-0">{pass.number}.1</span>
+                  <span className="min-w-0">
+                    What is it worth?
+                    <span className="text-zinc-600">
+                      {' '}
+                      — from White&rsquo;s side, and the line that value is the value of, so
+                      a disagreement with the engine can be told apart: a line missed or a
+                      position misjudged · not asked in book
+                    </span>
+                  </span>
+                </li>
+              )}
               {pass.steps.map((step, index) => (
                 <li key={step.id} className="text-xs text-zinc-300 flex gap-2">
                   <span className="text-zinc-600 font-mono shrink-0">
-                    {pass.number}.{index + 1}
+                    {pass.number}.{index + 1 + (pass.evaluates ? 1 : 0)}
                   </span>
                   <span className="min-w-0">
                     {step.label}
@@ -58,15 +72,6 @@ export default function MethodCard() {
           </div>
         </div>
       ))}
-
-      <div className="border-l-2 border-zinc-700 pl-4 flex flex-col gap-1">
-        <span className="text-sm font-semibold text-zinc-100">Every move, either branch</span>
-        <p className="text-xs text-zinc-500 max-w-2xl">
-          What the position is worth, from White&rsquo;s side, and the line that value is
-          the value of. The number alone cannot say whether a disagreement with the engine
-          was a line you missed or a position you misjudged.
-        </p>
-      </div>
     </div>
   )
 }

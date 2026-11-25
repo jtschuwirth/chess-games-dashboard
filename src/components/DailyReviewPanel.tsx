@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { METHOD_PASSES, FAILURE_IDS, FAILURE_LABEL } from '@/lib/daily'
+import { METHOD_PASSES, FAILURE_IDS, FAILURE_LABEL, stepAnswered, techniqueSummary } from '@/lib/daily'
 import { calibration, failureTally, reviewRows } from '@/lib/daily-review'
 import { STANDING_LABEL } from '@/lib/bands'
 import { formatEval, markColor } from '@/lib/review'
@@ -244,13 +244,20 @@ export default function DailyReviewPanel({
                       ) : (
                         <div className="flex flex-col gap-2">
                           {METHOD_PASSES.flatMap(pass => pass.steps)
-                            .filter(step => (log.answers[step.id] ?? '').trim().length > 0)
+                            .filter(step => stepAnswered(log, step.id))
                             .map(step => (
                               <div key={step.id} className="flex flex-col">
                                 <span className="text-[11px] text-zinc-500">{step.label}</span>
-                                <span className="text-xs text-zinc-300 whitespace-pre-wrap">
-                                  {log.answers[step.id]}
-                                </span>
+                                {step.id === 'technique' && log.technique && (
+                                  <span className="text-xs text-zinc-300">
+                                    {techniqueSummary(log.technique)}
+                                  </span>
+                                )}
+                                {log.answers[step.id] && (
+                                  <span className="text-xs text-zinc-300 whitespace-pre-wrap">
+                                    {log.answers[step.id]}
+                                  </span>
+                                )}
                               </div>
                             ))}
                           {log.line.trim().length > 0 && (

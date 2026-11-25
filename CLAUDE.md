@@ -129,12 +129,13 @@ the patterns those studies are made of, and the model games showing them played.
 12. `/daily` — a game played at three days a move, with the thinking written down as it
    happens. A game is an opponent, a colour and a board you enter the moves on; standing
    in a position where it is your turn, the **move loop** is asked of you step by step —
-   the book pass, the burger in its own three steps (material and the imbalances, the
-   threats, the candidates), and, *only* when the burger came back with nothing
-   concrete, the reassessment (which imbalance you play, the position you want, whether
-   it can be had). The commit check is asked either way. Every
-   move also carries what you think the position is worth and the line that figure is the
-   value of. The loop itself is on the page, folded, so it can be read while it is being
+   the book pass, the burger in its own three steps (material, the threats, the
+   candidates), and, *only* when the burger came back with nothing concrete, Azel Chua's
+   **evaluation technique** — material, king safety, piece activity, centre control and
+   pawn structure, each judged equal or better for one side, ranked in that order, and
+   then the candidates that press the highest lead. Then, either way, the commit pass:
+   what you think the position is worth and the line that figure is the value of, asked
+   only once the position has been read, and the blunder check. The loop itself is on the page, folded, so it can be read while it is being
    run.
    Once it is over, the **post-mortem** brings it in as an ordinary game, reads the
    engine's own numbers off it and says two things: how far out your estimates were,
@@ -3679,10 +3680,10 @@ src/
   candidates worth calculating — with three things around it. A **book** pass in front,
   because a move already decided is not a move to think about, and because a deviation
   is the cheapest tactic in the game, so leaving book sends you to the burger rather
-  than past it. A **reassess** pass behind, for the positions the burger comes back
-  empty from, which is most of them. And a **commit** check at the end, unconditional,
-  because a club game is lost to what you allowed far more often than to what you
-  missed.
+  than past it. An **evaluate** pass behind, for the positions the burger comes back
+  empty from, which is most of them. And a **commit** pass at the end, unconditional:
+  the evaluation, then the blunder check, because a club game is lost to what you
+  allowed far more often than to what you missed.
 
   **v1 had four steps in the burger and it was the book's three said wrong.** It opened
   with *what am I playing for* — mate, convert, hold — which is a conclusion rather than
@@ -3705,38 +3706,50 @@ src/
   next candidate has to be one that fixes *that*. The commit check carries the same
   rule, because a blunder check that refutes your move is the same event one pass later.
 
-  The quiet pass is **Silman's reassessment**, from *Reassess Your Chess* and *The
-  Amateur's Mind*: the imbalances, the side of the board they point at, the position you
-  want, and whether it can be had — and if it cannot, the nearest one that can, rather
-  than abandoning the imbalance it was built on.
+  **The quiet pass is Azel Chua's evaluation technique**, and it replaced Silman's
+  reassessment (which had replaced Aagaard's three questions). Five points — material,
+  king safety, piece activity, centre control, pawn structure — each judged **equal,
+  White better or Black better**, and the order is a hierarchy rather than a list: the
+  highest point you lead on is what the position is played for. A lead in development
+  is pressed with e5 even where a lower point offers a weak target, because a lead
+  higher up is worth more and the activity is the one that evaporates if you wait. It
+  ends in candidates, the way the burger does, so both branches arrive at Pass 3 with a
+  move.
 
-  It replaced **Aagaard's three questions**, which are a middlegame instrument and
-  degenerate in an opening. On move four nothing is weak yet, every minor piece is the
-  worst piece, and what the opponent wants is to develop — three questions with no
-  answers on the one screen that is asking them. Silman's inventory carries development,
-  initiative and king safety as imbalances in their own right, so the same questions have
-  something to say about a position four moves old and about one forty moves old. The
-  books are also the ones on the user's shelf, which is what makes the method checkable
-  against something rather than against a summary of it.
+  The five are **chips, not a box**, because a verdict is one of three words and three
+  chips are how this app picks one of a few — `FilterGrid` and `FilterRow`, the same
+  rows the filter panel draws. `technique` on the log holds them, a point nobody pressed
+  is absent rather than `equal` (not yet judged is a different answer from judged
+  level), and pressing a verdict again clears it. The plan is **derived** under the
+  chips — *play for piece activity · keep Black's king safety from growing* — by
+  `techniqueLead`, the first point down the hierarchy favouring each side. Saying it is
+  what makes pressing the chips the same act as deciding what to play for.
 
-  **The two passes share their first step**, and that is what makes the quiet pass cheap
-  to run. Counting the material and naming the imbalance is the burger's own opening move
-  *and* the whole of Silman's first step, so it is asked once, in Pass 1, and Pass 2
-  opens at *which of these do I play* with the inventory already written. Asking it twice
-  would be two readings of one position with nothing keeping them in step — the rule the
-  rest of this codebase follows about storing a fact twice, one level up in the method.
+  Material is asked twice, once in each pass, and that is not the duplication the old
+  shared-step rule was avoiding: the burger counts it to find tactics, the technique
+  ranks it against four other things. The burger's step lost Silman's imbalance
+  checklist, which had been there only so that the quiet pass could open with it done.
 
-  **Six step ids retired, and three of them are read forward.** `goal` is `material` and
+  **The evaluation moved to the end.** It sat at the top of the form, which asked for a
+  number before anything had been read — and a number written first is a guess the
+  reading then argues with, where the point is that the number comes *out* of the
+  reading. It is the first thing in Pass 3 now (`evaluates` on the pass), after either
+  branch and before the blunder check, which is about the move rather than the position.
+
+  **Nine step ids retired, and four of them are read forward.** `goal` is `material` and
   both halves of the old motif question are `threats` — the same questions renamed, so an
   answer under the old id is an answer to the new one, and the two halves are joined
   rather than one of them silently winning. Aagaard's three are not Silman's three, so
   `weaknesses`, `worst-piece` and `their-plan` retire with nothing to carry them onto and
   an answer under one is dropped rather than filed under a question it does not answer.
+  Silman's last question — *is it achievable, and what is the move* — is the one the
+  technique's candidates now answer, so `plan-choice` reads forward onto `lead`; `side`
+  and `fantasy` are not questions the five points ask and are dropped.
   `readFailure` applies the same map to a stored filing, so a move filed under a renamed
   step keeps its row in the tally and one filed under a retired step reads as unfiled.
 
   **The gates are controls, not notes.** Answering *yes, something concrete* takes the
-  reassessment off the form, because there was nothing quiet to reassess; answering *no*
+  evaluation pass off the form, because there was nothing quiet to evaluate; answering *no*
   puts it back. That is what keeps filling the form and running the loop the same act,
   instead of every box and a rule about which half to skip. Each gate is a `gate`
   line on the pass it stands in front of, so the branches are part of the method's own

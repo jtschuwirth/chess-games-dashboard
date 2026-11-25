@@ -2,28 +2,21 @@
  * The move loop: a written-down procedure for choosing a move, and the games played
  * slowly enough to run it.
  *
- * The method is Azel Chua's burger in **its own three steps** — count the material and
- * name the imbalance, read the threats, find the candidates worth calculating — with
- * three things around it. A **book** pass in front, because a move you have already
- * decided is not a move to think about; a **reassess** pass behind, for the positions
- * where the burger comes back empty, which is most of them; and a **commit** check at
- * the end, unconditional, because the common club loss is not a missed win but an
- * allowed one.
+ * The method is Azel Chua's, twice over. Pass 1 is his **burger** in its own three steps
+ * — count the material, read the threats, find the candidates worth calculating. Pass 2,
+ * asked only when the burger came back with nothing concrete, is his **evaluation
+ * technique**: five points — material, king safety, piece activity, centre control,
+ * pawn structure — each judged equal, White better or Black better, and ranked in that
+ * order. The highest point you lead on is what the position is played for, even where a
+ * lower one offers a target: a lead in activity is pressed before a better structure is
+ * cashed, because activity is the one that goes away if you wait. It ends in candidates,
+ * the way the burger does, so both branches arrive at Pass 3 with a move.
  *
- * The quiet pass is **Silman's reassessment** — the imbalances, the side of the board
- * they point at, the position you want, and whether it can be had. It replaced Aagaard's
- * three questions, which are a middlegame instrument and degenerate in an opening: on
- * move four nothing is weak yet, every minor piece is the worst piece, and what the
- * opponent wants is to develop. Silman's inventory carries development, initiative and
- * king safety as imbalances in their own right, so the same four questions have real
- * answers on move four and on move forty.
- *
- * **The two passes share their first step.** Counting the material and naming the
- * imbalance is the burger's own opening move *and* the whole of Silman's first step, so
- * it is asked once, in Pass 1, and the quiet pass starts with that homework already
- * done. Asking it twice would be two inventories of one position with nothing keeping
- * them in step — the rule the rest of this codebase follows about storing a fact twice,
- * one level up in the method itself.
+ * Around them, a **book** pass in front, because a move you have already decided is not
+ * a move to think about; and a **commit** pass at the end, unconditional, which is where
+ * the evaluation is written and then the blunder check run. The evaluation is last on
+ * purpose: a number has to come out of having read the position, and a box for it at the
+ * top of the form invited one before anything had been read.
  *
  * **The steps are the failure vocabulary.** Every one of them produces something you
  * write down at the time, which is the whole reason the loop is worth recording: without
@@ -39,6 +32,8 @@ import { colorAt, fromPgn, mainLine, START_FEN, toPgn, type MoveTree } from './m
 import type {
   Color,
   DailyGame,
+  TechniquePointId,
+  TechniqueVerdict,
   MoveFailureId,
   MoveLog,
   MoveStepId,
@@ -82,31 +77,73 @@ export interface MethodPass {
    * two branches in the method are part of the method rather than part of a layout.
    */
   gate?: string
+  /**
+   * Whether this pass opens with the evaluation — the number and the line it is the
+   * value of. One pass carries it: the one that comes after the reading is done.
+   */
+  evaluates?: boolean
   /** Tailwind ink for the pass, so a step reads as belonging to one. */
   tone: string
   border: string
   steps: MethodStep[]
 }
 
+export interface TechniquePoint {
+  id: TechniquePointId
+  label: string
+}
+
 /**
- * Silman's imbalances, as the checklist under the one step that reads them.
+ * Azel Chua's evaluation technique, highest first.
  *
- * It is a longer list than a tactical pass seems to want, and that is the point: this
- * same inventory is the first step of the quiet pass, so writing it here is what lets
- * Pass 2 open with the work already done. Development, initiative and king safety are
- * imbalances in their own right, which is what gives the list something to say about a
- * position four moves old.
+ * The order **is** the rule. Two leads are not added up: the higher one decides what to
+ * play for, and the lower one is what you keep while doing it.
  */
-const IMBALANCES = [
-  'minor pieces — whose bishop or knight is the better one here',
-  'pawn structure',
-  'space',
-  'material',
-  'files, ranks and squares',
-  'development',
-  'initiative',
-  'king safety',
+export const TECHNIQUE_POINTS: TechniquePoint[] = [
+  { id: 'material', label: 'Material' },
+  { id: 'king-safety', label: 'King safety' },
+  { id: 'activity', label: 'Piece activity' },
+  { id: 'centre', label: 'Centre control' },
+  { id: 'structure', label: 'Pawn structure' },
 ]
+
+export const TECHNIQUE_IDS: TechniquePointId[] = TECHNIQUE_POINTS.map(point => point.id)
+
+export const VERDICT_WORD: Record<TechniqueVerdict, string> = {
+  white: 'White',
+  equal: '=',
+  black: 'Black',
+}
+
+export interface TechniqueLead {
+  point: TechniquePoint
+  side: Color
+}
+
+/**
+ * The highest point one side leads on, or nothing.
+ *
+ * Read for one side at a time, because the pass asks two questions — what is mine to
+ * press, and what of theirs must I not let grow — and each answer is the first point
+ * down the hierarchy that favours that side.
+ */
+export function techniqueLead(
+  verdicts: MoveLog['technique'],
+  side: Color,
+): TechniqueLead | null {
+  for (const point of TECHNIQUE_POINTS) {
+    if (verdicts?.[point.id] === side) return { point, side }
+  }
+  return null
+}
+
+/** The verdicts in one line, for a log read back: `Material = · Piece activity White`. */
+export function techniqueSummary(verdicts: MoveLog['technique']): string {
+  return TECHNIQUE_POINTS.flatMap(point => {
+    const verdict = verdicts?.[point.id]
+    return verdict === undefined ? [] : [`${point.label} ${VERDICT_WORD[verdict]}`]
+  }).join(' · ')
+}
 
 /**
  * The technique's own breakdown of step two, read over the whole board rather than per
@@ -162,9 +199,8 @@ export const METHOD_PASSES: MethodPass[] = [
     steps: [
       {
         id: 'material',
-        label: 'Material, and the imbalances',
-        prompt: 'the count, then what each side has that the other does not',
-        checklist: IMBALANCES,
+        label: 'Material',
+        prompt: 'the count — who is up, and by what',
       },
       {
         id: 'threats',
@@ -191,11 +227,11 @@ export const METHOD_PASSES: MethodPass[] = [
   {
     id: 'plan',
     number: '2',
-    title: 'Reassess',
+    title: 'Evaluate',
     summary:
-      'Asked only when Pass 1 found nothing concrete. The imbalances are already ' +
-      'written above, so this starts at the one you play — then the position you ' +
-      'want, and whether it can be had.',
+      'Asked only when Pass 1 found nothing concrete. Five points, highest first, each ' +
+      'judged equal or better for one side — and the highest one you lead on is what ' +
+      'you play for, even with a target lower down.',
     branch: 'quiet',
     gate:
       'did a candidate produce something concrete that survives their best reply? ' +
@@ -204,28 +240,23 @@ export const METHOD_PASSES: MethodPass[] = [
     border: 'border-emerald-500/30',
     steps: [
       {
-        id: 'side',
-        label: 'Which imbalance do I play, and where on the board?',
-        prompt: 'the one from Pass 1.1 that favours me, and the side it points at',
+        id: 'technique',
+        label: 'Who is better, point by point?',
+        prompt: 'what makes each one better — the piece, the square, the file',
         checklist: [
-          'the inventory is already written in Pass 1.1',
-          'theirs as well — which of their imbalances must I not let grow',
-          'play where your advantage is, not where the position looks loudest',
+          ...TECHNIQUE_POINTS.map(point => point.label.toLowerCase()),
+          'a point higher up outranks everything below it',
         ],
       },
       {
-        id: 'fantasy',
-        label: 'What position do I want?',
-        prompt: 'the pieces on the squares they belong on — the position, not the route',
-        checklist: ['no calculation yet', 'name squares, not intentions'],
-      },
-      {
-        id: 'plan-choice',
-        label: 'Is it achievable, and what is the move?',
-        prompt: 'if it is not, the nearest one that is — then the move that starts towards it',
+        id: 'lead',
+        label: 'Candidates that press the lead',
+        prompt: 'one per line: the move, how it grows the lead, what it is worth',
         checklist: [
-          'if the dream will not go, change the dream rather than the imbalance it is built on',
-          'does the move concede anything their own imbalances point at',
+          'the move that grows the highest lead, before one that cashes a lower one',
+          'theirs as well — which of their leads must I not let grow',
+          'a candidate that fails names the fault: the next one has to fix that fault',
+          'calculate each to a quiet position before judging it',
         ],
       },
     ],
@@ -235,9 +266,10 @@ export const METHOD_PASSES: MethodPass[] = [
     number: '3',
     title: 'Commit',
     summary:
-      'Unconditional, both branches. A club game is lost to what you allowed far more ' +
-      'often than to what you missed.',
+      'Unconditional, both branches. What the position is worth now that it has been ' +
+      'read — then the check a club game is most often lost for want of.',
     branch: 'always',
+    evaluates: true,
     tone: 'text-rose-300',
     border: 'border-rose-500/30',
     steps: [
@@ -267,7 +299,7 @@ export const STEP_LABEL: Record<MoveStepId, string> = Object.fromEntries(
 ) as Record<MoveStepId, string>
 
 /**
- * Everything a move can be filed under: the eight steps, then the two that are failures
+ * Everything a move can be filed under: the steps, then the two that are failures
  * without being steps. `none` sits last because it is the answer you reach after trying
  * the others, not one of them.
  */
@@ -345,6 +377,31 @@ export function passesFor(concrete: boolean, inBook = false): MethodPass[] {
 
 /* ------------------------------------------------------------------- a log */
 
+/**
+ * Whether a step has been answered. The technique counts a pressed verdict as an answer,
+ * since the five chips are the step and the box under them only holds the reasons.
+ */
+export function stepAnswered(log: MoveLog, id: MoveStepId): boolean {
+  if ((log.answers[id] ?? '').trim().length > 0) return true
+  return id === 'technique' && Object.keys(log.technique ?? {}).length > 0
+}
+
+/** The log with one point of the technique judged, or cleared by pressing it again. */
+export function withVerdict(
+  log: MoveLog,
+  point: TechniquePointId,
+  verdict: TechniqueVerdict,
+): MoveLog {
+  const technique = { ...log.technique }
+  if (technique[point] === verdict) delete technique[point]
+  else technique[point] = verdict
+
+  const next: MoveLog = { ...log, technique }
+  // left out rather than stored empty, the rule every optional field here follows
+  if (Object.keys(technique).length === 0) delete next.technique
+  return next
+}
+
 export function emptyLog(ply: number): MoveLog {
   return { ply, concrete: false, evaluation: null, line: '', answers: {} }
 }
@@ -378,6 +435,7 @@ export function logHasContent(log: MoveLog): boolean {
     log.concrete ||
     log.evaluation !== null ||
     log.line.trim().length > 0 ||
+    Object.keys(log.technique ?? {}).length > 0 ||
     Object.values(log.answers).some(answer => (answer ?? '').trim().length > 0)
   )
 }
@@ -385,7 +443,7 @@ export function logHasContent(log: MoveLog): boolean {
 /** How much of the loop a log answered, out of the steps that were asked of it. */
 export function logProgress(log: MoveLog, inBook = false): { asked: number; answered: number } {
   const steps = passesFor(log.concrete, inBook).flatMap(pass => pass.steps)
-  const answered = steps.filter(step => (log.answers[step.id] ?? '').trim().length > 0).length
+  const answered = steps.filter(step => stepAnswered(log, step.id)).length
   return { asked: steps.length, answered }
 }
 
@@ -492,16 +550,19 @@ export function uploadFrom(game: DailyGame): SyncedGame {
  * the whole board at once. Both are the same questions renamed, so an answer written
  * under the old id is an answer to the new one.
  *
- * The quiet pass is not: Aagaard's weaknesses, worst piece and opponent's plan are not
- * Silman's imbalance, fantasy and plan, so those three retire with nothing to carry them
- * onto. An answer under one is dropped rather than filed under a question it does not
- * answer — the habit every stored shape here follows, which is to read forward where
- * there is something to read forward to and to drop what there is not.
+ * The quiet pass has been replaced twice. Its last question — *what is the move* — is
+ * the one the technique's candidates now answer, so `plan-choice` reads forward onto
+ * `lead`. The rest (Aagaard's weaknesses, worst piece and opponent's plan; Silman's
+ * imbalance and fantasy) are not questions the five points ask, so they retire with
+ * nothing to carry them onto. An answer under one is dropped rather than filed under a
+ * question it does not answer — the habit every stored shape here follows, which is to
+ * read forward where there is something to read forward to and to drop what there is not.
  */
 const RETIRED_STEPS: Record<string, MoveStepId> = {
   goal: 'material',
   'their-motifs': 'threats',
   'my-motifs': 'threats',
+  'plan-choice': 'lead',
 }
 
 /**
@@ -540,6 +601,15 @@ function normalizeLog(raw: unknown, ply: number): MoveLog | null {
     line: typeof entry.line === 'string' ? entry.line : '',
     answers,
   }
+  const technique: Partial<Record<TechniquePointId, TechniqueVerdict>> = {}
+  const storedTechnique = (entry.technique ?? {}) as Record<string, unknown>
+  for (const id of TECHNIQUE_IDS) {
+    const verdict = storedTechnique[id]
+    if (verdict === 'white' || verdict === 'equal' || verdict === 'black') {
+      technique[id] = verdict
+    }
+  }
+  if (Object.keys(technique).length > 0) log.technique = technique
   if (typeof entry.minutes === 'number') log.minutes = entry.minutes
   // an unknown value is dropped rather than passed through, so a hand-edited document
   // cannot invent a step for the tally to count
